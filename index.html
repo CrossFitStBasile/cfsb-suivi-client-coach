@@ -817,7 +817,9 @@
     const stepLabels = Array.from(document.querySelectorAll("[data-step-label]"));
     const params = new URLSearchParams(window.location.search);
     const ENDPOINT_URL = params.get("endpoint") || "";
-    const APP_VERSION = "github-pages-v2";
+    const APP_VERSION = "github-pages-v3";
+    const SCHEMA_VERSION = "1.0";
+    const PAYLOAD_SOURCE = "cfsb-client-coach-questionnaire";
     let current = 0;
 
     function valueOf(name) {
@@ -922,40 +924,50 @@
 
     function buildPayload() {
       const status = computeStatus();
+      const submittedAt = new Date().toISOString();
+      const token = params.get("submission_token") || params.get("token") || "";
       return {
+        source: PAYLOAD_SOURCE,
+        schema_version: SCHEMA_VERSION,
+        submission_token: token,
         response_id: responseId(),
-        submitted_at: new Date().toISOString(),
-        source_app: "cfsb-suivi-client-coach",
-        source_version: APP_VERSION,
-        source_url: sourceUrl(),
-        client_id: params.get("client_id") || "",
-        client_name: fieldValue("name"),
-        client_email: fieldValue("email"),
-        coach_id: params.get("coach_id") || "",
-        coach_name: fieldValue("coach"),
-        service_type: fieldValue("serviceType") || "",
-        followup_type: valueOf("reason"),
-        general_state: valueOf("state"),
-        motivation_level: valueOf("motivation"),
-        goal_status: valueOf("goal"),
-        goal_clarity_score: valueOf("clarity"),
-        progress_toward_goal: valueOf("progress"),
-        recent_success: fieldValue("recentSuccess"),
-        current_challenges: valuesOf("challenges").join(", "),
-        upcoming_changes: valueOf("upcomingChanges"),
-        upcoming_changes_details: fieldValue("upcomingChangesDetails"),
-        program_fit: valueOf("program"),
-        improvements_requested: valuesOf("improve").join(", "),
-        pain_status: valueOf("pain"),
-        open_note: fieldValue("note"),
-        final_position: valueOf("final"),
-        contact_request: valueOf("contact"),
-        triage_status: status,
-        coach_action_type: actionCodeFor(status),
-        coach_action_done: false,
-        coach_action_note: "",
-        dashboard_sync_status: ENDPOINT_URL ? "pending" : "test_mode_no_endpoint",
-        chat_notification_status: "pending"
+        submitted_at: submittedAt,
+        answers: {
+          client_name_entered: fieldValue("name"),
+          client_email_entered: fieldValue("email"),
+          coach_name_entered: fieldValue("coach"),
+          followup_type: valueOf("reason"),
+          general_state: valueOf("state"),
+          motivation_level: valueOf("motivation"),
+          goal_status: valueOf("goal"),
+          goal_clarity_score: valueOf("clarity"),
+          progress_toward_goal: valueOf("progress"),
+          recent_success: fieldValue("recentSuccess"),
+          current_challenges: valuesOf("challenges"),
+          upcoming_changes: valueOf("upcomingChanges"),
+          upcoming_changes_details: fieldValue("upcomingChangesDetails"),
+          program_fit: valueOf("program"),
+          improvements_requested: valuesOf("improve"),
+          pain_status: valueOf("pain"),
+          open_note: fieldValue("note"),
+          final_position: valueOf("final"),
+          contact_request: valueOf("contact")
+        },
+        triage: {
+          status,
+          coach_action_type: actionCodeFor(status),
+          coach_action_done: false,
+          coach_action_note: "",
+          dashboard_sync_status: ENDPOINT_URL ? "pending" : "test_mode_no_endpoint",
+          chat_notification_status: "pending"
+        },
+        meta: {
+          source_app: "cfsb-suivi-client-coach",
+          source_version: APP_VERSION,
+          source_url: sourceUrl(),
+          endpoint_configured: Boolean(ENDPOINT_URL),
+          user_agent: window.navigator.userAgent
+        }
       };
     }
 
