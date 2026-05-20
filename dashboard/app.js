@@ -1,5 +1,6 @@
 const DEPLOYMENT_ID = "AKfycbz1qODx2pCWQ2yHhkse6FBxdyn741cYObW_qGsuox4RmVs7m6WYy3YqFTSti8YcRiGQ";
 const DEFAULT_API_URL = `https://script.google.com/macros/s/${DEPLOYMENT_ID}/exec`;
+const DEFAULT_AUTHUSER = "0";
 
 const state = {
   apiUrl: normalizeApiUrl(localStorage.getItem("cfsbCoachApiUrl") || DEFAULT_API_URL),
@@ -96,6 +97,7 @@ function callApiWithUrl(apiUrl, action, payload) {
       callback,
       coach: state.activeCoach || "",
       appPin: state.appPin || "",
+      authuser: DEFAULT_AUTHUSER,
       v: Date.now().toString()
     });
     if (payload && Object.keys(payload).length) params.set("payload", JSON.stringify(payload));
@@ -329,7 +331,7 @@ async function saveImpact() {
 
 function renderError(error) {
   els.content.className = "content";
-  const diagnosticUrl = state.apiUrl + "?api=coach-app&action=getData&coach=" + encodeURIComponent(state.activeCoach || "Marc-Andre Menard") + "&callback=cb";
+  const diagnosticUrl = state.apiUrl + "?authuser=" + DEFAULT_AUTHUSER + "&api=coach-app&action=getData&coach=" + encodeURIComponent(state.activeCoach || "Marc-Andre Menard") + "&callback=cb";
   els.content.innerHTML = `
     <div class="error">
       <p><strong>Connexion backend a verifier.</strong></p>

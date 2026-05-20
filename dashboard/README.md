@@ -37,6 +37,7 @@ Si le dashboard affiche `Impossible de rejoindre le backend`:
 4. Si la page diagnostic affiche une erreur Google, il faudra redeployer ou remplacer le backend Apps Script par un backend dedie.
 
 L'app corrige automatiquement les anciennes URLs Apps Script contenant `/u/3/` et remet le deploiement officiel si un vieux endpoint est garde dans le navigateur.
+Les appels ajoutent aussi `authuser=0` pour eviter que Chrome choisisse automatiquement un autre compte Google.
 
 ## Notes de securite
 
