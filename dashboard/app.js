@@ -38,7 +38,7 @@ document.getElementById("saveManualBtn").addEventListener("click", saveManualTas
 els.coachSelect.addEventListener("change", () => {
   state.activeCoach = els.coachSelect.value;
   localStorage.setItem("cfsbCoachName", state.activeCoach);
-  loadData(false);
+  loadData(true);
 });
 
 loadData(false);
