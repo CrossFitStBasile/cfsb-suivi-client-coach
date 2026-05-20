@@ -548,6 +548,12 @@
             </div>
 
             <div class="field">
+              <label class="question" for="phone">Ton numéro de téléphone</label>
+              <input id="phone" name="phone" type="tel" autocomplete="tel" placeholder="450 555 1234" required>
+              <p class="help">Il sert à relier ta réponse à ta fiche client.</p>
+            </div>
+
+            <div class="field">
               <label class="question" for="coach">Ton coach principal</label>
               <select id="coach" name="coach">
                 <option value="">Sélectionner</option>
@@ -818,8 +824,9 @@
     const summary = document.getElementById("summary");
     const stepLabels = Array.from(document.querySelectorAll("[data-step-label]"));
     const params = new URLSearchParams(window.location.search);
-    const ENDPOINT_URL = params.get("endpoint") || "";
-    const APP_VERSION = "github-pages-v4";
+    const DEFAULT_ENDPOINT_URL = "https://script.google.com/macros/s/AKfycbxnhlehsj_NQU73k3csMQPj0NAm3QSQrpjk0Ar6VYOjXYZO-m9_GSxtmEqYw9y_9DSQEA/exec";
+    const ENDPOINT_URL = params.get("endpoint") || DEFAULT_ENDPOINT_URL;
+    const APP_VERSION = "github-pages-v5";
     const SCHEMA_VERSION = "1.0";
     const PAYLOAD_SOURCE = "cfsb-client-coach-questionnaire";
     let current = 0;
@@ -854,6 +861,7 @@
     function applyUrlPrefill() {
       setFieldValue("name", paramValue("client_name", "name"));
       setFieldValue("email", paramValue("client_email", "email"));
+      setFieldValue("phone", paramValue("phone", "client_phone"));
 
       const coachName = paramValue("coach_name", "coach");
       if (coachName) {
@@ -880,6 +888,21 @@
     function fieldValue(name) {
       const field = document.querySelector(`[name="${name}"]`);
       return field ? field.value.trim() : "";
+    }
+
+    function normalizedPhone() {
+      const digits = fieldValue("phone").replace(/\D/g, "");
+      return digits.length === 11 && digits.charAt(0) === "1" ? digits.slice(1) : digits;
+    }
+
+    function ensurePhoneForSubmission() {
+      if (normalizedPhone()) return true;
+      alert("Ajoute ton numéro de téléphone avant d'envoyer le questionnaire. Il sert à relier ta réponse à ta fiche client.");
+      current = 0;
+      update();
+      const phoneField = document.getElementById("phone");
+      if (phoneField) phoneField.focus();
+      return false;
     }
 
     function computeStatus() {
@@ -981,6 +1004,7 @@
         answers: {
           client_name_entered: fieldValue("name"),
           client_email_entered: fieldValue("email"),
+          client_phone_entered: fieldValue("phone"),
           coach_name_entered: fieldValue("coach"),
           followup_type: valueOf("reason"),
           general_state: valueOf("state"),
@@ -1011,6 +1035,7 @@
           source_app: "cfsb-suivi-client-coach",
           source_version: APP_VERSION,
           source_url: sourceUrl(),
+          client_phone: fieldValue("phone"),
           endpoint_configured: Boolean(ENDPOINT_URL),
           user_agent: window.navigator.userAgent
         }
@@ -1052,6 +1077,7 @@
         ["Statut", `<span class="status-pill ${status}">${labelFor(status)}</span>`],
         ["Action recommandée", actionFor(status)],
         ["Client", fieldValue("name") || "Nom non indiqué"],
+        ["Téléphone", fieldValue("phone") || "Téléphone non indiqué"],
         ["Coach", fieldValue("coach") || "Coach non indiqué"],
         ["Raison du suivi", valueOf("reason") || "Non indiqué"],
         ["Motivation", valueOf("motivation") || "Non indiqué"],
@@ -1108,6 +1134,7 @@
 
     nextBtn.addEventListener("click", () => {
       if (current === sections.length - 1) {
+        if (!ensurePhoneForSubmission()) return;
         if (ENDPOINT_URL) {
           nextBtn.disabled = true;
           nextBtn.textContent = "Envoi...";

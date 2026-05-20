@@ -62,6 +62,8 @@ Paramètres déjà supportés :
 endpoint
 submission_token
 token
+phone
+client_phone
 client_name
 client_email
 coach_name
@@ -105,13 +107,22 @@ Le backend doit dériver `client_id`, `client_name`, `coach_id`, `coach_name` et
 
 Ne pas publier de roster coach dans GitHub Pages.
 
-En production, le client ne devrait idéalement pas choisir son coach. Le dashboard doit générer un lien tokenisé avec le bon `submission_token`. Si on veut afficher le bon contexte au client, le lien peut aussi inclure `coach_name` et `lock_context=1` pour préremplir puis masquer le champ coach.
+En production avec GoHighLevel, le lien peut être très simple et contenir seulement le téléphone du contact :
+
+```text
+https://crossfitstbasile.github.io/cfsb-suivi-client-coach/?phone={{contact.phone_raw}}
+```
+
+Le formulaire utilise un endpoint par défaut et envoie le téléphone dans le payload. Le dashboard pourra ensuite rapprocher la réponse avec `CORE_Clients` par téléphone normalisé.
+
+Si le dashboard envoie lui-même le lien, il peut aussi ajouter `coach_name` et `lock_context=1` pour préremplir puis masquer le champ coach.
 
 Champs dans `answers` :
 
 ```text
 client_name_entered
 client_email_entered
+client_phone_entered
 coach_name_entered
 followup_type
 general_state
