@@ -11,7 +11,8 @@ Quand GitHub Pages publie ce dossier:
 ## Architecture de transition
 
 - GitHub Pages: interface coach.
-- Apps Script Dashboard Coach: backend JSONP temporaire.
+- GitHub Pages JSON snapshots: source de lecture principale pour eviter les blocages Chrome/Apps Script.
+- Apps Script Dashboard Coach: backend JSONP temporaire pour generer les snapshots et tenter les actions live.
 - Google Sheet Dashboard Coach CFSB: base de donnees.
 - Extension CoachRx: continue d'envoyer les donnees dans le backend actuel.
 
@@ -26,6 +27,22 @@ L'app appelle:
 `?api=coach-app&action=getData&callback=...`
 
 Les actions coach passent aussi par ce endpoint pendant le pilote.
+
+## Snapshots GitHub
+
+Les fichiers sous `dashboard/data/` sont lus directement par l'app. Ils permettent au dashboard de s'ouvrir meme si le navigateur du coach bloque Apps Script.
+
+Regeneration locale:
+
+```bash
+node dashboard/scripts/refresh-dashboard-snapshots.mjs
+```
+
+Regeneration publiee:
+
+- GitHub Actions lance le workflow `Refresh dashboard snapshots` aux 30 minutes.
+- Le workflow peut aussi etre lance manuellement.
+- Les snapshots sont committes dans le repo et servis par GitHub Pages.
 
 ## Diagnostic rapide
 

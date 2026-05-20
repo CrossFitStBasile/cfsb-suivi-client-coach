@@ -1,13 +1,17 @@
 const DEPLOYMENT_ID = "AKfycbz1qODx2pCWQ2yHhkse6FBxdyn741cYObW_qGsuox4RmVs7m6WYy3YqFTSti8YcRiGQ";
 const DEFAULT_API_URL = `https://script.google.com/macros/s/${DEPLOYMENT_ID}/exec`;
 const DEFAULT_AUTHUSER = "0";
+const STATIC_INDEX_URL = "./data/index.json";
+const LOCAL_TASK_KEY = "cfsbCoachLocalHiddenTasks";
 
 const state = {
   apiUrl: normalizeApiUrl(localStorage.getItem("cfsbCoachApiUrl") || DEFAULT_API_URL),
   appPin: localStorage.getItem("cfsbCoachAppPin") || "",
   activeView: "today",
   activeCoach: localStorage.getItem("cfsbCoachName") || "",
-  data: null
+  data: null,
+  sourceMode: "Snapshot GitHub",
+  localHiddenTaskIds: new Set(readStoredArray(LOCAL_TASK_KEY))
 };
 
 if (state.apiUrl !== localStorage.getItem("cfsbCoachApiUrl")) {
@@ -31,7 +35,7 @@ document.querySelectorAll(".views button").forEach((button) => {
   });
 });
 
-document.getElementById("refreshBtn").addEventListener("click", () => loadData(true));
+document.getElementById("refreshBtn").addEventListener("click", () => loadData(false, true));
 document.getElementById("settingsBtn").addEventListener("click", () => {
   document.getElementById("apiUrlInput").value = state.apiUrl;
   document.getElementById("appPinInput").value = state.appPin;
@@ -44,7 +48,7 @@ document.getElementById("saveManualBtn").addEventListener("click", saveManualTas
 els.coachSelect.addEventListener("change", () => {
   state.activeCoach = els.coachSelect.value;
   localStorage.setItem("cfsbCoachName", state.activeCoach);
-  loadData(true);
+  loadData(false, true);
 });
 
 loadData(false);
@@ -59,19 +63,66 @@ function saveSettings() {
   loadData(false);
 }
 
-async function loadData(rebuild) {
+async function loadData(rebuild, notify) {
   els.content.innerHTML = '<div class="empty">Chargement du dashboard...</div>';
   try {
+    if (!rebuild) {
+      await loadStaticSnapshot();
+      if (notify) showToast("Sauvegarde GitHub chargee.");
+      return;
+    }
     const response = await callApi(rebuild ? "rebuild" : "getData", {});
     state.data = response.result;
+    state.sourceMode = "Live Apps Script";
     if (!state.activeCoach) {
       state.activeCoach = state.data.activeCoach || "";
       localStorage.setItem("cfsbCoachName", state.activeCoach);
     }
     render();
   } catch (error) {
+    if (rebuild) {
+      try {
+        await loadStaticSnapshot();
+        showToast("Backend live bloque; sauvegarde GitHub chargee.");
+        return;
+      } catch (_snapshotError) {
+        // The live error is more useful for the user-facing diagnostic.
+      }
+    }
     renderError(error);
   }
+}
+
+async function loadStaticSnapshot() {
+  const index = await fetchJson(STATIC_INDEX_URL);
+  const coaches = index.coaches || [];
+  if (!coaches.length) throw new Error("Aucun coach dans la sauvegarde GitHub.");
+  if (!state.activeCoach || !coaches.some((coach) => coach.coach === state.activeCoach)) {
+    state.activeCoach = index.defaultCoach || coaches[0].coach;
+    localStorage.setItem("cfsbCoachName", state.activeCoach);
+  }
+  const selectedCoach = coaches.find((coach) => coach.coach === state.activeCoach) || coaches[0];
+  const data = await fetchJson(`${selectedCoach.path}?v=${encodeURIComponent(index.generatedAt || Date.now())}`);
+  data.coaches = coaches.map((coach) => ({
+    coach: coach.coach,
+    coachId: coach.coachId || "",
+    dashboardSheet: coach.dashboardSheet || "",
+    active: "Oui"
+  }));
+  data.activeCoach = selectedCoach.coach;
+  data.snapshot = data.snapshot || {
+    generatedAt: index.generatedAt,
+    source: "GitHub Pages static snapshot"
+  };
+  state.data = data;
+  state.sourceMode = "Snapshot GitHub";
+  render();
+}
+
+async function fetchJson(url) {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) throw new Error(`Sauvegarde GitHub non disponible (${response.status}).`);
+  return response.json();
 }
 
 function callApi(action, payload) {
@@ -143,14 +194,17 @@ function render() {
   document.getElementById("metricUrgent").textContent = data.counts.p1 || 0;
   document.getElementById("metricRisk").textContent = kpis.atRisk || 0;
   document.getElementById("metricImpacts").textContent = kpis.impactsWeek || 0;
-  els.sourceLine.textContent = `${data.activeCoach || "Coach"} | Dashboard: ${data.dashboardUpdatedAt || "-"} | App: ${data.generatedAt || "-"}`;
+  const sourceSuffix = state.sourceMode === "Snapshot GitHub"
+    ? ` | Source: sauvegarde GitHub ${data.snapshot && data.snapshot.generatedAt ? data.snapshot.generatedAt : ""}`
+    : " | Source: live";
+  els.sourceLine.textContent = `${data.activeCoach || "Coach"} | Dashboard: ${data.dashboardUpdatedAt || "-"} | App: ${data.generatedAt || "-"}${sourceSuffix}`;
 
   if (state.activeView === "clients") return renderClients(data.clients || []);
   if (state.activeView === "retention") return renderRetention(data.v3 || {});
   if (state.activeView === "alumni") return renderAlumni(data.v3 || {});
   if (state.activeView === "impacts") return renderImpacts(data.v3 || {});
 
-  const tasks = filterTasks(data.tasks || []);
+  const tasks = filterTasks(data.tasks || []).filter((task) => !state.localHiddenTaskIds.has(task.taskId));
   if (!tasks.length) {
     els.content.className = "content";
     els.content.innerHTML = '<div class="empty">Aucune action ici.</div>';
@@ -281,6 +335,13 @@ async function updateTask(taskId, rowNumber, status) {
     showToast("Statut enregistre.");
     loadData(false);
   } catch (error) {
+    if (["Fait", "Ignore"].includes(status) && taskId) {
+      state.localHiddenTaskIds.add(taskId);
+      writeStoredArray(LOCAL_TASK_KEY, Array.from(state.localHiddenTaskIds));
+      showToast("Action masquee localement. Le backend live reste a connecter.");
+      render();
+      return;
+    }
     renderError(error);
   }
 }
@@ -357,6 +418,19 @@ function showToast(message) {
   window.__toastTimer = window.setTimeout(() => {
     els.toast.style.display = "none";
   }, 2600);
+}
+
+function readStoredArray(key) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(value) ? value : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+function writeStoredArray(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
 }
 
 function escapeHtml(value) {

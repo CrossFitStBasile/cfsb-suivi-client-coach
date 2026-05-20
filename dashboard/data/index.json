@@ -1,0 +1,17 @@
+{
+  "generatedAt": "2026-05-20T19:28:40.420Z",
+  "defaultCoach": "Marc-Andre Menard",
+  "source": "Apps Script snapshot generated for GitHub Pages",
+  "coaches": [
+    {
+      "coach": "Marc-Andre Menard",
+      "slug": "marc-andre-menard",
+      "path": "./data/marc-andre-menard.json"
+    },
+    {
+      "coach": "Iheb Yahyaoui",
+      "slug": "iheb-yahyaoui",
+      "path": "./data/iheb-yahyaoui.json"
+    }
+  ]
+}
