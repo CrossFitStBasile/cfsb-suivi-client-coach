@@ -1,0 +1,878 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Suivi client-coach</title>
+  <style>
+    :root {
+      --bg: #f4f1ec;
+      --surface: #fffdf9;
+      --ink: #211f1b;
+      --muted: #6c665d;
+      --line: #ded7cc;
+      --accent: #c8472c;
+      --accent-dark: #9f321d;
+      --focus: #205b67;
+      --soft: #ece5db;
+      --good: #2d6f4a;
+      --warn: #b7791f;
+      --urgent: #a8342b;
+      --shadow: 0 18px 48px rgba(42, 34, 24, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(120deg, rgba(32, 91, 103, 0.08), transparent 42%),
+        linear-gradient(180deg, #fbfaf7 0%, var(--bg) 100%);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    button,
+    input,
+    textarea,
+    select {
+      font: inherit;
+    }
+
+    .page {
+      width: min(1080px, 100%);
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: 28px 20px 36px;
+      display: grid;
+      grid-template-columns: 300px minmax(0, 1fr);
+      gap: 28px;
+      align-items: start;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 24px;
+      padding: 22px 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+
+    .mark {
+      width: 42px;
+      height: 42px;
+      border-radius: 8px;
+      background: var(--ink);
+      color: var(--surface);
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      font-size: 0.9rem;
+    }
+
+    .brand strong {
+      display: block;
+      font-size: 0.94rem;
+      line-height: 1.15;
+    }
+
+    .brand span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.78rem;
+      margin-top: 3px;
+    }
+
+    .intro {
+      margin: 0 0 26px;
+      color: var(--muted);
+      line-height: 1.52;
+      font-size: 0.95rem;
+    }
+
+    .steps {
+      display: grid;
+      gap: 10px;
+      margin-top: 24px;
+    }
+
+    .step-dot {
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 10px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .step-dot span:first-child {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--soft);
+      color: var(--muted);
+      font-weight: 700;
+      font-size: 0.76rem;
+    }
+
+    .step-dot.active {
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .step-dot.active span:first-child {
+      background: var(--accent);
+      color: white;
+    }
+
+    .form-shell {
+      background: var(--surface);
+      border: 1px solid rgba(99, 84, 65, 0.16);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .progress-wrap {
+      height: 8px;
+      background: var(--soft);
+    }
+
+    .progress {
+      height: 100%;
+      width: 0;
+      background: linear-gradient(90deg, var(--focus), var(--accent));
+      transition: width 240ms ease;
+    }
+
+    form {
+      padding: 34px;
+    }
+
+    .section {
+      display: none;
+    }
+
+    .section.active {
+      display: block;
+    }
+
+    .kicker {
+      color: var(--accent-dark);
+      font-weight: 800;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 10px;
+    }
+
+    h1,
+    h2 {
+      margin: 0;
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-size: clamp(2rem, 4vw, 3.9rem);
+      max-width: 760px;
+    }
+
+    h2 {
+      font-size: clamp(1.55rem, 3vw, 2.4rem);
+      max-width: 720px;
+    }
+
+    .lead {
+      margin: 18px 0 0;
+      max-width: 650px;
+      color: var(--muted);
+      line-height: 1.56;
+      font-size: 1rem;
+    }
+
+    .field-stack {
+      display: grid;
+      gap: 24px;
+      margin-top: 28px;
+    }
+
+    .field label.question {
+      display: block;
+      margin-bottom: 10px;
+      font-weight: 750;
+      line-height: 1.35;
+    }
+
+    .help {
+      margin: -4px 0 12px;
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+
+    input[type="text"],
+    input[type="email"],
+    textarea,
+    select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fff;
+      color: var(--ink);
+      padding: 13px 14px;
+      min-height: 48px;
+      outline: none;
+      transition: border-color 160ms ease, box-shadow 160ms ease;
+    }
+
+    textarea {
+      min-height: 110px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+
+    input:focus,
+    textarea:focus,
+    select:focus {
+      border-color: var(--focus);
+      box-shadow: 0 0 0 3px rgba(32, 91, 103, 0.16);
+    }
+
+    .choice-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .choice {
+      position: relative;
+      display: grid;
+      grid-template-columns: 20px 1fr;
+      gap: 12px;
+      align-items: start;
+      min-height: 48px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fff;
+      padding: 13px 14px;
+      cursor: pointer;
+      transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+    }
+
+    .choice:hover {
+      border-color: rgba(200, 71, 44, 0.55);
+      background: #fff8f4;
+    }
+
+    .choice input {
+      margin: 3px 0 0;
+      accent-color: var(--accent);
+    }
+
+    .choice:has(input:checked) {
+      border-color: var(--accent);
+      background: #fff3ed;
+    }
+
+    .choice strong {
+      display: block;
+      font-size: 0.98rem;
+      line-height: 1.3;
+    }
+
+    .choice small {
+      display: block;
+      color: var(--muted);
+      margin-top: 2px;
+      line-height: 1.35;
+      font-size: 0.84rem;
+    }
+
+    .scale {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .scale .choice {
+      grid-template-columns: 1fr;
+      text-align: center;
+      place-items: center;
+      min-height: 64px;
+      padding: 11px 8px;
+    }
+
+    .scale input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .scale strong {
+      font-size: 1.2rem;
+    }
+
+    .actions {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 34px;
+      border-top: 1px solid var(--line);
+      padding-top: 22px;
+    }
+
+    .btn {
+      border: 1px solid transparent;
+      border-radius: 7px;
+      padding: 12px 18px;
+      min-height: 46px;
+      cursor: pointer;
+      font-weight: 750;
+      transition: transform 150ms ease, background 150ms ease, border-color 150ms ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-dark);
+    }
+
+    .btn-secondary {
+      background: transparent;
+      border-color: var(--line);
+      color: var(--ink);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--focus);
+    }
+
+    .summary {
+      display: grid;
+      gap: 12px;
+      margin-top: 28px;
+    }
+
+    .summary-row {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 12px 14px;
+      background: #fff;
+    }
+
+    .summary-row span {
+      display: block;
+      color: var(--muted);
+      font-size: 0.8rem;
+      margin-bottom: 3px;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      border-radius: 999px;
+      padding: 4px 11px;
+      font-weight: 800;
+      font-size: 0.82rem;
+      background: var(--soft);
+      color: var(--ink);
+    }
+
+    .status-pill.vert {
+      background: rgba(45, 111, 74, 0.14);
+      color: var(--good);
+    }
+
+    .status-pill.jaune {
+      background: rgba(183, 121, 31, 0.16);
+      color: var(--warn);
+    }
+
+    .status-pill.orange,
+    .status-pill.rouge {
+      background: rgba(168, 52, 43, 0.14);
+      color: var(--urgent);
+    }
+
+    .complete {
+      text-align: left;
+    }
+
+    .complete h2 {
+      max-width: 680px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    @media (max-width: 840px) {
+      .page {
+        grid-template-columns: 1fr;
+        padding: 18px 14px 28px;
+        gap: 12px;
+      }
+
+      .sidebar {
+        position: static;
+        padding: 4px 0 0;
+      }
+
+      .brand {
+        margin-bottom: 14px;
+      }
+
+      .intro {
+        margin-bottom: 14px;
+      }
+
+      .steps {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .step-dot {
+        grid-template-columns: 1fr;
+        gap: 5px;
+        font-size: 0.72rem;
+      }
+
+      .step-dot span:first-child {
+        width: 24px;
+        height: 24px;
+      }
+
+      form {
+        padding: 24px 18px;
+      }
+
+      .scale {
+        grid-template-columns: repeat(5, minmax(42px, 1fr));
+        overflow-x: auto;
+      }
+
+      .actions {
+        flex-direction: column-reverse;
+      }
+
+      .btn {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <aside class="sidebar" aria-label="Contexte du formulaire">
+      <div class="brand">
+        <div class="mark">CFSB</div>
+        <div>
+          <strong>Suivi client-coach</strong>
+          <span>Prototype d'expérience client</span>
+        </div>
+      </div>
+      <p class="intro">
+        Quelques minutes pour dire où tu en es, ce qui va bien, et ce que ton coach devrait savoir pour mieux t'accompagner.
+      </p>
+      <nav class="steps" aria-label="Progression">
+        <div class="step-dot active" data-step-label="0"><span>1</span><span>Départ</span></div>
+        <div class="step-dot" data-step-label="1"><span>2</span><span>État</span></div>
+        <div class="step-dot" data-step-label="2"><span>3</span><span>Objectif</span></div>
+        <div class="step-dot" data-step-label="3"><span>4</span><span>Programme</span></div>
+        <div class="step-dot" data-step-label="4"><span>5</span><span>Confort</span></div>
+        <div class="step-dot" data-step-label="5"><span>6</span><span>Envoi</span></div>
+      </nav>
+    </aside>
+
+    <section class="form-shell" aria-label="Formulaire de suivi">
+      <div class="progress-wrap" aria-hidden="true">
+        <div class="progress" id="progress"></div>
+      </div>
+
+      <form id="followupForm">
+        <section class="section active" data-title="Départ">
+          <div class="kicker">Avant de commencer</div>
+          <h1>On prend le pouls de ton entraînement.</h1>
+          <p class="lead">
+            Tes réponses aident ton coach à mieux comprendre ta réalité actuelle. Réponds simplement avec ce qui est vrai aujourd'hui.
+          </p>
+
+          <div class="field-stack">
+            <div class="field">
+              <label class="question" for="name">Ton nom complet</label>
+              <input id="name" name="name" type="text" autocomplete="name" placeholder="Prénom Nom">
+            </div>
+
+            <div class="field">
+              <label class="question" for="email">Ton courriel</label>
+              <input id="email" name="email" type="email" autocomplete="email" placeholder="prenom@example.com">
+            </div>
+
+            <div class="field">
+              <label class="question" for="coach">Ton coach principal</label>
+              <select id="coach" name="coach">
+                <option value="">Sélectionner</option>
+                <option>Gabriel</option>
+                <option>Caroline</option>
+                <option>Michael</option>
+                <option>Je ne suis pas certain</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label class="question">Pourquoi remplis-tu ce formulaire aujourd'hui ?</label>
+              <div class="choice-grid">
+                <label class="choice">
+                  <input type="radio" name="reason" value="Suivi régulier">
+                  <span><strong>Suivi régulier</strong><small>Je fais simplement le point.</small></span>
+                </label>
+                <label class="choice">
+                  <input type="radio" name="reason" value="Tout va bien">
+                  <span><strong>Tout va bien</strong><small>Je veux confirmer qu'on continue.</small></span>
+                </label>
+                <label class="choice">
+                  <input type="radio" name="reason" value="Ajustement">
+                  <span><strong>J'aimerais ajuster quelque chose</strong><small>Le plan va bien, mais certains détails pourraient être mieux adaptés.</small></span>
+                </label>
+                <label class="choice">
+                  <input type="radio" name="reason" value="Difficulté">
+                  <span><strong>Je vis une difficulté</strong><small>Motivation, douleur, horaire, objectif ou autre.</small></span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" data-title="État">
+          <div class="kicker">Check-in rapide</div>
+          <h2>Comment ça se passe en ce moment ?</h2>
+          <p class="lead">
+            Cette section aide ton coach à voir rapidement si le plan actuel te soutient encore bien.
+          </p>
+
+          <div class="field-stack">
+            <div class="field">
+              <label class="question">Globalement, comment te sens-tu dans ton entraînement ?</label>
+              <div class="choice-grid">
+                <label class="choice"><input type="radio" name="state" value="Très bien"><span><strong>Très bien</strong></span></label>
+                <label class="choice"><input type="radio" name="state" value="Bien"><span><strong>Bien</strong></span></label>
+                <label class="choice"><input type="radio" name="state" value="Correct, avec ajustements"><span><strong>Correct, mais certains éléments pourraient être améliorés</strong></span></label>
+                <label class="choice"><input type="radio" name="state" value="Moins bien"><span><strong>Moins bien qu'avant</strong></span></label>
+                <label class="choice"><input type="radio" name="state" value="Perdu ou démotivé"><span><strong>Je me sens un peu perdu ou démotivé</strong></span></label>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="question">Ton niveau de motivation est présentement :</label>
+              <div class="choice-grid">
+                <label class="choice"><input type="radio" name="motivation" value="Très élevé"><span><strong>Très élevé</strong></span></label>
+                <label class="choice"><input type="radio" name="motivation" value="Bon"><span><strong>Bon</strong></span></label>
+                <label class="choice"><input type="radio" name="motivation" value="Moyen"><span><strong>Moyen</strong></span></label>
+                <label class="choice"><input type="radio" name="motivation" value="Bas"><span><strong>Bas</strong></span></label>
+                <label class="choice"><input type="radio" name="motivation" value="Très bas"><span><strong>Très bas</strong></span></label>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" data-title="Objectif">
+          <div class="kicker">Direction</div>
+          <h2>Est-ce que ton objectif est encore le bon ?</h2>
+          <p class="lead">
+            Un objectif peut évoluer. Le plus important est que toi et ton coach regardiez dans la même direction.
+          </p>
+
+          <div class="field-stack">
+            <div class="field">
+              <label class="question">Ton objectif principal est-il encore le même ?</label>
+              <div class="choice-grid">
+                <label class="choice"><input type="radio" name="goal" value="Oui"><span><strong>Oui</strong></span></label>
+                <label class="choice"><input type="radio" name="goal" value="Il a évolué"><span><strong>Oui, mais il a évolué</strong></span></label>
+                <label class="choice"><input type="radio" name="goal" value="Non"><span><strong>Non, il a changé</strong></span></label>
+                <label class="choice"><input type="radio" name="goal" value="Pas certain"><span><strong>Je ne suis plus certain de mon objectif actuel</strong></span></label>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="question">À quel point ton objectif est clair pour toi ?</label>
+              <p class="help">1 = pas clair, 5 = très clair</p>
+              <div class="scale">
+                <label class="choice"><input type="radio" name="clarity" value="1"><span><strong>1</strong></span></label>
+                <label class="choice"><input type="radio" name="clarity" value="2"><span><strong>2</strong></span></label>
+                <label class="choice"><input type="radio" name="clarity" value="3"><span><strong>3</strong></span></label>
+                <label class="choice"><input type="radio" name="clarity" value="4"><span><strong>4</strong></span></label>
+                <label class="choice"><input type="radio" name="clarity" value="5"><span><strong>5</strong></span></label>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" data-title="Programme">
+          <div class="kicker">Programme</div>
+          <h2>Est-ce que le plan actuel te convient ?</h2>
+          <p class="lead">
+            Ton coach peut mieux ajuster le programme si tu nommes ce qui est trop facile, trop difficile, flou ou moins motivant.
+          </p>
+
+          <div class="field-stack">
+            <div class="field">
+              <label class="question">Comment trouves-tu ton programme actuel ?</label>
+              <div class="choice-grid">
+                <label class="choice"><input type="radio" name="program" value="Très adapté"><span><strong>Très adapté à mes besoins</strong></span></label>
+                <label class="choice"><input type="radio" name="program" value="Adapté avec ajustements"><span><strong>Adapté, avec quelques petits ajustements possibles</strong></span></label>
+                <label class="choice"><input type="radio" name="program" value="Pas parfaitement aligné"><span><strong>Correct, mais pas parfaitement aligné</strong></span></label>
+                <label class="choice"><input type="radio" name="program" value="Trop difficile"><span><strong>Trop difficile</strong></span></label>
+                <label class="choice"><input type="radio" name="program" value="Trop facile"><span><strong>Trop facile</strong></span></label>
+                <label class="choice"><input type="radio" name="program" value="Pas assez motivant"><span><strong>Pas assez motivant</strong></span></label>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="question">Qu'est-ce qui pourrait être amélioré ?</label>
+              <div class="choice-grid">
+                <label class="choice"><input type="checkbox" name="improve" value="Plus de variété"><span><strong>Plus de variété</strong></span></label>
+                <label class="choice"><input type="checkbox" name="improve" value="Plus de clarté"><span><strong>Plus de clarté</strong></span></label>
+                <label class="choice"><input type="checkbox" name="improve" value="Plus de progression"><span><strong>Plus de progression</strong></span></label>
+                <label class="choice"><input type="checkbox" name="improve" value="Meilleure adaptation à mon horaire"><span><strong>Meilleure adaptation à mon horaire</strong></span></label>
+                <label class="choice"><input type="checkbox" name="improve" value="Rien pour le moment"><span><strong>Rien pour le moment</strong></span></label>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" data-title="Confort">
+          <div class="kicker">Confort et limites</div>
+          <h2>Y a-t-il quelque chose que ton coach devrait prendre en compte ?</h2>
+          <p class="lead">
+            Même un petit inconfort peut changer la façon dont un programme devrait être ajusté.
+          </p>
+
+          <div class="field-stack">
+            <div class="field">
+              <label class="question">As-tu des inconforts, douleurs ou limitations qui affectent ton entraînement ?</label>
+              <div class="choice-grid">
+                <label class="choice"><input type="radio" name="pain" value="Non"><span><strong>Non</strong></span></label>
+                <label class="choice"><input type="radio" name="pain" value="Contrôlé"><span><strong>Oui, mais c'est bien contrôlé</strong></span></label>
+                <label class="choice"><input type="radio" name="pain" value="À considérer"><span><strong>Oui, et j'aimerais que mon coach en tienne davantage compte</strong></span></label>
+                <label class="choice"><input type="radio" name="pain" value="Affecte motivation"><span><strong>Oui, et ça affecte beaucoup ma motivation</strong></span></label>
+                <label class="choice"><input type="radio" name="pain" value="Pas certain"><span><strong>Je ne suis pas certain</strong></span></label>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="question">Est-ce qu'il y a quelque chose d'important que tu veux que ton coach sache ?</label>
+              <textarea name="note" placeholder="Tu peux écrire une phrase ou deux."></textarea>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" data-title="Envoi">
+          <div class="kicker">Dernière étape</div>
+          <h2>Quelle suite serait la plus utile ?</h2>
+          <p class="lead">
+            Ta réponse aide ton coach à savoir s'il doit simplement noter ton suivi ou prévoir une discussion.
+          </p>
+
+          <div class="field-stack">
+            <div class="field">
+              <label class="question">Quelle phrase décrit le mieux ta situation actuelle ?</label>
+              <div class="choice-grid">
+                <label class="choice"><input type="radio" name="final" value="Continuer"><span><strong>Tout va bien, on continue avec le plan actuel.</strong></span></label>
+                <label class="choice"><input type="radio" name="final" value="Petits ajustements"><span><strong>Tout va bien, mais j'aimerais quelques petits ajustements.</strong></span></label>
+                <label class="choice"><input type="radio" name="final" value="Revoir objectif"><span><strong>J'aimerais revoir mon objectif avec mon coach.</strong></span></label>
+                <label class="choice"><input type="radio" name="final" value="Modifier programme"><span><strong>J'aimerais modifier certains éléments de mon programme.</strong></span></label>
+                <label class="choice"><input type="radio" name="final" value="Retrouver motivation"><span><strong>J'ai besoin d'aide pour retrouver de la motivation.</strong></span></label>
+                <label class="choice"><input type="radio" name="final" value="Discussion"><span><strong>J'aimerais planifier une discussion avec mon coach.</strong></span></label>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="question">Souhaites-tu que ton coach te contacte directement ?</label>
+              <div class="choice-grid">
+                <label class="choice"><input type="radio" name="contact" value="Dès que possible"><span><strong>Oui, dès que possible</strong></span></label>
+                <label class="choice"><input type="radio" name="contact" value="Prochaine séance"><span><strong>Oui, lors de ma prochaine séance</strong></span></label>
+                <label class="choice"><input type="radio" name="contact" value="Si nécessaire"><span><strong>Seulement si le coach juge que c'est nécessaire</strong></span></label>
+                <label class="choice"><input type="radio" name="contact" value="Non"><span><strong>Non, je voulais simplement faire une mise à jour</strong></span></label>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section complete" data-title="Résumé">
+          <div class="kicker">Résumé prototype</div>
+          <h2>Merci. Voici ce que ton coach recevrait comme signal.</h2>
+          <p class="lead">
+            Dans la version finale, cette réponse serait envoyée au bon endroit pour que ton coach puisse faire le bon suivi.
+          </p>
+          <div class="summary" id="summary"></div>
+        </section>
+
+        <div class="actions">
+          <button class="btn btn-secondary" type="button" id="prevBtn">Retour</button>
+          <button class="btn btn-primary" type="button" id="nextBtn">Continuer</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <script>
+    const sections = Array.from(document.querySelectorAll(".section"));
+    const progress = document.getElementById("progress");
+    const prevBtn = document.getElementById("prevBtn");
+    const nextBtn = document.getElementById("nextBtn");
+    const summary = document.getElementById("summary");
+    const stepLabels = Array.from(document.querySelectorAll("[data-step-label]"));
+    let current = 0;
+
+    function valueOf(name) {
+      const checked = document.querySelector(`[name="${name}"]:checked`);
+      return checked ? checked.value : "";
+    }
+
+    function valuesOf(name) {
+      return Array.from(document.querySelectorAll(`[name="${name}"]:checked`)).map((item) => item.value);
+    }
+
+    function fieldValue(name) {
+      const field = document.querySelector(`[name="${name}"]`);
+      return field ? field.value.trim() : "";
+    }
+
+    function computeStatus() {
+      const motivation = valueOf("motivation");
+      const state = valueOf("state");
+      const goal = valueOf("goal");
+      const program = valueOf("program");
+      const pain = valueOf("pain");
+      const finalChoice = valueOf("final");
+      const contact = valueOf("contact");
+
+      if (
+        motivation === "Très bas" ||
+        state === "Perdu ou démotivé" ||
+        pain === "Affecte motivation" ||
+        contact === "Dès que possible" ||
+        finalChoice === "Retrouver motivation"
+      ) {
+        return "rouge";
+      }
+
+      if (
+        motivation === "Bas" ||
+        goal === "Non" ||
+        goal === "Pas certain" ||
+        program === "Pas parfaitement aligné" ||
+        program === "Pas assez motivant" ||
+        finalChoice === "Revoir objectif" ||
+        finalChoice === "Modifier programme" ||
+        finalChoice === "Discussion"
+      ) {
+        return "orange";
+      }
+
+      if (
+        motivation === "Moyen" ||
+        goal === "Il a évolué" ||
+        program === "Adapté avec ajustements" ||
+        finalChoice === "Petits ajustements" ||
+        pain === "À considérer"
+      ) {
+        return "jaune";
+      }
+
+      return "vert";
+    }
+
+    function actionFor(status) {
+      if (status === "rouge") return "Contact prioritaire du coach";
+      if (status === "orange") return "Discussion structurée à planifier";
+      if (status === "jaune") return "Discussion rapide ou ajustement léger";
+      return "Aucune action urgente";
+    }
+
+    function labelFor(status) {
+      return status.charAt(0).toUpperCase() + status.slice(1);
+    }
+
+    function renderSummary() {
+      const status = computeStatus();
+      const improve = valuesOf("improve").join(", ") || "Aucune sélection";
+      const rows = [
+        ["Statut", `<span class="status-pill ${status}">${labelFor(status)}</span>`],
+        ["Action recommandée", actionFor(status)],
+        ["Client", fieldValue("name") || "Nom non indiqué"],
+        ["Coach", fieldValue("coach") || "Coach non indiqué"],
+        ["Raison du suivi", valueOf("reason") || "Non indiqué"],
+        ["Motivation", valueOf("motivation") || "Non indiqué"],
+        ["Objectif", valueOf("goal") || "Non indiqué"],
+        ["Programme", valueOf("program") || "Non indiqué"],
+        ["Améliorations souhaitées", improve],
+        ["Confort / limitation", valueOf("pain") || "Non indiqué"],
+        ["Contact souhaité", valueOf("contact") || "Non indiqué"],
+        ["Note au coach", fieldValue("note") || "Aucune note"]
+      ];
+
+      summary.innerHTML = rows.map(([label, value]) => (
+        `<div class="summary-row"><span>${label}</span><strong>${value}</strong></div>`
+      )).join("");
+    }
+
+    function update() {
+      sections.forEach((section, index) => {
+        section.classList.toggle("active", index === current);
+      });
+
+      const visualStep = Math.min(current, stepLabels.length - 1);
+      stepLabels.forEach((label, index) => {
+        label.classList.toggle("active", index === visualStep);
+      });
+
+      prevBtn.classList.toggle("hidden", current === 0);
+      nextBtn.textContent = current === sections.length - 2 ? "Voir le résumé" : "Continuer";
+      if (current === sections.length - 1) {
+        nextBtn.textContent = "Recommencer";
+      }
+
+      progress.style.width = `${(current / (sections.length - 1)) * 100}%`;
+      if (current === sections.length - 1) renderSummary();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    prevBtn.addEventListener("click", () => {
+      current = Math.max(0, current - 1);
+      update();
+    });
+
+    nextBtn.addEventListener("click", () => {
+      if (current === sections.length - 1) {
+        document.getElementById("followupForm").reset();
+        current = 0;
+      } else {
+        current = Math.min(sections.length - 1, current + 1);
+      }
+      update();
+    });
+
+    update();
+  </script>
+</body>
+</html>
