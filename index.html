@@ -385,6 +385,21 @@
       margin-bottom: 3px;
     }
 
+    .integration-note {
+      margin-top: 18px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 14px;
+      background: #fff8f4;
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 0.92rem;
+    }
+
+    .integration-note strong {
+      color: var(--ink);
+    }
+
     .status-pill {
       display: inline-flex;
       align-items: center;
@@ -741,6 +756,9 @@
     const nextBtn = document.getElementById("nextBtn");
     const summary = document.getElementById("summary");
     const stepLabels = Array.from(document.querySelectorAll("[data-step-label]"));
+    const params = new URLSearchParams(window.location.search);
+    const ENDPOINT_URL = params.get("endpoint") || "";
+    const APP_VERSION = "github-pages-v1";
     let current = 0;
 
     function valueOf(name) {
@@ -809,8 +827,90 @@
       return "Aucune action urgente";
     }
 
+    function actionCodeFor(status) {
+      if (status === "rouge") return "contact_prioritaire";
+      if (status === "orange") return "discussion_structuree";
+      if (status === "jaune") return "discussion_rapide";
+      return "aucune_action_urgente";
+    }
+
     function labelFor(status) {
       return status.charAt(0).toUpperCase() + status.slice(1);
+    }
+
+    function responseId() {
+      if (window.crypto && typeof window.crypto.randomUUID === "function") {
+        return window.crypto.randomUUID();
+      }
+      return `resp-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    }
+
+    function sourceUrl() {
+      const cleanParams = new URLSearchParams(window.location.search);
+      cleanParams.delete("endpoint");
+      const query = cleanParams.toString();
+      return `${window.location.origin}${window.location.pathname}${query ? `?${query}` : ""}`;
+    }
+
+    function buildPayload() {
+      const status = computeStatus();
+      return {
+        response_id: responseId(),
+        submitted_at: new Date().toISOString(),
+        source_app: "cfsb-suivi-client-coach",
+        source_version: APP_VERSION,
+        source_url: sourceUrl(),
+        client_id: params.get("client_id") || "",
+        client_name: fieldValue("name"),
+        client_email: fieldValue("email"),
+        coach_id: params.get("coach_id") || "",
+        coach_name: fieldValue("coach"),
+        service_type: fieldValue("serviceType") || "",
+        followup_type: valueOf("reason"),
+        general_state: valueOf("state"),
+        motivation_level: valueOf("motivation"),
+        goal_status: valueOf("goal"),
+        goal_clarity_score: valueOf("clarity"),
+        program_fit: valueOf("program"),
+        improvements_requested: valuesOf("improve").join(", "),
+        pain_status: valueOf("pain"),
+        open_note: fieldValue("note"),
+        final_position: valueOf("final"),
+        contact_request: valueOf("contact"),
+        triage_status: status,
+        coach_action_type: actionCodeFor(status),
+        coach_action_done: false,
+        coach_action_note: "",
+        dashboard_sync_status: ENDPOINT_URL ? "pending" : "test_mode_no_endpoint",
+        chat_notification_status: "pending"
+      };
+    }
+
+    async function submitPayload() {
+      const payload = buildPayload();
+      localStorage.setItem("cfsb_last_questionnaire_payload", JSON.stringify(payload, null, 2));
+
+      if (!ENDPOINT_URL) {
+        return {
+          ok: true,
+          mode: "test",
+          message: "Payload créé localement. Aucun endpoint n'est encore configuré."
+        };
+      }
+
+      const response = await fetch(ENDPOINT_URL, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload)
+      });
+
+      return {
+        ok: true,
+        mode: "live",
+        status: response.status,
+        message: "Réponse envoyée."
+      };
     }
 
     function renderSummary() {
@@ -833,7 +933,14 @@
 
       summary.innerHTML = rows.map(([label, value]) => (
         `<div class="summary-row"><span>${label}</span><strong>${value}</strong></div>`
-      )).join("");
+      )).join("") + `
+        <div class="integration-note">
+          <strong>${ENDPOINT_URL ? "Prêt à transmettre" : "Version pilote"}</strong><br>
+          ${ENDPOINT_URL
+            ? "Quand tu cliques sur Envoyer, tes réponses sont transmises à l'équipe."
+            : "Ce test sert à valider l'expérience. Tes réponses ne sont pas transmises à un coach pour le moment."}
+        </div>
+      `;
     }
 
     function update() {
@@ -849,7 +956,7 @@
       prevBtn.classList.toggle("hidden", current === 0);
       nextBtn.textContent = current === sections.length - 2 ? "Voir le résumé" : "Continuer";
       if (current === sections.length - 1) {
-        nextBtn.textContent = "Recommencer";
+        nextBtn.textContent = ENDPOINT_URL ? "Envoyer" : "Recommencer";
       }
 
       progress.style.width = `${(current / (sections.length - 1)) * 100}%`;
@@ -864,6 +971,25 @@
 
     nextBtn.addEventListener("click", () => {
       if (current === sections.length - 1) {
+        if (ENDPOINT_URL) {
+          nextBtn.disabled = true;
+          nextBtn.textContent = "Envoi...";
+          submitPayload()
+            .then((result) => {
+              alert(result.message);
+              document.getElementById("followupForm").reset();
+              current = 0;
+            })
+            .catch(() => {
+              alert("L'envoi n'a pas fonctionné. La réponse n'a pas été transmise.");
+            })
+            .finally(() => {
+              nextBtn.disabled = false;
+              update();
+            });
+          return;
+        }
+        submitPayload();
         document.getElementById("followupForm").reset();
         current = 0;
       } else {

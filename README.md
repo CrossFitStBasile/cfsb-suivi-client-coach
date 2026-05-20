@@ -38,10 +38,71 @@ https://USERNAME.github.io/cfsb-suivi-client-coach/
 
 ## Note importante
 
-Cette version est d'abord une version de test d'expérience utilisateur. Elle ne remplace pas encore l'intégration finale au Google Sheet ou au dashboard.
+Cette version est d'abord une version de test d'expérience utilisateur. Sans endpoint configuré, elle ne transmet pas encore les réponses au Google Sheet ou au dashboard.
 
-Pour brancher la collecte de données, deux options sont recommandées :
+## Mode d'intégration
 
-1. Soumission cachée vers un Google Form existant, qui écrit dans Google Sheets.
-2. Endpoint backend séparé, par exemple Apps Script uniquement comme endpoint, Cloudflare Worker, Netlify Function ou autre service.
+Le questionnaire prépare déjà un payload normalisé pour le dashboard coach.
 
+En mode test :
+
+```text
+https://crossfitstbasile.github.io/cfsb-suivi-client-coach/
+```
+
+En mode intégré, ajouter un endpoint URL-encodé :
+
+```text
+https://crossfitstbasile.github.io/cfsb-suivi-client-coach/?endpoint=ENDPOINT_URL_ENCODED
+```
+
+Paramètres optionnels déjà supportés :
+
+```text
+client_id
+coach_id
+endpoint
+```
+
+Exemple :
+
+```text
+https://crossfitstbasile.github.io/cfsb-suivi-client-coach/?client_id=CLIENT123&coach_id=COACH456&endpoint=https%3A%2F%2Fexample.com%2Fendpoint
+```
+
+Le POST est envoyé en `text/plain;charset=utf-8` avec `mode: no-cors`, ce qui rend l'intégration plus compatible avec un endpoint Apps Script.
+
+## Payload attendu
+
+Champs envoyés :
+
+```text
+response_id
+submitted_at
+source_app
+source_version
+source_url
+client_id
+client_name
+client_email
+coach_id
+coach_name
+service_type
+followup_type
+general_state
+motivation_level
+goal_status
+goal_clarity_score
+program_fit
+improvements_requested
+pain_status
+open_note
+final_position
+contact_request
+triage_status
+coach_action_type
+coach_action_done
+coach_action_note
+dashboard_sync_status
+chat_notification_status
+```
