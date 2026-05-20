@@ -1,12 +1,17 @@
-const DEFAULT_API_URL = "https://script.google.com/macros/s/AKfycbz1qODx2pCWQ2yHhkse6FBxdyn741cYObW_qGsuox4RmVs7m6WYy3YqFTSti8YcRiGQ/exec";
+const DEPLOYMENT_ID = "AKfycbz1qODx2pCWQ2yHhkse6FBxdyn741cYObW_qGsuox4RmVs7m6WYy3YqFTSti8YcRiGQ";
+const DEFAULT_API_URL = `https://script.google.com/macros/s/${DEPLOYMENT_ID}/exec`;
 
 const state = {
-  apiUrl: localStorage.getItem("cfsbCoachApiUrl") || DEFAULT_API_URL,
+  apiUrl: normalizeApiUrl(localStorage.getItem("cfsbCoachApiUrl") || DEFAULT_API_URL),
   appPin: localStorage.getItem("cfsbCoachAppPin") || "",
   activeView: "today",
   activeCoach: localStorage.getItem("cfsbCoachName") || "",
   data: null
 };
+
+if (state.apiUrl !== localStorage.getItem("cfsbCoachApiUrl")) {
+  localStorage.setItem("cfsbCoachApiUrl", state.apiUrl);
+}
 
 const els = {
   coachSelect: document.getElementById("coachSelect"),
@@ -44,7 +49,7 @@ els.coachSelect.addEventListener("change", () => {
 loadData(false);
 
 function saveSettings() {
-  state.apiUrl = document.getElementById("apiUrlInput").value.trim() || DEFAULT_API_URL;
+  state.apiUrl = normalizeApiUrl(document.getElementById("apiUrlInput").value.trim() || DEFAULT_API_URL);
   state.appPin = document.getElementById("appPinInput").value.trim();
   localStorage.setItem("cfsbCoachApiUrl", state.apiUrl);
   localStorage.setItem("cfsbCoachAppPin", state.appPin);
@@ -69,6 +74,19 @@ async function loadData(rebuild) {
 }
 
 function callApi(action, payload) {
+  return callApiWithUrl(state.apiUrl, action, payload).catch((error) => {
+    const official = normalizeApiUrl(DEFAULT_API_URL);
+    if (state.apiUrl !== official) {
+      state.apiUrl = official;
+      localStorage.setItem("cfsbCoachApiUrl", official);
+      showToast("Endpoint backend reinitialise.");
+      return callApiWithUrl(official, action, payload);
+    }
+    throw error;
+  });
+}
+
+function callApiWithUrl(apiUrl, action, payload) {
   return new Promise((resolve, reject) => {
     const callback = "__cfsbCoachCb" + Date.now() + Math.random().toString(36).slice(2);
     const script = document.createElement("script");
@@ -77,7 +95,8 @@ function callApi(action, payload) {
       action,
       callback,
       coach: state.activeCoach || "",
-      appPin: state.appPin || ""
+      appPin: state.appPin || "",
+      v: Date.now().toString()
     });
     if (payload && Object.keys(payload).length) params.set("payload", JSON.stringify(payload));
     const timer = window.setTimeout(() => {
@@ -96,11 +115,21 @@ function callApi(action, payload) {
     }
     script.onerror = () => {
       cleanup();
-      reject(new Error("Impossible de rejoindre le backend."));
+      reject(new Error("Impossible de rejoindre le backend. Endpoint tente: " + apiUrl));
     };
-    script.src = state.apiUrl + "?" + params.toString();
+    script.referrerPolicy = "no-referrer";
+    script.src = apiUrl + "?" + params.toString();
     document.body.appendChild(script);
   });
+}
+
+function normalizeApiUrl(url) {
+  const value = String(url || "").trim();
+  if (!value) return DEFAULT_API_URL;
+  const noAccountScopedPath = value.replace(/\/macros\/u\/\d+\/s\//, "/macros/s/");
+  if (noAccountScopedPath.indexOf("script.google.com/macros/s/") === -1) return DEFAULT_API_URL;
+  if (noAccountScopedPath.indexOf(DEPLOYMENT_ID) === -1) return DEFAULT_API_URL;
+  return noAccountScopedPath.split("?")[0];
 }
 
 function render() {
@@ -300,7 +329,23 @@ async function saveImpact() {
 
 function renderError(error) {
   els.content.className = "content";
-  els.content.innerHTML = `<div class="error">${escapeHtml(error.message || String(error))}</div>`;
+  const diagnosticUrl = state.apiUrl + "?api=coach-app&action=getData&coach=" + encodeURIComponent(state.activeCoach || "Marc-Andre Menard") + "&callback=cb";
+  els.content.innerHTML = `
+    <div class="error">
+      <p><strong>Connexion backend a verifier.</strong></p>
+      <p>${escapeHtml(error.message || String(error))}</p>
+      <p class="muted">Si Chrome avait garde une ancienne URL Apps Script, utilise le bouton ci-dessous. Si le diagnostic ouvre du texte qui commence par <code>cb(</code>, le backend fonctionne et il suffit de revenir au dashboard.</p>
+      <div class="actions-row" style="justify-content:center">
+        <button class="primary" id="retryOfficialBackend">Reessayer endpoint officiel</button>
+        <a class="button-link" id="openBackendDiagnostic" href="${escapeAttr(diagnosticUrl)}" target="_blank" rel="noopener">Ouvrir diagnostic backend</a>
+      </div>
+    </div>`;
+  const retry = document.getElementById("retryOfficialBackend");
+  if (retry) retry.addEventListener("click", () => {
+    state.apiUrl = DEFAULT_API_URL;
+    localStorage.setItem("cfsbCoachApiUrl", DEFAULT_API_URL);
+    loadData(false);
+  });
 }
 
 function showToast(message) {

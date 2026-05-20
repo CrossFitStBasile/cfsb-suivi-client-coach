@@ -27,6 +27,17 @@ L'app appelle:
 
 Les actions coach passent aussi par ce endpoint pendant le pilote.
 
+## Diagnostic rapide
+
+Si le dashboard affiche `Impossible de rejoindre le backend`:
+
+1. Cliquer `Reessayer endpoint officiel`.
+2. Si le message revient, cliquer `Ouvrir diagnostic backend`.
+3. Si la page diagnostic affiche du texte qui commence par `cb(`, le backend Apps Script repond et le probleme vient probablement d'un cache navigateur.
+4. Si la page diagnostic affiche une erreur Google, il faudra redeployer ou remplacer le backend Apps Script par un backend dedie.
+
+L'app corrige automatiquement les anciennes URLs Apps Script contenant `/u/3/` et remet le deploiement officiel si un vieux endpoint est garde dans le navigateur.
+
 ## Notes de securite
 
 - Aucun secret GHL ne doit etre stocke dans cette app.

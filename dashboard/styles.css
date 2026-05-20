@@ -146,6 +146,21 @@ main {
   font-weight: 800;
 }
 
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 800;
+  padding: 8px 12px;
+  text-decoration: none;
+}
+
 .views button.active,
 button.primary {
   background: var(--navy);
@@ -298,6 +313,11 @@ button.primary {
   color: var(--red);
   border-color: #efb5ae;
   background: #fff5f3;
+}
+
+.error code {
+  color: var(--ink);
+  font-weight: 800;
 }
 
 .compact-list {
