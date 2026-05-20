@@ -228,6 +228,7 @@
 
     input[type="text"],
     input[type="email"],
+    input[type="tel"],
     textarea,
     select {
       width: 100%;
@@ -539,7 +540,7 @@
           <div class="field-stack">
             <div class="field">
               <label class="question" for="name">Ton nom complet</label>
-              <input id="name" name="name" type="text" autocomplete="name" placeholder="Prénom Nom">
+              <input id="name" name="name" type="text" autocomplete="name" placeholder="Prénom Nom" required>
             </div>
 
             <div class="field">
@@ -905,6 +906,16 @@
       return false;
     }
 
+    function ensureNameForSubmission() {
+      if (fieldValue("name")) return true;
+      alert("Ajoute ton nom avant d'envoyer le questionnaire.");
+      current = 0;
+      update();
+      const nameField = document.getElementById("name");
+      if (nameField) nameField.focus();
+      return false;
+    }
+
     function computeStatus() {
       const motivation = valueOf("motivation");
       const state = valueOf("state");
@@ -1134,6 +1145,7 @@
 
     nextBtn.addEventListener("click", () => {
       if (current === sections.length - 1) {
+        if (!ensureNameForSubmission()) return;
         if (!ensurePhoneForSubmission()) return;
         if (ENDPOINT_URL) {
           nextBtn.disabled = true;
