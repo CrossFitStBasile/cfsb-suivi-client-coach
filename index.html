@@ -511,10 +511,11 @@
       <nav class="steps" aria-label="Progression">
         <div class="step-dot active" data-step-label="0"><span>1</span><span>Départ</span></div>
         <div class="step-dot" data-step-label="1"><span>2</span><span>État</span></div>
-        <div class="step-dot" data-step-label="2"><span>3</span><span>Objectif</span></div>
-        <div class="step-dot" data-step-label="3"><span>4</span><span>Programme</span></div>
-        <div class="step-dot" data-step-label="4"><span>5</span><span>Confort</span></div>
-        <div class="step-dot" data-step-label="5"><span>6</span><span>Envoi</span></div>
+        <div class="step-dot" data-step-label="2"><span>3</span><span>Bilan</span></div>
+        <div class="step-dot" data-step-label="3"><span>4</span><span>Objectif</span></div>
+        <div class="step-dot" data-step-label="4"><span>5</span><span>Programme</span></div>
+        <div class="step-dot" data-step-label="5"><span>6</span><span>Confort</span></div>
+        <div class="step-dot" data-step-label="6"><span>7</span><span>Envoi</span></div>
       </nav>
     </aside>
 
@@ -605,6 +606,64 @@
                 <label class="choice"><input type="radio" name="motivation" value="Bas"><span><strong>Bas</strong></span></label>
                 <label class="choice"><input type="radio" name="motivation" value="Très bas"><span><strong>Très bas</strong></span></label>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" data-title="Bilan">
+          <div class="kicker">Bilan récent</div>
+          <h2>Qu'est-ce qui a changé depuis ton dernier suivi ?</h2>
+          <p class="lead">
+            Cette section aide ton coach à voir tes progrès, tes bons coups, tes challenges et les changements qui pourraient influencer ton plan.
+          </p>
+
+          <div class="field-stack">
+            <div class="field">
+              <label class="question">As-tu l'impression de progresser vers ton objectif actuel ?</label>
+              <div class="choice-grid">
+                <label class="choice"><input type="radio" name="progress" value="Oui clairement"><span><strong>Oui, clairement</strong><small>Je vois une progression et je suis satisfait.</small></span></label>
+                <label class="choice"><input type="radio" name="progress" value="Oui mais lentement"><span><strong>Oui, mais plus lentement que prévu</strong><small>Je progresse, mais j'aimerais peut-être ajuster certains éléments.</small></span></label>
+                <label class="choice"><input type="radio" name="progress" value="Pas certain"><span><strong>Je ne suis pas certain</strong><small>J'ai de la difficulté à mesurer si ça avance.</small></span></label>
+                <label class="choice"><input type="radio" name="progress" value="Non pas vraiment"><span><strong>Non, pas vraiment</strong><small>Je ne sens pas que le plan m'amène où je veux aller.</small></span></label>
+                <label class="choice"><input type="radio" name="progress" value="Objectif change"><span><strong>Mon objectif a peut-être changé</strong><small>Je pense qu'on devrait revoir la direction.</small></span></label>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="question">Quel est un succès récent dont tu es satisfait ?</label>
+              <p class="help">Ça peut être une victoire d'entraînement, une meilleure constance, une habitude, une sensation ou une décision.</p>
+              <textarea name="recentSuccess" placeholder="Exemple : je suis venu 3 fois cette semaine, j'ai mieux dormi, je me sens plus fort, j'ai gardé ma routine malgré une grosse semaine."></textarea>
+            </div>
+
+            <div class="field">
+              <label class="question">Qu'est-ce qui te challenge le plus en ce moment ?</label>
+              <div class="choice-grid">
+                <label class="choice"><input type="checkbox" name="challenges" value="Horaire"><span><strong>Mon horaire ou ma disponibilité</strong></span></label>
+                <label class="choice"><input type="checkbox" name="challenges" value="Motivation"><span><strong>Ma motivation</strong></span></label>
+                <label class="choice"><input type="checkbox" name="challenges" value="Energie sommeil"><span><strong>Mon énergie ou mon sommeil</strong></span></label>
+                <label class="choice"><input type="checkbox" name="challenges" value="Stress"><span><strong>Mon stress ou ma charge mentale</strong></span></label>
+                <label class="choice"><input type="checkbox" name="challenges" value="Alimentation"><span><strong>Mon alimentation ou mon organisation</strong></span></label>
+                <label class="choice"><input type="checkbox" name="challenges" value="Douleur inconfort"><span><strong>Une douleur, un inconfort ou une limitation</strong></span></label>
+                <label class="choice"><input type="checkbox" name="challenges" value="Clarte programme"><span><strong>Ma compréhension du programme</strong></span></label>
+                <label class="choice"><input type="checkbox" name="challenges" value="Rien majeur"><span><strong>Rien de majeur pour le moment</strong></span></label>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="question">Prévois-tu des changements prochainement dans ta situation actuelle ?</label>
+              <div class="choice-grid">
+                <label class="choice"><input type="radio" name="upcomingChanges" value="Non"><span><strong>Non, rien de prévu</strong></span></label>
+                <label class="choice"><input type="radio" name="upcomingChanges" value="Horaire"><span><strong>Oui, mon horaire risque de changer</strong></span></label>
+                <label class="choice"><input type="radio" name="upcomingChanges" value="Travail voyage"><span><strong>Oui, travail, voyage ou période plus occupée</strong></span></label>
+                <label class="choice"><input type="radio" name="upcomingChanges" value="Sante blessure"><span><strong>Oui, santé, blessure ou limitation à surveiller</strong></span></label>
+                <label class="choice"><input type="radio" name="upcomingChanges" value="Vie personnelle"><span><strong>Oui, changement personnel ou familial</strong></span></label>
+                <label class="choice"><input type="radio" name="upcomingChanges" value="Pas certain"><span><strong>Je ne suis pas certain</strong></span></label>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="question">Si oui, qu'est-ce que ton coach devrait savoir ?</label>
+              <textarea name="upcomingChangesDetails" placeholder="Exemple : je pars en voyage deux semaines, mon horaire change, je risque d'avoir moins de temps, j'ai un rendez-vous important, etc."></textarea>
             </div>
           </div>
         </section>
@@ -758,7 +817,7 @@
     const stepLabels = Array.from(document.querySelectorAll("[data-step-label]"));
     const params = new URLSearchParams(window.location.search);
     const ENDPOINT_URL = params.get("endpoint") || "";
-    const APP_VERSION = "github-pages-v1";
+    const APP_VERSION = "github-pages-v2";
     let current = 0;
 
     function valueOf(name) {
@@ -779,10 +838,13 @@
       const motivation = valueOf("motivation");
       const state = valueOf("state");
       const goal = valueOf("goal");
+      const progress = valueOf("progress");
       const program = valueOf("program");
       const pain = valueOf("pain");
       const finalChoice = valueOf("final");
       const contact = valueOf("contact");
+      const challenges = valuesOf("challenges");
+      const upcomingChanges = valueOf("upcomingChanges");
 
       if (
         motivation === "Très bas" ||
@@ -798,8 +860,11 @@
         motivation === "Bas" ||
         goal === "Non" ||
         goal === "Pas certain" ||
+        progress === "Non pas vraiment" ||
+        progress === "Objectif change" ||
         program === "Pas parfaitement aligné" ||
         program === "Pas assez motivant" ||
+        challenges.includes("Douleur inconfort") ||
         finalChoice === "Revoir objectif" ||
         finalChoice === "Modifier programme" ||
         finalChoice === "Discussion"
@@ -810,9 +875,12 @@
       if (
         motivation === "Moyen" ||
         goal === "Il a évolué" ||
+        progress === "Oui mais lentement" ||
+        progress === "Pas certain" ||
         program === "Adapté avec ajustements" ||
         finalChoice === "Petits ajustements" ||
-        pain === "À considérer"
+        pain === "À considérer" ||
+        (upcomingChanges && upcomingChanges !== "Non")
       ) {
         return "jaune";
       }
@@ -871,6 +939,11 @@
         motivation_level: valueOf("motivation"),
         goal_status: valueOf("goal"),
         goal_clarity_score: valueOf("clarity"),
+        progress_toward_goal: valueOf("progress"),
+        recent_success: fieldValue("recentSuccess"),
+        current_challenges: valuesOf("challenges").join(", "),
+        upcoming_changes: valueOf("upcomingChanges"),
+        upcoming_changes_details: fieldValue("upcomingChangesDetails"),
         program_fit: valueOf("program"),
         improvements_requested: valuesOf("improve").join(", "),
         pain_status: valueOf("pain"),
@@ -916,6 +989,7 @@
     function renderSummary() {
       const status = computeStatus();
       const improve = valuesOf("improve").join(", ") || "Aucune sélection";
+      const challenges = valuesOf("challenges").join(", ") || "Aucune sélection";
       const rows = [
         ["Statut", `<span class="status-pill ${status}">${labelFor(status)}</span>`],
         ["Action recommandée", actionFor(status)],
@@ -924,6 +998,11 @@
         ["Raison du suivi", valueOf("reason") || "Non indiqué"],
         ["Motivation", valueOf("motivation") || "Non indiqué"],
         ["Objectif", valueOf("goal") || "Non indiqué"],
+        ["Progression vers l'objectif", valueOf("progress") || "Non indiqué"],
+        ["Succès récent", fieldValue("recentSuccess") || "Aucun succès indiqué"],
+        ["Challenges actuels", challenges],
+        ["Changements à venir", valueOf("upcomingChanges") || "Non indiqué"],
+        ["Détails changements", fieldValue("upcomingChangesDetails") || "Aucun détail indiqué"],
         ["Programme", valueOf("program") || "Non indiqué"],
         ["Améliorations souhaitées", improve],
         ["Confort / limitation", valueOf("pain") || "Non indiqué"],

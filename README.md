@@ -93,6 +93,11 @@ general_state
 motivation_level
 goal_status
 goal_clarity_score
+progress_toward_goal
+recent_success
+current_challenges
+upcoming_changes
+upcoming_changes_details
 program_fit
 improvements_requested
 pain_status
