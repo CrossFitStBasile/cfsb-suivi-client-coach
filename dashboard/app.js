@@ -9,6 +9,7 @@ const state = {
   appPin: localStorage.getItem("cfsbCoachAppPin") || "",
   activeView: "today",
   activeCoach: localStorage.getItem("cfsbCoachName") || "",
+  selectedClientKey: "",
   data: null,
   sourceMode: "Snapshot GitHub",
   localHiddenTaskIds: new Set(readStoredArray(LOCAL_TASK_KEY))
@@ -205,16 +206,8 @@ function render() {
   if (state.activeView === "impacts") return renderImpacts(data.v3 || {});
 
   const tasks = filterTasks(data.tasks || []).filter((task) => !state.localHiddenTaskIds.has(task.taskId));
-  if (!tasks.length) {
-    els.content.className = "content";
-    els.content.innerHTML = '<div class="empty">Aucune action ici.</div>';
-    return;
-  }
-  els.content.className = "content";
-  els.content.innerHTML = tasks.map(taskCard).join("");
-  els.content.querySelectorAll("[data-status]").forEach((button) => {
-    button.addEventListener("click", () => updateTask(button.dataset.taskId, button.dataset.row, button.dataset.status));
-  });
+  if (state.activeView === "today") return renderMission(tasks, data.clients || []);
+  renderTaskBoard(tasks, data.clients || []);
 }
 
 function renderCoachSelect(data) {
@@ -229,37 +222,175 @@ function filterTasks(tasks) {
   return map[state.activeView] ? tasks.filter((task) => task.type === map[state.activeView]) : tasks;
 }
 
-function taskCard(task) {
+function renderMission(tasks, clients) {
+  els.content.className = "content mission-layout";
+  const urgentTasks = tasks.filter((task) => task.priority === "P1");
+  const programTasks = tasks.filter((task) => task.type === "Programme");
+  const rebookingTasks = tasks.filter((task) => task.type === "Rebooking");
+  const formTasks = tasks.filter((task) => task.type === "Formulaire");
+  const firstTask = tasks[0];
+  if (!state.selectedClientKey && firstTask) state.selectedClientKey = firstTask.clientKey || "";
+  const selectedClient = getSelectedClient(clients, tasks);
+
+  els.content.innerHTML = `
+    <section class="mission-panel">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Mission du jour</p>
+          <h2>${tasks.length ? `${tasks.length} action${tasks.length > 1 ? "s" : ""} a traiter` : "Aucune action ouverte"}</h2>
+        </div>
+        <span class="freshness">${escapeHtml(state.sourceMode)}</span>
+      </div>
+      <div class="priority-strip">
+        ${priorityTile("Urgent", urgentTasks.length, "p1")}
+        ${priorityTile("Programmes", programTasks.length, "p2")}
+        ${priorityTile("Rebookings", rebookingTasks.length, "p3")}
+        ${priorityTile("Questionnaires", formTasks.length, "p4")}
+      </div>
+      ${tasks.length ? `<div class="action-list">${tasks.slice(0, 14).map(taskRow).join("")}</div>` : '<div class="empty">Aucune action ici.</div>'}
+    </section>
+    ${clientFocusPanel(selectedClient, tasks)}
+  `;
+  attachTaskControls();
+  attachClientSelectors();
+}
+
+function renderTaskBoard(tasks, clients) {
+  if (!state.selectedClientKey && tasks[0]) state.selectedClientKey = tasks[0].clientKey || "";
+  const selectedClient = getSelectedClient(clients, tasks);
+  els.content.className = "content mission-layout";
+  els.content.innerHTML = `
+    <section class="mission-panel">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">${escapeHtml(viewLabel(state.activeView))}</p>
+          <h2>${tasks.length ? `${tasks.length} action${tasks.length > 1 ? "s" : ""}` : "Rien a traiter"}</h2>
+        </div>
+      </div>
+      ${tasks.length ? `<div class="action-list">${tasks.map(taskRow).join("")}</div>` : '<div class="empty">Aucune action ici.</div>'}
+    </section>
+    ${clientFocusPanel(selectedClient, tasks)}
+  `;
+  attachTaskControls();
+  attachClientSelectors();
+}
+
+function priorityTile(label, value, tone) {
+  return `<div class="priority-tile ${tone}"><strong>${value}</strong><span>${escapeHtml(label)}</span></div>`;
+}
+
+function taskRow(task) {
   const info = task.clientInfo || {};
   const facts = [
-    info.activePackage && `<b>Membership:</b> ${escapeHtml(info.activePackage)}`,
-    info.holdStatus && `<b>Hold:</b> ${escapeHtml(info.holdStatus)}`,
-    info.serviceEnd && `<b>Fin:</b> ${escapeHtml(info.serviceEnd)}`,
-    info.riskLevel && info.riskLevel !== "Stable" && `<b>Risque:</b> ${escapeHtml(info.riskLevel)}`,
-    info.rebookingTotal && `<b>Rebooking:</b> ${escapeHtml(info.rebookingTotal)}`
+    info.activePackage && `Membership: ${info.activePackage}`,
+    info.program && `Programme: ${info.program}`,
+    info.comp30 && `Compliance: ${info.comp30}`,
+    info.rebookingTotal && `Rebooking: ${info.rebookingTotal}`,
+    info.riskLevel && info.riskLevel !== "Stable" && `Risque: ${info.riskLevel}`
   ].filter(Boolean);
   return `
-    <article class="card ${String(task.priority || "").toLowerCase()}">
-      <div class="card-head">
-        <div>
-          <div class="client">${escapeHtml(task.client || "Client inconnu")}</div>
-          <div class="action">${escapeHtml(task.action || "")}</div>
-          <div class="why">${escapeHtml(task.why || "")}</div>
-        </div>
+    <article class="task-row ${String(task.priority || "").toLowerCase()} ${state.selectedClientKey === task.clientKey ? "selected" : ""}" data-client-key="${escapeAttr(task.clientKey || "")}">
+      <button class="client-trigger" data-client-key="${escapeAttr(task.clientKey || "")}">
+        <span class="priority-dot"></span>
+        <span>
+          <strong>${escapeHtml(task.client || "Client inconnu")}</strong>
+          <small>${escapeHtml(task.action || "")}</small>
+        </span>
+      </button>
+      <div class="task-context">
         <span class="tag">${escapeHtml(task.priority || "")}</span>
-      </div>
-      <div class="meta">
         ${task.type ? `<span class="tag">${escapeHtml(task.type)}</span>` : ""}
         ${task.due ? `<span class="tag warn">${escapeHtml(task.due)}</span>` : ""}
-        ${task.sourceValidity ? `<span class="tag">${escapeHtml(task.sourceValidity)}</span>` : ""}
+        ${facts.slice(0, 2).map((fact) => `<span class="fact">${escapeHtml(fact)}</span>`).join("")}
       </div>
-      ${facts.length ? `<div class="facts">${facts.map((fact) => `<span class="fact">${fact}</span>`).join("")}</div>` : ""}
-      <div class="card-actions">
-        <button data-task-id="${escapeAttr(task.taskId || "")}" data-row="${escapeAttr(task.rowNumber || "")}" data-status="En cours">Commence</button>
+      <p>${escapeHtml(task.why || "")}</p>
+      <div class="row-actions">
+        <button data-task-id="${escapeAttr(task.taskId || "")}" data-row="${escapeAttr(task.rowNumber || "")}" data-status="En cours">En cours</button>
         <button data-task-id="${escapeAttr(task.taskId || "")}" data-row="${escapeAttr(task.rowNumber || "")}" data-status="Ignore">Masquer</button>
-        <button class="done" data-task-id="${escapeAttr(task.taskId || "")}" data-row="${escapeAttr(task.rowNumber || "")}" data-status="Fait">Termine</button>
+        <button class="done" data-task-id="${escapeAttr(task.taskId || "")}" data-row="${escapeAttr(task.rowNumber || "")}" data-status="Fait">Fait</button>
       </div>
     </article>`;
+}
+
+function clientFocusPanel(client, tasks) {
+  if (!client) {
+    return '<aside class="client-focus"><div class="empty">Selectionne un client.</div></aside>';
+  }
+  const clientTasks = tasks.filter((task) => task.clientKey === client.clientKey);
+  const context = client.context || {};
+  return `
+    <aside class="client-focus">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Client en focus</p>
+          <h2>${escapeHtml(client.client || "Client")}</h2>
+        </div>
+        <span class="tag">${client.openTasks || clientTasks.length || 0} action(s)</span>
+      </div>
+      <div class="focus-facts">
+        ${client.activePackage ? focusFact("Membership", client.activePackage) : ""}
+        ${client.program ? focusFact("Programme", client.program) : ""}
+        ${client.comp30 ? focusFact("Compliance", client.comp30) : ""}
+        ${client.rebookingTotal ? focusFact("Rebooking", client.rebookingTotal) : ""}
+        ${client.riskLevel ? focusFact("Risque", client.riskLevel) : ""}
+      </div>
+      ${client.signal ? `<div class="focus-note"><strong>Signal</strong><p>${escapeHtml(client.signal)}</p></div>` : ""}
+      ${context.longTermSummary ? `<div class="focus-note"><strong>Plan CoachRx</strong><p>${escapeHtml(context.longTermSummary).slice(0, 520)}${context.longTermSummary.length > 520 ? "..." : ""}</p></div>` : ""}
+      ${context.objectives ? `<div class="focus-note"><strong>Objectifs</strong><p>${escapeHtml(context.objectives)}</p></div>` : ""}
+      ${clientTasks.length ? `<div class="focus-note"><strong>Actions liees</strong>${clientTasks.slice(0, 4).map((task) => `<p>${escapeHtml(task.action || "")}</p>`).join("")}</div>` : ""}
+    </aside>
+  `;
+}
+
+function focusFact(label, value) {
+  return `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
+}
+
+function getSelectedClient(clients, tasks) {
+  const fallbackKey = state.selectedClientKey || (tasks[0] && tasks[0].clientKey) || (clients[0] && clients[0].clientKey) || "";
+  state.selectedClientKey = fallbackKey;
+  return clients.find((client) => client.clientKey === fallbackKey)
+    || clientFromTask(tasks.find((task) => task.clientKey === fallbackKey))
+    || clients[0]
+    || null;
+}
+
+function clientFromTask(task) {
+  if (!task) return null;
+  return {
+    clientKey: task.clientKey,
+    client: task.client,
+    openTasks: 1,
+    ...(task.clientInfo || {})
+  };
+}
+
+function attachTaskControls() {
+  els.content.querySelectorAll("[data-status]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      updateTask(button.dataset.taskId, button.dataset.row, button.dataset.status);
+    });
+  });
+}
+
+function attachClientSelectors() {
+  els.content.querySelectorAll(".client-trigger").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedClientKey = button.dataset.clientKey;
+      render();
+    });
+  });
+}
+
+function viewLabel(view) {
+  const labels = {
+    programs: "Programmes",
+    rebookings: "Rebookings",
+    forms: "Questionnaires",
+    validations: "A valider"
+  };
+  return labels[view] || "Actions";
 }
 
 function renderClients(clients) {
