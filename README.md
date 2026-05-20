@@ -62,6 +62,10 @@ Paramètres déjà supportés :
 endpoint
 submission_token
 token
+client_name
+client_email
+coach_name
+lock_context=1
 ```
 
 Exemple :
@@ -96,6 +100,12 @@ Content-Type = text/plain;charset=utf-8
 ```
 
 Le backend doit dériver `client_id`, `client_name`, `coach_id`, `coach_name` et `service_type` à partir de `submission_token`.
+
+## Coachs
+
+Ne pas publier de roster coach dans GitHub Pages.
+
+En production, le client ne devrait idéalement pas choisir son coach. Le dashboard doit générer un lien tokenisé avec le bon `submission_token`. Si on veut afficher le bon contexte au client, le lien peut aussi inclure `coach_name` et `lock_context=1` pour préremplir puis masquer le champ coach.
 
 Champs dans `answers` :
 
