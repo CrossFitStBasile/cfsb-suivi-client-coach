@@ -129,7 +129,6 @@ function callApiWithUrl(apiUrl, action, payload) {
       callback,
       coach: state.activeCoach || "",
       appPin: state.appPin || "",
-      authuser: DEFAULT_AUTHUSER,
       v: Date.now().toString()
     });
     if (payload && Object.keys(payload).length) params.set("payload", JSON.stringify(payload));
@@ -149,7 +148,7 @@ function callApiWithUrl(apiUrl, action, payload) {
     }
     script.onerror = () => {
       cleanup();
-      reject(new Error("Impossible de rejoindre le backend. Endpoint tente: " + apiUrl));
+      reject(new Error("Le navigateur a bloque ou n'a pas charge le backend Apps Script. Endpoint tente: " + apiUrl));
     };
     script.referrerPolicy = "no-referrer";
     script.src = apiUrl + "?" + params.toString();
@@ -209,15 +208,34 @@ function renderPrivateGate() {
         <div>
           <p class="eyebrow">Acces prive</p>
           <h2>Dashboard verrouille</h2>
-          <p>Les donnees client ne sont plus chargees depuis GitHub Pages. Entre le PIN ou le jeton du backend prive dans Systeme > Configuration pour ouvrir le dashboard.</p>
+          <p>Les donnees client ne sont plus chargees depuis GitHub Pages. Entre le PIN configure dans Apps Script pour ouvrir le dashboard.</p>
         </div>
       </div>
-      <div class="focus-note"><strong>Pourquoi</strong><p>Le questionnaire public peut rester sur GitHub Pages, mais les reponses clients et les fiches coach doivent passer par un backend authentifie.</p></div>
+      <div class="focus-note"><strong>Connexion</strong><p>Utilise la valeur de la propriete Apps Script <code>COACH_APP_PIN</code>. Le coach pourra etre choisi apres la connexion.</p></div>
+      <div class="form-grid compact-form">
+        <label>PIN dashboard
+          <input id="privatePinInput" type="password" autocomplete="off" placeholder="PIN prive">
+        </label>
+      </div>
       <div class="actions-row">
-        <button class="primary" id="openPrivateSettings">Ouvrir la configuration</button>
+        <button class="primary" id="privateLoginBtn">Connexion</button>
+        <button id="openPrivateSettings">Configuration avancee</button>
       </div>
     </section>
   `;
+  const pinInput = document.getElementById("privatePinInput");
+  const loginButton = document.getElementById("privateLoginBtn");
+  if (pinInput) {
+    pinInput.value = state.appPin || "";
+    pinInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && loginButton) loginButton.click();
+    });
+  }
+  if (loginButton) loginButton.addEventListener("click", () => {
+    state.appPin = (pinInput && pinInput.value ? pinInput.value : "").trim();
+    localStorage.setItem("cfsbCoachAppPin", state.appPin);
+    loadData(false, true);
+  });
   const openSettings = document.getElementById("openPrivateSettings");
   if (openSettings) openSettings.addEventListener("click", () => {
     document.getElementById("apiUrlInput").value = state.apiUrl;
@@ -967,14 +985,15 @@ async function saveImpact() {
 
 function renderError(error) {
   els.content.className = "content";
-  const diagnosticUrl = state.apiUrl + "?authuser=" + DEFAULT_AUTHUSER + "&api=coach-app&action=getData&coach=" + encodeURIComponent(state.activeCoach || "Marc-Andre Menard") + "&callback=cb";
+  const diagnosticUrl = state.apiUrl + "?api=coach-app&action=getData&coach=" + encodeURIComponent(state.activeCoach || "Marc-Andre Menard") + "&callback=cb";
   els.content.innerHTML = `
     <div class="error">
       <p><strong>Connexion backend a verifier.</strong></p>
       <p>${escapeHtml(error.message || String(error))}</p>
-      <p class="muted">Si Chrome avait garde une ancienne URL Apps Script, utilise le bouton ci-dessous. Si le diagnostic ouvre du texte qui commence par <code>cb(</code>, le backend fonctionne et il suffit de revenir au dashboard.</p>
+      <p class="muted">Si le diagnostic ouvre du texte qui commence par <code>cb(</code>, le backend fonctionne. Si le dashboard ne charge toujours pas, le plus probable est un PIN different ou une extension Chrome qui bloque script.google.com.</p>
       <div class="actions-row" style="justify-content:center">
         <button class="primary" id="retryOfficialBackend">Reessayer endpoint officiel</button>
+        <button id="resetPrivateLogin">Changer le PIN</button>
         <a class="button-link" id="openBackendDiagnostic" href="${escapeAttr(diagnosticUrl)}" target="_blank" rel="noopener">Ouvrir diagnostic backend</a>
       </div>
     </div>`;
@@ -983,6 +1002,12 @@ function renderError(error) {
     state.apiUrl = DEFAULT_API_URL;
     localStorage.setItem("cfsbCoachApiUrl", DEFAULT_API_URL);
     loadData(false);
+  });
+  const reset = document.getElementById("resetPrivateLogin");
+  if (reset) reset.addEventListener("click", () => {
+    state.appPin = "";
+    localStorage.removeItem("cfsbCoachAppPin");
+    renderPrivateGate();
   });
 }
 
