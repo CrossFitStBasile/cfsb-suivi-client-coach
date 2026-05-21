@@ -39,10 +39,13 @@
     </nav>
 
     <section id="systemPanel" class="panel system-drawer hidden">
-      <div>
-        <p class="eyebrow">Outils pilote</p>
-        <h2>Systeme</h2>
-        <p class="muted">Les actions techniques sont regroupees ici pour garder le dashboard quotidien leger.</p>
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Outils pilote</p>
+          <h2>Systeme</h2>
+          <p class="muted">Les actions techniques sont regroupees ici pour garder le dashboard quotidien leger.</p>
+        </div>
+        <button id="closeSystemBtn" class="close-panel" type="button" aria-label="Fermer le panneau Systeme">X</button>
       </div>
       <div class="system-actions">
         <button id="refreshBtn" class="primary">Mettre a jour</button>
@@ -52,7 +55,10 @@
     </section>
 
     <section id="settingsPanel" class="panel hidden">
-      <h2>Configuration</h2>
+      <div class="panel-header">
+        <h2>Configuration</h2>
+        <button id="closeSettingsBtn" class="close-panel" type="button" aria-label="Fermer la configuration">X</button>
+      </div>
       <div class="form-grid">
         <label>Endpoint Apps Script
           <input id="apiUrlInput" placeholder="https://script.google.com/macros/s/.../exec">
@@ -68,7 +74,10 @@
     </section>
 
     <section id="manualPanel" class="panel hidden">
-      <h2>Nouveau rappel</h2>
+      <div class="panel-header">
+        <h2>Nouveau rappel</h2>
+        <button id="closeManualPanelBtn" class="close-panel" type="button" aria-label="Fermer le rappel">X</button>
+      </div>
       <div class="form-grid">
         <input id="manualClient" placeholder="Client optionnel">
         <input id="manualDue" type="date">
