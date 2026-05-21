@@ -186,6 +186,7 @@ function renderInput(question, role) {
           </label>
         `).join("")}
       </div>
+      ${renderScaleRubric(question)}
     `;
   }
 
@@ -205,6 +206,23 @@ function renderInput(question, role) {
   }
 
   return `<input class="input" type="text" data-question-id="${escapeHtml(question.id)}" ${question.required ? "required" : ""}>`;
+}
+
+function renderScaleRubric(question) {
+  if (!question.rubric) return "";
+  const entries = Object.entries(question.rubric);
+  if (!entries.length) return "";
+
+  return `
+    <div class="rubric">
+      ${entries.map(([value, description]) => `
+        <div class="rubric-row">
+          <strong>${escapeHtml(value)}</strong>
+          <span>${escapeHtml(description)}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
 }
 
 function bindFields() {
