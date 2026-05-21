@@ -163,10 +163,15 @@ function renderModule(module, role) {
 }
 
 function renderQuestion(question, role) {
+  if (question.type === "info") {
+    return renderInfoBlock(question);
+  }
+
   const required = question.required ? '<span class="required">*</span>' : "";
   const conditional = JSON.stringify({
     showIf: question.showIf || null,
     showIfMax: question.showIfMax || null,
+    showIfIn: question.showIfIn || null,
     showIfPathway: question.showIfPathway || false
   }).replaceAll('"', "&quot;");
 
@@ -174,6 +179,27 @@ function renderQuestion(question, role) {
     <div class="field" data-field-id="${escapeHtml(question.id)}" data-conditional="${conditional}">
       <label>${escapeHtml(question.label)} ${required}</label>
       ${renderInput(question, role)}
+    </div>
+  `;
+}
+
+function renderInfoBlock(question) {
+  const body = Array.isArray(question.body) ? question.body : [question.body].filter(Boolean);
+  const links = question.links || [];
+
+  return `
+    <div class="info-block" data-info-id="${escapeHtml(question.id)}">
+      ${question.title ? `<h3>${escapeHtml(question.title)}</h3>` : ""}
+      ${body.length ? `<ul>${body.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}
+      ${links.length ? `
+        <div class="info-links">
+          ${links.map((link) => `
+            <a class="button secondary" href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">
+              ${escapeHtml(link.label)}
+            </a>
+          `).join("")}
+        </div>
+      ` : ""}
     </div>
   `;
 }
@@ -294,6 +320,11 @@ function refreshConditionalFields() {
     if (conditional.showIfMax) {
       const answer = Number(state.answers[conditional.showIfMax.questionId]);
       visible = Number.isFinite(answer) && answer <= Number(conditional.showIfMax.max);
+    }
+
+    if (conditional.showIfIn) {
+      const answer = state.answers[conditional.showIfIn.questionId];
+      visible = (conditional.showIfIn.values || []).includes(answer);
     }
 
     if (conditional.showIfPathway) {

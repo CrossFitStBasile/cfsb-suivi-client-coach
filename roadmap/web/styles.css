@@ -391,6 +391,36 @@ button {
   display: none;
 }
 
+.info-block {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #cfe0d8;
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.info-block h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.info-block ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.info-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .field label {
   font-weight: 650;
   line-height: 1.35;
