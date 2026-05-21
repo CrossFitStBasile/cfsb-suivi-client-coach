@@ -1,0 +1,97 @@
+﻿<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard Coach CFSB</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <p class="brand-kicker">CFSB Coach Command</p>
+      <h1>Dashboard Coach</h1>
+      <p id="sourceLine">Chargement...</p>
+    </div>
+    <div class="header-tools">
+      <label class="coach-picker">
+        <span>Coach</span>
+        <select id="coachSelect"></select>
+      </label>
+      <button id="systemToggleBtn" class="icon-button" type="button" aria-label="Systeme">Systeme</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="metrics" aria-label="Resume">
+      <div><strong id="metricTasks">-</strong><span>actions ouvertes</span></div>
+      <div><strong id="metricUrgent">-</strong><span>urgent</span></div>
+      <div><strong id="metricRisk">-</strong><span>a risque</span></div>
+      <div><strong id="metricImpacts">-</strong><span>impacts semaine</span></div>
+    </section>
+
+    <nav class="views" aria-label="Sections">
+      <button class="active" data-view="mission">Mission</button>
+      <button data-view="clients">Clients</button>
+      <button data-view="questionnaires">Questionnaires</button>
+      <button data-view="performance">Performance</button>
+      <button data-view="admin">Systeme</button>
+    </nav>
+
+    <section id="systemPanel" class="panel system-drawer hidden">
+      <div>
+        <p class="eyebrow">Outils pilote</p>
+        <h2>Systeme</h2>
+        <p class="muted">Les actions techniques sont regroupees ici pour garder le dashboard quotidien leger.</p>
+      </div>
+      <div class="system-actions">
+        <button id="refreshBtn" class="primary">Mettre a jour</button>
+        <button id="addTaskBtn">Ajouter un rappel</button>
+        <button id="settingsBtn">Configuration</button>
+      </div>
+    </section>
+
+    <section id="settingsPanel" class="panel hidden">
+      <h2>Configuration</h2>
+      <div class="form-grid">
+        <label>Endpoint Apps Script
+          <input id="apiUrlInput" placeholder="https://script.google.com/macros/s/.../exec">
+        </label>
+        <label>PIN app, si active
+          <input id="appPinInput" type="password" autocomplete="off">
+        </label>
+      </div>
+      <div class="actions-row">
+        <button id="saveSettingsBtn" class="primary">Enregistrer</button>
+      </div>
+      <p class="muted">Aucun secret GHL ne doit etre mis ici. Les donnees client doivent venir du backend prive; GitHub Pages ne doit servir aucun snapshot client.</p>
+    </section>
+
+    <section id="manualPanel" class="panel hidden">
+      <h2>Nouveau rappel</h2>
+      <div class="form-grid">
+        <input id="manualClient" placeholder="Client optionnel">
+        <input id="manualDue" type="date">
+        <select id="manualPriority">
+          <option>P2</option>
+          <option>P1</option>
+          <option>P3</option>
+        </select>
+        <input id="manualTitle" placeholder="Ce que je ne veux pas oublier">
+        <textarea id="manualDetails" class="wide" placeholder="Details ou contexte"></textarea>
+      </div>
+      <div class="actions-row">
+        <button id="saveManualBtn" class="primary">Creer le rappel</button>
+        <button id="cancelManualBtn">Annuler</button>
+      </div>
+    </section>
+
+    <section id="content" class="content">
+      <div class="empty">Chargement du dashboard...</div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status"></div>
+  <script src="./app-3689590.js"></script>
+</body>
+</html>
