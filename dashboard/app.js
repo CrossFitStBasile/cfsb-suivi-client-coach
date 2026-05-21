@@ -120,18 +120,48 @@ function callApi(action, payload) {
 }
 
 function callApiWithUrl(apiUrl, action, payload) {
+  const params = buildApiParams(action, payload);
+  return fetch(apiUrl + "?" + params.toString(), {
+    method: "GET",
+    credentials: "omit",
+    cache: "no-store",
+    redirect: "follow"
+  })
+    .then((response) => response.text())
+    .then((text) => {
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (_error) {
+        throw new Error("Reponse backend illisible. Debut recu: " + text.slice(0, 120));
+      }
+      if (!data || data.ok === false) throw new Error((data && data.error) || "Erreur inconnue");
+      return data;
+    })
+    .catch((error) => callApiJsonpWithUrl(apiUrl, action, payload)
+      .catch(() => {
+        throw error;
+      }));
+}
+
+function buildApiParams(action, payload, callback) {
+  const params = new URLSearchParams({
+    api: "coach-app",
+    action,
+    coach: state.activeCoach || "",
+    appPin: state.appPin || "",
+    v: Date.now().toString()
+  });
+  if (callback) params.set("callback", callback);
+  if (payload && Object.keys(payload).length) params.set("payload", JSON.stringify(payload));
+  return params;
+}
+
+function callApiJsonpWithUrl(apiUrl, action, payload) {
   return new Promise((resolve, reject) => {
     const callback = "__cfsbCoachCb" + Date.now() + Math.random().toString(36).slice(2);
     const script = document.createElement("script");
-    const params = new URLSearchParams({
-      api: "coach-app",
-      action,
-      callback,
-      coach: state.activeCoach || "",
-      appPin: state.appPin || "",
-      v: Date.now().toString()
-    });
-    if (payload && Object.keys(payload).length) params.set("payload", JSON.stringify(payload));
+    const params = buildApiParams(action, payload, callback);
     const timer = window.setTimeout(() => {
       cleanup();
       reject(new Error("Delai depasse. Verifie le endpoint Apps Script."));
