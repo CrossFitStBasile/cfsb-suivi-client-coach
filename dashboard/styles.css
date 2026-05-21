@@ -87,6 +87,12 @@ h2 {
   font-weight: 700;
 }
 
+.header-tools {
+  display: flex;
+  gap: 10px;
+  align-items: end;
+}
+
 .coach-picker select,
 input,
 select,
@@ -150,6 +156,7 @@ main {
 
 .views button,
 .toolbar button,
+.system-actions button,
 .actions-row button,
 .card button {
   min-height: 40px;
@@ -191,7 +198,43 @@ button.primary {
   margin-top: 10px;
 }
 
+.system-drawer {
+  display: grid;
+  gap: 12px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.system-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.icon-button {
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 900;
+  padding: 8px 12px;
+}
+
+.system-drawer h2 {
+  margin: 2px 0 0;
+  font-size: 20px;
+}
+
+.system-drawer .muted {
+  max-width: 560px;
+  line-height: 1.4;
+}
+
 .toolbar button.primary,
+.system-actions button.primary,
 .actions-row button.primary,
 .card button.done {
   background: var(--green);
@@ -641,6 +684,10 @@ button.primary {
     grid-template-columns: minmax(0, 1fr) 360px;
   }
 
+  .system-drawer {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
   .form-grid {
     grid-template-columns: 1fr 1fr;
   }
@@ -670,6 +717,12 @@ button.primary {
 
 @media (max-width: 640px) {
   .app-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .header-tools,
+  .system-actions {
     align-items: stretch;
     flex-direction: column;
   }
@@ -743,6 +796,7 @@ textarea {
 
 .views button,
 .toolbar button,
+.system-actions button,
 .actions-row button,
 .row-actions button,
 .card button,
@@ -756,6 +810,7 @@ textarea {
 .views button.active,
 button.primary,
 .toolbar button.primary,
+.system-actions button.primary,
 .actions-row button.primary {
   background: var(--red);
   border-color: var(--red);
@@ -763,12 +818,14 @@ button.primary,
 }
 
 .toolbar button.primary:hover,
+.system-actions button.primary:hover,
 .views button.active:hover,
 .row-actions .done:hover {
   background: #f13a3a;
 }
 
 .toolbar button.primary,
+.system-actions button.primary,
 .actions-row button.primary,
 .card button.done,
 .row-actions .done {
@@ -923,6 +980,15 @@ button.primary,
 
 .performance-hero {
   grid-column: 1 / -1;
+}
+
+.security-panel {
+  border-color: rgba(214, 40, 40, 0.7);
+  box-shadow: inset 4px 0 0 var(--red);
+}
+
+.security-facts div {
+  border-color: rgba(214, 40, 40, 0.45);
 }
 
 .client-directory {

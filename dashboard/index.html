@@ -13,10 +13,13 @@
       <h1>Dashboard Coach</h1>
       <p id="sourceLine">Chargement...</p>
     </div>
-    <label class="coach-picker">
-      <span>Coach</span>
-      <select id="coachSelect"></select>
-    </label>
+    <div class="header-tools">
+      <label class="coach-picker">
+        <span>Coach</span>
+        <select id="coachSelect"></select>
+      </label>
+      <button id="systemToggleBtn" class="icon-button" type="button" aria-label="Systeme">Systeme</button>
+    </div>
   </header>
 
   <main>
@@ -31,13 +34,20 @@
       <button class="active" data-view="mission">Mission</button>
       <button data-view="clients">Clients</button>
       <button data-view="performance">Performance</button>
-      <button data-view="admin">Donnees</button>
+      <button data-view="admin">Systeme</button>
     </nav>
 
-    <section class="toolbar">
-      <button id="refreshBtn" class="primary">Mettre a jour</button>
-      <button id="addTaskBtn">Ajouter un rappel</button>
-      <button id="settingsBtn">Configuration</button>
+    <section id="systemPanel" class="panel system-drawer hidden">
+      <div>
+        <p class="eyebrow">Outils pilote</p>
+        <h2>Systeme</h2>
+        <p class="muted">Les actions techniques sont regroupees ici pour garder le dashboard quotidien leger.</p>
+      </div>
+      <div class="system-actions">
+        <button id="refreshBtn" class="primary">Mettre a jour</button>
+        <button id="addTaskBtn">Ajouter un rappel</button>
+        <button id="settingsBtn">Configuration</button>
+      </div>
     </section>
 
     <section id="settingsPanel" class="panel hidden">

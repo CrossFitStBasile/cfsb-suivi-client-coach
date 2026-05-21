@@ -26,7 +26,8 @@ const els = {
   content: document.getElementById("content"),
   toast: document.getElementById("toast"),
   settingsPanel: document.getElementById("settingsPanel"),
-  manualPanel: document.getElementById("manualPanel")
+  manualPanel: document.getElementById("manualPanel"),
+  systemPanel: document.getElementById("systemPanel")
 };
 
 document.querySelectorAll(".views button").forEach((button) => {
@@ -39,13 +40,16 @@ document.querySelectorAll(".views button").forEach((button) => {
 });
 
 document.getElementById("refreshBtn").addEventListener("click", () => loadData(false, true));
+document.getElementById("systemToggleBtn").addEventListener("click", () => els.systemPanel.classList.toggle("hidden"));
 document.getElementById("settingsBtn").addEventListener("click", () => {
   document.getElementById("apiUrlInput").value = state.apiUrl;
   document.getElementById("appPinInput").value = state.appPin;
   els.settingsPanel.classList.toggle("hidden");
 });
 document.getElementById("saveSettingsBtn").addEventListener("click", saveSettings);
-document.getElementById("addTaskBtn").addEventListener("click", () => els.manualPanel.classList.remove("hidden"));
+document.getElementById("addTaskBtn").addEventListener("click", () => {
+  els.manualPanel.classList.remove("hidden");
+});
 document.getElementById("cancelManualBtn").addEventListener("click", () => els.manualPanel.classList.add("hidden"));
 document.getElementById("saveManualBtn").addEventListener("click", saveManualTask);
 els.coachSelect.addEventListener("change", () => {
@@ -580,12 +584,29 @@ function renderAdmin(data) {
   const counts = data.counts || {};
   els.content.className = "content performance-grid";
   els.content.innerHTML = `
+    <section class="mission-panel performance-hero security-panel">
+      <div class="command-hero">
+        <div>
+          <p class="eyebrow">Acces et confidentialite</p>
+          <h2>Logins requis avant le deploiement</h2>
+          <p>La version pilote lit des snapshots GitHub pour eviter le blocage Apps Script dans Chrome. C'est utile pour tester l'experience, mais ce n'est pas encore acceptable comme securite finale pour des donnees client.</p>
+        </div>
+      </div>
+      <div class="focus-facts security-facts">
+        ${focusFact("Statut", "Pilote seulement")}
+        ${focusFact("Lecture", "Snapshots publics")}
+        ${focusFact("Ecritures", "Backend protege requis")}
+        ${focusFact("Deploiement", "Bloque avant login")}
+      </div>
+      <div class="focus-note"><strong>Decision obligatoire</strong><p>Avant de donner le lien a tous les coachs, il faut ajouter une vraie couche d'authentification et servir les donnees par coach depuis un backend protege.</p></div>
+      <div class="focus-note"><strong>A ne pas faire</strong><p>Un lien GitHub Pages cache, un mot de passe seulement en JavaScript, ou des JSON clients publics ne comptent pas comme securite.</p></div>
+    </section>
     <section class="mission-panel performance-hero">
       <div class="command-hero">
         <div>
-          <p class="eyebrow">Donnees et mise a jour</p>
+          <p class="eyebrow">Systeme et mise a jour</p>
           <h2>Etat de la source</h2>
-          <p>Le dashboard lit une sauvegarde GitHub pour eviter les problemes Apps Script dans Chrome. Les snapshots se regenerent automatiquement par GitHub Actions.</p>
+          <p>Le dashboard lit une sauvegarde GitHub pour rester accessible aux coachs pendant le pilote. Les snapshots se regenerent automatiquement par GitHub Actions.</p>
         </div>
       </div>
       <div class="focus-facts">
@@ -601,7 +622,13 @@ function renderAdmin(data) {
       <div class="focus-note"><strong>Actions live</strong><p>Les actions permanentes restent a connecter a un backend stable. En mode test, certaines actions peuvent seulement se masquer localement.</p></div>
     </section>
     <section class="mission-panel">
+      <div class="section-head"><div><p class="eyebrow">Interface</p><h2>Ce qui reste volontairement discret</h2></div></div>
+      <article class="compact-row"><strong>Bouton Systeme</strong><p>La mise a jour, les rappels manuels et la configuration sont retires du flux quotidien pour ne pas distraire le coach.</p></article>
+      <article class="compact-row"><strong>Performance separee</strong><p>Retention, turn, alumni et impacts restent dans Performance pour eviter de surcharger la mission du jour.</p></article>
+    </section>
+    <section class="mission-panel">
       <div class="section-head"><div><p class="eyebrow">Prochains chantiers</p><h2>Avant de deployer large</h2></div></div>
+      <article class="compact-row"><strong>Login coach</strong><p>Authentifier chaque coach, filtrer ses donnees, et garder un acces admin pour remplacer un coach absent.</p></article>
       <article class="compact-row"><strong>Backend actions</strong><p>Sortir les ecritures de Apps Script pour que Fait, rappels, alumni et impacts soient fiables.</p></article>
       <article class="compact-row"><strong>Questionnaires</strong><p>Brancher les reponses GitHub Pages vers la base dashboard et creer les taches automatiques.</p></article>
       <article class="compact-row"><strong>Fiche client</strong><p>Ajouter une page detaillee avec historique, notes, objectifs et prochaines actions.</p></article>
