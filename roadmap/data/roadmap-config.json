@@ -34,7 +34,7 @@
       "family": "coach",
       "level": "N1",
       "description": "Cours de groupe uniquement, energie, securite, standards et experience membre.",
-      "moduleIds": ["common_identity", "common_why", "common_previous_quarter", "common_values", "common_gwc", "coach_communaute_responsibilities", "common_leadership", "common_commitments", "coach_pathway"]
+      "moduleIds": ["common_identity", "common_why", "common_previous_quarter", "coach_communaute_behavioral_values", "common_gwc", "common_leadership", "common_commitments", "coach_pathway"]
     },
     {
       "id": "coach_developpement",
@@ -185,6 +185,125 @@
       "questions": [
         {"id": "quarter_pride", "label": "Ta plus grande fierte du trimestre", "type": "short_text", "required": false},
         {"id": "quarter_obstacle", "label": "Le principal obstacle ou irritant du trimestre", "type": "short_text", "required": false}
+      ]
+    },
+    {
+      "id": "coach_communaute_behavioral_values",
+      "title": "Valeurs CFSB - comportements Coach Communaute",
+      "intro": "Auto-evalue des comportements observables dans ton role actuel. Le niveau 3 represente le standard CFSB attendu; le niveau 4 represente une contribution qui eleve l'experience des membres ou de l'equipe.",
+      "questions": [
+        {
+          "id": "coach_comm_bienveillance_accueil_score",
+          "label": "Bienveillance - Dans mes cours, j'accueille les membres avec chaleur et attention.",
+          "type": "scale",
+          "scaleId": "agreement4",
+          "required": true,
+          "rubric": {
+            "1": "Je salue peu ou pas les membres lorsqu'ils arrivent. Mon accueil peut sembler froid, distrait ou uniquement transactionnel.",
+            "2": "Je salue certains membres, surtout ceux que je connais deja, mais ce n'est pas systematique et les nouveaux peuvent passer inapercus.",
+            "3": "Je salue systematiquement les membres qui arrivent, je cree un climat chaleureux et je porte attention aux nouveaux ou aux personnes plus discretes.",
+            "4": "Je salue systematiquement les membres par leur prenom quand je le connais, j'ajoute une touche personnelle et je fais sentir aux gens qu'ils sont vus et attendus."
+          }
+        },
+        {"id": "coach_comm_bienveillance_accueil_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_comm_bienveillance_accueil_score", "max": 2}},
+        {
+          "id": "coach_comm_bienveillance_inclusion_score",
+          "label": "Bienveillance - J'aide chaque membre a se sentir inclus et capable de progresser, peu importe son niveau.",
+          "type": "scale",
+          "scaleId": "agreement4",
+          "required": true,
+          "rubric": {
+            "1": "Je laisse certains membres en retrait ou je donne peu d'options adaptees. Des membres peuvent quitter le cours sans savoir quoi faire ou sans se sentir soutenus.",
+            "2": "J'offre parfois des options ou encouragements, mais surtout quand un membre demande de l'aide ou quand le probleme devient visible.",
+            "3": "Je propose des options claires, j'encourage les membres selon leur niveau et je m'assure que chacun comprend comment vivre une bonne seance.",
+            "4": "Je repere rapidement les membres qui doutent, sont nouveaux ou se sentent en retard, puis j'ajuste mon coaching pour les inclure sans les exposer inutilement."
+          }
+        },
+        {"id": "coach_comm_bienveillance_inclusion_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_comm_bienveillance_inclusion_score", "max": 2}},
+        {
+          "id": "coach_comm_professionalism_preparation_score",
+          "label": "Professionnalisme - J'arrive prepare et je livre mes cours avec clarte, securite et energie.",
+          "type": "scale",
+          "scaleId": "agreement4",
+          "required": true,
+          "rubric": {
+            "1": "J'arrive en retard, je decouvre le cours sur place ou je livre une seance confuse. La securite, le rythme ou l'energie en souffrent.",
+            "2": "Je livre le cours, mais ma preparation varie. J'ai parfois besoin d'improviser, de chercher mes cues ou de rattraper le rythme en cours de route.",
+            "3": "J'arrive a temps, je connais la seance, les points de securite, les options de scaling et je guide le groupe avec clarte.",
+            "4": "J'arrive avec une intention de coaching claire, j'anticipe les profils presents et je livre une experience fluide qui eleve le niveau du groupe."
+          }
+        },
+        {"id": "coach_comm_professionalism_preparation_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_comm_professionalism_preparation_score", "max": 2}},
+        {
+          "id": "coach_comm_professionalism_standards_score",
+          "label": "Professionnalisme - J'applique les standards CFSB et je laisse l'espace propre, ordonne et securitaire.",
+          "type": "scale",
+          "scaleId": "agreement4",
+          "required": true,
+          "rubric": {
+            "1": "Je laisse passer des mouvements ou comportements non securitaires, ou je laisse l'espace desorganise apres le cours.",
+            "2": "J'applique les standards principaux, mais avec des oublis ou une constance variable. Le rangement ou les details de securite demandent parfois des rappels.",
+            "3": "J'applique les standards techniques et pedagogiques avec constance, je gere le materiel et je laisse l'espace pret pour le prochain groupe.",
+            "4": "Je suis un modele de standard: securite, materiel, circulation, transitions et rangement sont geres naturellement, sans alourdir l'experience du cours."
+          }
+        },
+        {"id": "coach_comm_professionalism_standards_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_comm_professionalism_standards_score", "max": 2}},
+        {
+          "id": "coach_comm_courage_signal_score",
+          "label": "Courage - Je remonte les informations importantes a la bonne personne au bon moment.",
+          "type": "scale",
+          "scaleId": "agreement4",
+          "required": true,
+          "rubric": {
+            "1": "Je garde pour moi les informations importantes: blessure, absence inquietante, comportement, risque de securite ou insatisfaction membre.",
+            "2": "Je signale certains enjeux, mais souvent tard, de facon incomplete ou seulement quand on me le demande.",
+            "3": "Je signale rapidement les informations pertinentes avec le bon contexte: qui, quoi, quand, impact et suivi propose si utile.",
+            "4": "Je detecte les signaux faibles avant qu'ils deviennent des problemes et je contribue a la solution sans dramatiser ni laisser trainer."
+          }
+        },
+        {"id": "coach_comm_courage_signal_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_comm_courage_signal_score", "max": 2}},
+        {
+          "id": "coach_comm_courage_feedback_score",
+          "label": "Courage - Je demande du feedback et j'ajuste ma pratique lorsque quelque chose peut etre ameliore.",
+          "type": "scale",
+          "scaleId": "agreement4",
+          "required": true,
+          "rubric": {
+            "1": "J'evite le feedback, je me justifie rapidement ou je repete les memes erreurs apres un rappel.",
+            "2": "J'accepte le feedback, mais je l'applique de facon inconstante ou seulement quand il est tres direct.",
+            "3": "Je demande ou accueille le feedback, puis je pose une action concrete pour ameliorer mon coaching.",
+            "4": "Je cherche activement a progresser, j'observe d'autres coachs, je teste de meilleurs cues et je partage ce qui fonctionne avec l'equipe."
+          }
+        },
+        {"id": "coach_comm_courage_feedback_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_comm_courage_feedback_score", "max": 2}},
+        {
+          "id": "coach_comm_team_communication_score",
+          "label": "Esprit d'equipe - Je contribue a une equipe informee, coordonnee et fiable.",
+          "type": "scale",
+          "scaleId": "agreement4",
+          "required": true,
+          "rubric": {
+            "1": "Je travaille en silo, je ne lis pas les communications internes ou je ne transmets pas les informations utiles.",
+            "2": "Je collabore quand on me sollicite, mais je reste surtout reactif. Des informations se perdent parfois.",
+            "3": "Je lis les communications importantes, je partage les informations utiles et je facilite le travail de l'equipe.",
+            "4": "J'aide naturellement l'equipe a rester alignee: je clarifie, je soutiens, je propose et je fais circuler les bonnes informations au bon moment."
+          }
+        },
+        {"id": "coach_comm_team_communication_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_comm_team_communication_score", "max": 2}},
+        {
+          "id": "coach_comm_team_community_score",
+          "label": "Esprit d'equipe - Je contribue au sentiment d'appartenance et a la vie communautaire du centre.",
+          "type": "scale",
+          "scaleId": "agreement4",
+          "required": true,
+          "rubric": {
+            "1": "Je me limite strictement a livrer mon cours, sans contribution visible a l'ambiance ou a la communaute.",
+            "2": "Je participe parfois a l'ambiance ou aux evenements, mais de facon ponctuelle et surtout quand on me le demande.",
+            "3": "Je contribue regulierement a l'energie du centre, je celebre les membres et je participe aux evenements ou initiatives selon mes disponibilites.",
+            "4": "Je suis un moteur positif de communaute: les membres se sentent connectes, les nouveaux sont inclus et mes actions renforcent l'appartenance a CFSB."
+          }
+        },
+        {"id": "coach_comm_team_community_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_comm_team_community_score", "max": 2}}
       ]
     },
     {
