@@ -214,6 +214,9 @@ function recommendMeetingFormat(submission, notes) {
     if (key.startsWith("gwc_")) {
       return ["Non", "Partiellement"].includes(value);
     }
+    if (key.startsWith("lever_")) {
+      return ["Ne repond pas a mes besoins", "Partiellement"].includes(value);
+    }
     return key.includes("_score") || key.includes("coach_")
       ? Number(value) > 0 && Number(value) <= 2
       : false;

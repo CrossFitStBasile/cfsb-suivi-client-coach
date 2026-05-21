@@ -157,6 +157,23 @@
       "title": "Why et alignement",
       "intro": "Avant d'evaluer les taches, on veut comprendre ce qui te garde connecte au projet CFSB.",
       "questions": [
+        {
+          "id": "cfsb_project_context",
+          "type": "info",
+          "title": "Projet CFSB actuel",
+          "body": [
+            "Raison d'etre: impacter nos membres afin qu'ils puissent relever des defis et faire face a l'imprevisible.",
+            "Mission: coacher nos membres afin qu'ils transforment les 5 piliers de leur vie: manger, dormir, bouger, gerer leur stress et connecter.",
+            "Niche: encadrer et eduquer les parents et les professionnels.",
+            "Pour les coachs, la progression se construit autour de trois piliers: argent, competence et relation."
+          ],
+          "links": [
+            {
+              "label": "Relire la presentation vision/carriere CFSB",
+              "url": "https://docs.google.com/presentation/d/1rS-_U9RHTz_3zMMHxuU6AcKuQeiFiiukfx8NSwekbF8/edit"
+            }
+          ]
+        },
         {"id": "why_joined_and_stays", "label": "Qu'est-ce qui t'a attire chez CFSB au depart, et aujourd'hui qu'est-ce qui te garde ici?", "type": "long_text", "required": true},
         {"id": "most_aligned_moment", "label": "Quand est-ce que tu te sens le plus aligne et utile dans ton role? Decris un moment recent.", "type": "long_text", "required": true},
         {"id": "three_year_contribution", "label": "Dans 1 an, qu'aimerais-tu avoir construit, appris ou contribue a CFSB?", "type": "long_text", "required": false},
@@ -168,6 +185,21 @@
       "title": "Alignement",
       "intro": "Une version courte pour comprendre ce qui fonctionne dans ton role.",
       "questions": [
+        {
+          "id": "cfsb_project_context_light",
+          "type": "info",
+          "title": "Rappel CFSB",
+          "body": [
+            "Notre mission: aider les membres a transformer les 5 piliers de leur vie: manger, dormir, bouger, gerer leur stress et connecter.",
+            "Notre raison d'etre: les aider a relever des defis et a faire face a l'imprevisible."
+          ],
+          "links": [
+            {
+              "label": "Relire la presentation vision/carriere CFSB",
+              "url": "https://docs.google.com/presentation/d/1rS-_U9RHTz_3zMMHxuU6AcKuQeiFiiukfx8NSwekbF8/edit"
+            }
+          ]
+        },
         {"id": "why_joined_and_stays", "label": "Qu'est-ce qui te garde connecte a CFSB aujourd'hui?", "type": "long_text", "required": false},
         {"id": "most_aligned_moment", "label": "Quand est-ce que tu sens que ton travail aide vraiment l'equipe ou les membres?", "type": "long_text", "required": false}
       ]
@@ -468,24 +500,37 @@
     {
       "id": "common_leadership",
       "title": "Leadership, mentorat, equipe et systemes",
-      "intro": "Ces reponses aident Gabriel et Michael a ameliorer le soutien offert a l'equipe.",
+      "intro": "Ces reponses sont du feedback ascendant: tu evalues le soutien que CFSB, la direction et l'equipe t'offrent. Tu ne t'evalues pas toi-meme dans cette section.",
       "questions": [
-        {"id": "lever_mentorship", "label": "Mentorat recu de la direction: 1:1, roadmap, feedback continu.", "type": "scale", "scaleId": "agreement4", "required": true},
-        {"id": "lever_team", "label": "Soutien et collaboration de l'equipe: entraide, codeveloppement, ambiance.", "type": "scale", "scaleId": "agreement4", "required": true},
-        {"id": "lever_systems", "label": "Qualite des systemes CFSB: outils, procedures, communication, structure.", "type": "scale", "scaleId": "agreement4", "required": true},
-        {"id": "lever_priority", "label": "Lequel de ces leviers a le plus de potentiel d'amelioration?", "type": "single_choice", "required": true, "options": ["Mentorat", "Equipe", "Systemes"]},
-        {"id": "lever_improvement", "label": "Quelle amelioration concrete serait la plus utile?", "type": "long_text", "required": false},
-        {"id": "leadership_start", "label": "La direction devrait COMMENCER a...", "type": "long_text", "required": false},
-        {"id": "leadership_stop", "label": "La direction devrait ARRETER de...", "type": "long_text", "required": false},
-        {"id": "leadership_continue", "label": "La direction devrait CONTINUER a...", "type": "long_text", "required": false}
+        {
+          "id": "leadership_feedback_context",
+          "type": "info",
+          "title": "Comment repondre a cette section",
+          "body": [
+            "Mets le chapeau de membre de l'equipe: est-ce que le mentorat, l'equipe et les systemes CFSB t'aident vraiment a bien faire ton role?",
+            "Si une reponse est basse, on te demandera un exemple ou l'attente qui n'est pas encore rencontree pour que la discussion soit concrete."
+          ]
+        },
+        {"id": "lever_mentorship", "label": "Le mentorat recu de la direction m'aide a progresser dans mon role (1:1, roadmap, feedback continu).", "type": "single_choice", "required": true, "options": ["Ne repond pas a mes besoins", "Partiellement", "Adequat", "Tres soutenant"]},
+        {"id": "lever_mentorship_detail", "label": "Qu'est-ce qui manque ou ferait une difference dans le mentorat? Donne une attente ou un exemple concret.", "type": "long_text", "required": true, "showIfIn": {"questionId": "lever_mentorship", "values": ["Ne repond pas a mes besoins", "Partiellement"]}},
+        {"id": "lever_team", "label": "Le soutien et la collaboration de l'equipe m'aident a faire mon travail et a garder de l'energie (entraide, codeveloppement, ambiance).", "type": "single_choice", "required": true, "options": ["Ne repond pas a mes besoins", "Partiellement", "Adequat", "Tres soutenant"]},
+        {"id": "lever_team_detail", "label": "Qu'est-ce qui manque ou ferait une difference dans le soutien de l'equipe? Donne une attente ou un exemple concret.", "type": "long_text", "required": true, "showIfIn": {"questionId": "lever_team", "values": ["Ne repond pas a mes besoins", "Partiellement"]}},
+        {"id": "lever_systems", "label": "Les systemes CFSB m'aident a bien faire mon travail (outils, procedures, communication, structure, acquisition client lorsque pertinent).", "type": "single_choice", "required": true, "options": ["Ne repond pas a mes besoins", "Partiellement", "Adequat", "Tres soutenant"]},
+        {"id": "lever_systems_detail", "label": "Qu'est-ce qui manque ou cree de la friction dans les systemes? Donne une attente ou un exemple concret.", "type": "long_text", "required": true, "showIfIn": {"questionId": "lever_systems", "values": ["Ne repond pas a mes besoins", "Partiellement"]}},
+        {"id": "lever_priority", "label": "Quel levier la direction devrait-elle prioriser au prochain trimestre?", "type": "single_choice", "required": true, "options": ["Mentorat", "Equipe", "Systemes"]},
+        {"id": "lever_improvement", "label": "Quelle amelioration concrete serait la plus utile? Explique ce que tu aimerais voir changer.", "type": "long_text", "required": true},
+        {"id": "leadership_start", "label": "Pour mieux te soutenir, la direction devrait COMMENCER a...", "type": "long_text", "required": false},
+        {"id": "leadership_stop", "label": "Pour mieux te soutenir, la direction devrait ARRETER de...", "type": "long_text", "required": false},
+        {"id": "leadership_continue", "label": "Pour mieux te soutenir, la direction devrait CONTINUER a...", "type": "long_text", "required": false}
       ]
     },
     {
       "id": "common_leadership_light",
       "title": "Soutien de l'equipe et de la direction",
-      "intro": "Version courte du feedback ascendant.",
+      "intro": "Version courte du feedback ascendant: tu evalues le soutien que CFSB t'offre, pas ta propre performance.",
       "questions": [
-        {"id": "lever_support", "label": "Je recois le soutien necessaire pour bien faire mon travail.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "lever_support", "label": "Le soutien recu de CFSB me permet de bien faire mon travail.", "type": "single_choice", "required": true, "options": ["Ne repond pas a mes besoins", "Partiellement", "Adequat", "Tres soutenant"]},
+        {"id": "leadership_support_detail", "label": "Qu'est-ce qui manque ou ferait une difference? Donne une attente ou un exemple concret.", "type": "long_text", "required": true, "showIfIn": {"questionId": "lever_support", "values": ["Ne repond pas a mes besoins", "Partiellement"]}},
         {"id": "leadership_comment", "label": "Qu'est-ce que la direction pourrait ameliorer pour te soutenir?", "type": "long_text", "required": false}
       ]
     },
