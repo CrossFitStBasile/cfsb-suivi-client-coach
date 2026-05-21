@@ -211,7 +211,10 @@ function recommendMeetingFormat(submission, notes) {
   if (notes.owner_meeting_format) return notes.owner_meeting_format;
   const answers = submission.answers || {};
   const lowScore = Object.entries(answers).some(([key, value]) => {
-    return key.includes("_score") || key.startsWith("gwc_") || key.includes("coach_")
+    if (key.startsWith("gwc_")) {
+      return ["Non", "Partiellement"].includes(value);
+    }
+    return key.includes("_score") || key.includes("coach_")
       ? Number(value) > 0 && Number(value) <= 2
       : false;
   });

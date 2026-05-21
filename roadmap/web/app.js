@@ -101,9 +101,11 @@ function renderForm() {
   const sections = $("#sections");
   const actions = $("#formActions");
   const notice = $("#formNotice");
+  const resources = $("#roleResources");
 
   if (!role) {
     sections.innerHTML = "";
+    resources.innerHTML = "";
     actions.hidden = true;
     notice.hidden = false;
     notice.textContent = "Choisis un role pour generer le formulaire.";
@@ -112,6 +114,7 @@ function renderForm() {
 
   notice.hidden = false;
   notice.textContent = `Formulaire genere pour: ${role.label}.`;
+  resources.innerHTML = renderRoleResources(role);
   actions.hidden = false;
 
   sections.innerHTML = role.moduleIds
@@ -122,6 +125,27 @@ function renderForm() {
 
   bindFields();
   refreshConditionalFields();
+}
+
+function renderRoleResources(role) {
+  const resources = role.resources || [];
+  if (!resources.length) return "";
+
+  return `
+    <section class="resource-card">
+      <div>
+        <strong>Avant de repondre</strong>
+        <span>Tu peux relire la description de ton role si tu veux te referer aux attentes officielles.</span>
+      </div>
+      <div class="resource-links">
+        ${resources.map((resource) => `
+          <a class="button secondary" href="${escapeHtml(resource.url)}" target="_blank" rel="noopener noreferrer">
+            ${escapeHtml(resource.label)}
+          </a>
+        `).join("")}
+      </div>
+    </section>
+  `;
 }
 
 function renderModule(module, role) {
@@ -180,13 +204,15 @@ function renderInput(question, role) {
     return `
       <div class="scale-row" role="radiogroup">
         ${values.map((value) => `
-          <label class="scale-option">
+          <label class="scale-option${question.rubric ? " detailed" : ""}">
             <input type="radio" name="${escapeHtml(question.id)}" value="${value}" data-question-id="${escapeHtml(question.id)}" ${question.required ? "required" : ""}>
-            <span><strong>${value}</strong>${escapeHtml(scale.labels[String(value)] || "")}</span>
+            <span>
+              <strong>${value}${scale.labels[String(value)] ? ` - ${escapeHtml(scale.labels[String(value)])}` : ""}</strong>
+              ${question.rubric?.[String(value)] ? `<em>${escapeHtml(question.rubric[String(value)])}</em>` : ""}
+            </span>
           </label>
         `).join("")}
       </div>
-      ${renderScaleRubric(question)}
     `;
   }
 
@@ -206,23 +232,6 @@ function renderInput(question, role) {
   }
 
   return `<input class="input" type="text" data-question-id="${escapeHtml(question.id)}" ${question.required ? "required" : ""}>`;
-}
-
-function renderScaleRubric(question) {
-  if (!question.rubric) return "";
-  const entries = Object.entries(question.rubric);
-  if (!entries.length) return "";
-
-  return `
-    <div class="rubric">
-      ${entries.map(([value, description]) => `
-        <div class="rubric-row">
-          <strong>${escapeHtml(value)}</strong>
-          <span>${escapeHtml(description)}</span>
-        </div>
-      `).join("")}
-    </div>
-  `;
 }
 
 function bindFields() {

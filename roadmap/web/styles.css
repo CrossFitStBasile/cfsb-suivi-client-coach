@@ -330,6 +330,36 @@ button {
   gap: 16px;
 }
 
+.resource-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.resource-card strong,
+.resource-card span {
+  display: block;
+}
+
+.resource-card span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.resource-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .section {
   overflow: hidden;
 }
@@ -427,40 +457,18 @@ select:focus {
   font-size: 14px;
 }
 
+.scale-option em {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-style: normal;
+  line-height: 1.35;
+}
+
 .scale-option span,
 .choice-option span {
   color: var(--muted);
   font-size: 13px;
-}
-
-.rubric {
-  display: grid;
-  gap: 6px;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fbfbf8;
-}
-
-.rubric-row {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  gap: 8px;
-  align-items: start;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.35;
-}
-
-.rubric-row strong {
-  display: grid;
-  width: 22px;
-  height: 22px;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--surface-2);
-  color: var(--accent);
-  font-size: 12px;
 }
 
 .pathway-card {
@@ -663,6 +671,11 @@ select:focus {
   .admin-grid,
   .org-grid {
     grid-template-columns: 1fr;
+  }
+
+  .resource-card {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .sidebar {
