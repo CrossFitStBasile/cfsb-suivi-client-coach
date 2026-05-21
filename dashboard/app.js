@@ -45,6 +45,13 @@ document.addEventListener("click", (event) => {
     state.activeQuestionnaireFilter = questionnaireButton.dataset.questionnaireFilter || "all";
     render();
   }
+  const questionnaireAction = event.target.closest("[data-questionnaire-action]");
+  if (questionnaireAction) {
+    updateQuestionnaireStatus(
+      questionnaireAction.dataset.responseId || "",
+      questionnaireAction.dataset.questionnaireAction || "lu"
+    );
+  }
 });
 
 document.getElementById("refreshBtn").addEventListener("click", () => loadData(false, true));
@@ -348,6 +355,7 @@ function clientFocusPanel(client, tasks) {
   }
   const clientTasks = tasks.filter((task) => task.clientKey === client.clientKey);
   const context = client.context || {};
+  const questionnaire = client.latestQuestionnaireResponse || {};
   return `
     <aside class="client-focus">
       <div class="section-head">
@@ -365,6 +373,7 @@ function clientFocusPanel(client, tasks) {
         ${client.riskLevel ? focusFact("Risque", client.riskLevel) : ""}
       </div>
       ${client.signal ? `<div class="focus-note"><strong>Signal</strong><p>${escapeHtml(client.signal)}</p></div>` : ""}
+      ${questionnaire.response_id ? `<div class="focus-note"><strong>Dernier questionnaire</strong><p>${escapeHtml(questionnaire.submitted_at || questionnaire.received_at || "")} | ${escapeHtml(questionnaire.triage_status || "vert")} | ${escapeHtml(questionnaire.coach_action_type || "lire le suivi")}</p><p>${escapeHtml(questionnaire.open_note || questionnaire.program_fit || questionnaire.general_state || "")}</p></div>` : ""}
       ${context.longTermSummary ? `<div class="focus-note"><strong>Plan CoachRx</strong><p>${escapeHtml(context.longTermSummary).slice(0, 520)}${context.longTermSummary.length > 520 ? "..." : ""}</p></div>` : ""}
       ${context.objectives ? `<div class="focus-note"><strong>Objectifs</strong><p>${escapeHtml(context.objectives)}</p></div>` : ""}
       ${clientTasks.length ? `<div class="focus-note"><strong>Actions liees</strong>${clientTasks.slice(0, 4).map((task) => `<p>${escapeHtml(task.action || "")}</p>`).join("")}</div>` : ""}
@@ -622,6 +631,10 @@ function questionnaireRow(row) {
       <p>${escapeHtml(row.submittedAt || row.receivedAt || "-")} | ${escapeHtml(row.coachName || "Coach a deriver")} | ${escapeHtml(row.matchStatus)}</p>
       <p><strong>Action:</strong> ${escapeHtml(actionForTriage(row.triageStatus, row.coachActionType))}</p>
       <p>${escapeHtml(questionnaireSummary(row))}</p>
+      ${row.responseId ? `<div class="row-actions compact-actions">
+        <button data-response-id="${escapeAttr(row.responseId)}" data-questionnaire-action="lu">Lu</button>
+        <button class="done" data-response-id="${escapeAttr(row.responseId)}" data-questionnaire-action="action_completee">Action completee</button>
+      </div>` : ""}
     </article>
   `;
 }
@@ -717,7 +730,9 @@ function renderImpacts(v3) {
 function renderPerformance(data) {
   const v3 = data.v3 || {};
   const k = v3.kpis || {};
+  const goals = data.goals || {};
   const riskRows = (v3.retention || []).filter((row) => row.riskLevel && row.riskLevel !== "Stable");
+  const holds = v3.holds || [];
   const alumni = v3.alumni || [];
   const impacts = (v3.impacts && v3.impacts.log) || [];
   els.content.className = "content performance-grid";
@@ -737,6 +752,24 @@ function renderPerformance(data) {
         ${priorityTile("Impacts semaine", k.impactsWeek || 0, "p3")}
       </div>
     </section>
+    <section class="mission-panel performance-hero">
+      <div class="section-head"><div><p class="eyebrow">Objectifs</p><h2>Focus coach</h2></div></div>
+      <div class="goal-grid">
+        <article class="compact-row"><strong>Semaine</strong><p>${escapeHtml(goals.weeklyGoal || "Aucun objectif de semaine encore.")}</p></article>
+        <article class="compact-row"><strong>Trimestre</strong><p>${escapeHtml(goals.quarterlyGoal || "Aucun objectif de trimestre encore.")}</p></article>
+        <article class="compact-row"><strong>Rappel hebdo</strong><p>${escapeHtml(goals.weeklyReminder || "Completer la paie et le document de rendement chaque semaine.")}</p></article>
+      </div>
+      <div class="form-grid compact-form">
+        <input id="weeklyGoal" placeholder="Objectif de la semaine" value="${escapeAttr(goals.weeklyGoal || "")}">
+        <input id="quarterlyGoal" placeholder="Objectif du trimestre" value="${escapeAttr(goals.quarterlyGoal || "")}">
+        <input id="weeklyReminder" class="wide" placeholder="Rappel hebdomadaire" value="${escapeAttr(goals.weeklyReminder || "")}">
+        <input id="performanceUrl" class="wide" placeholder="Lien document de rendement" value="${escapeAttr(goals.performanceUrl || "")}">
+      </div>
+      <div class="actions-row">
+        <button id="saveGoalsBtn" class="primary">Enregistrer les objectifs</button>
+        ${goals.performanceUrl ? `<a class="button-link" href="${escapeAttr(goals.performanceUrl)}" target="_blank" rel="noopener">Ouvrir rendement</a>` : ""}
+      </div>
+    </section>
     <section class="mission-panel">
       <div class="section-head"><div><p class="eyebrow">Risques</p><h2>Clients a surveiller</h2></div></div>
       ${riskRows.length ? riskRows.slice(0, 8).map((row) => `<article class="compact-row"><strong>${escapeHtml(row.client)} <span class="tag bad">${escapeHtml(row.riskLevel)}</span></strong><p>${escapeHtml(row.riskReasons || "A valider")}</p></article>`).join("") : '<div class="empty">Aucun signal de risque notable.</div>'}
@@ -746,10 +779,25 @@ function renderPerformance(data) {
       ${alumni.length ? alumni.slice(0, 8).map((row) => `<article class="compact-row"><strong>${escapeHtml(row.client)}</strong><p>Prochain contact: ${escapeHtml(row.nextContactDue || "A planifier")}</p><p>${escapeHtml(row.notes || "")}</p></article>`).join("") : '<div class="empty">Aucun alumni entre.</div>'}
     </section>
     <section class="mission-panel">
+      <div class="section-head"><div><p class="eyebrow">Holds</p><h2>Clients temporairement en pause</h2></div></div>
+      <div class="form-grid compact-form">
+        <input id="holdClient" placeholder="Client sur hold">
+        <input id="holdReturn" type="date">
+        <input id="holdReason" class="wide" placeholder="Raison / contexte">
+        <select id="holdReminder"><option>Rappel 7 jours avant</option><option>Rappel 3 jours avant</option><option>Aucun rappel</option></select>
+      </div>
+      <div class="actions-row"><button id="saveHoldBtn" class="primary">Ajouter hold</button></div>
+      ${holds.length ? holds.slice(0, 8).map((row) => `<article class="compact-row"><strong>${escapeHtml(row.client)}</strong><p>Retour prevu: ${escapeHtml(row.expectedReturn || "-")} | ${escapeHtml(row.status || "Actif")}</p><p>${escapeHtml(row.reason || "")}</p></article>`).join("") : '<div class="empty">Aucun hold actif.</div>'}
+    </section>
+    <section class="mission-panel">
       <div class="section-head"><div><p class="eyebrow">Impacts</p><h2>Revenus crees</h2></div></div>
       ${impacts.length ? impacts.slice().reverse().slice(0, 8).map((row) => `<article class="compact-row"><strong>${escapeHtml(row.impactType || "Impact")} ${row.client ? "- " + escapeHtml(row.client) : ""}</strong><p>${escapeHtml(row.impactDate || "")} ${row.amount ? "| " + escapeHtml(row.amount) + "$" : ""}</p><p>${escapeHtml(row.notes || "")}</p></article>`).join("") : '<div class="empty">Aucun impact declare.</div>'}
     </section>
   `;
+  const saveGoalsButton = document.getElementById("saveGoalsBtn");
+  if (saveGoalsButton) saveGoalsButton.addEventListener("click", saveGoals);
+  const saveHoldButton = document.getElementById("saveHoldBtn");
+  if (saveHoldButton) saveHoldButton.addEventListener("click", saveHold);
 }
 
 function renderAdmin(data) {
@@ -821,6 +869,54 @@ async function updateTask(taskId, rowNumber, status) {
       render();
       return;
     }
+    renderError(error);
+  }
+}
+
+async function updateQuestionnaireStatus(responseId, status) {
+  if (!responseId) return showToast("Reponse questionnaire introuvable.");
+  try {
+    const response = await callApi("updateQuestionnaireStatus", { responseId, status });
+    state.data = response.result || state.data;
+    showToast(status === "action_completee" ? "Action questionnaire completee." : "Questionnaire marque lu.");
+    render();
+  } catch (error) {
+    renderError(error);
+  }
+}
+
+async function saveGoals() {
+  try {
+    const response = await callApi("saveGoals", {
+      coach: state.activeCoach,
+      weeklyGoal: document.getElementById("weeklyGoal").value,
+      quarterlyGoal: document.getElementById("quarterlyGoal").value,
+      weeklyReminder: document.getElementById("weeklyReminder").value,
+      performanceUrl: document.getElementById("performanceUrl").value
+    });
+    state.data = response.result || state.data;
+    showToast("Objectifs enregistres.");
+    render();
+  } catch (error) {
+    renderError(error);
+  }
+}
+
+async function saveHold() {
+  const client = document.getElementById("holdClient").value.trim();
+  if (!client) return showToast("Ajoute le client sur hold.");
+  try {
+    const response = await callApi("saveHold", {
+      coach: state.activeCoach,
+      client,
+      expectedReturn: document.getElementById("holdReturn").value,
+      reason: document.getElementById("holdReason").value,
+      reminderPreference: document.getElementById("holdReminder").value
+    });
+    state.data = response.result || state.data;
+    showToast("Hold enregistre.");
+    render();
+  } catch (error) {
     renderError(error);
   }
 }

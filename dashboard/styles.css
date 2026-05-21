@@ -1000,6 +1000,21 @@ button.primary,
   box-shadow: inset 3px 0 0 #3b3f47;
 }
 
+.compact-actions {
+  margin-top: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.goal-grid {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.compact-form {
+  margin-top: 10px;
+}
+
 .client-directory {
   display: grid;
   gap: 8px;
