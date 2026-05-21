@@ -34,6 +34,12 @@
       "family": "coach",
       "level": "N1",
       "description": "Cours de groupe uniquement, energie, securite, standards et experience membre.",
+      "resources": [
+        {
+          "label": "Relire la fiche de poste",
+          "url": "https://docs.google.com/document/d/1grRKTz6yVZL5NdlCE7QgEshZas5m8PNB/edit"
+        }
+      ],
       "moduleIds": ["common_identity", "common_why", "common_previous_quarter", "coach_communaute_behavioral_values", "common_gwc", "common_leadership", "common_commitments", "coach_pathway"]
     },
     {
@@ -153,7 +159,7 @@
       "questions": [
         {"id": "why_joined_and_stays", "label": "Qu'est-ce qui t'a attire chez CFSB au depart, et aujourd'hui qu'est-ce qui te garde ici?", "type": "long_text", "required": true},
         {"id": "most_aligned_moment", "label": "Quand est-ce que tu te sens le plus aligne et utile dans ton role? Decris un moment recent.", "type": "long_text", "required": true},
-        {"id": "three_year_contribution", "label": "Dans 3 ans, qu'aimerais-tu avoir construit, appris ou contribue a CFSB?", "type": "long_text", "required": false},
+        {"id": "three_year_contribution", "label": "Dans 1 an, qu'aimerais-tu avoir construit, appris ou contribue a CFSB?", "type": "long_text", "required": false},
         {"id": "vision_misalignment", "label": "Y a-t-il un aspect de notre vision ou tu te sens moins aligne, ou que tu vois differemment?", "type": "long_text", "required": false}
       ]
     },
@@ -338,12 +344,12 @@
       "title": "Clarite du role - GWC",
       "intro": "Gets it, Wants it, Capacity: comprendre le role, vouloir le role, avoir la capacite de le porter.",
       "questions": [
-        {"id": "gwc_gets_it", "label": "GET IT: je comprends clairement ma description de poste, mes responsabilites et ce qui est attendu.", "type": "scale", "scaleId": "agreement4", "required": true},
-        {"id": "gwc_gets_it_gap", "label": "Si ce n'est pas clair, quels aspects doivent etre clarifies?", "type": "long_text", "required": false, "showIfMax": {"questionId": "gwc_gets_it", "max": 2}},
-        {"id": "gwc_wants_it", "label": "WANT IT: je veux ce role tel qu'il est decrit, avec les responsabilites et la remuneration.", "type": "scale", "scaleId": "agreement4", "required": true},
-        {"id": "gwc_wants_it_gap", "label": "Si quelque chose ne te convient pas, quoi?", "type": "long_text", "required": false, "showIfMax": {"questionId": "gwc_wants_it", "max": 2}},
-        {"id": "gwc_capacity", "label": "CAPACITY: j'ai le temps, l'energie et les competences pour assumer ce role.", "type": "scale", "scaleId": "agreement4", "required": true},
-        {"id": "gwc_capacity_gap", "label": "Qu'est-ce qui te manque pour avoir la pleine capacite?", "type": "long_text", "required": false, "showIfMax": {"questionId": "gwc_capacity", "max": 2}},
+        {"id": "gwc_gets_it", "label": "GET IT: est-ce que tu comprends clairement ta description de poste, tes responsabilites et ce qui est attendu?", "type": "single_choice", "required": true, "options": ["Oui", "Partiellement", "Non"]},
+        {"id": "gwc_gets_it_gap", "label": "Si ce n'est pas clair, quels aspects doivent etre clarifies?", "type": "long_text", "required": false, "showIf": {"questionId": "gwc_gets_it", "notEquals": "Oui"}},
+        {"id": "gwc_wants_it", "label": "WANT IT: est-ce que tu veux continuer a porter ce role tel qu'il est decrit?", "type": "single_choice", "required": true, "options": ["Oui", "Partiellement", "Non"]},
+        {"id": "gwc_wants_it_gap", "label": "Si quelque chose ne te convient pas, quoi?", "type": "long_text", "required": false, "showIf": {"questionId": "gwc_wants_it", "notEquals": "Oui"}},
+        {"id": "gwc_capacity", "label": "CAPACITY: as-tu le temps, l'energie et les competences pour assumer ce role?", "type": "single_choice", "required": true, "options": ["Oui", "Partiellement", "Non"]},
+        {"id": "gwc_capacity_gap", "label": "Qu'est-ce qui te manque pour avoir la pleine capacite?", "type": "long_text", "required": false, "showIf": {"questionId": "gwc_capacity", "notEquals": "Oui"}},
         {"id": "tools_training_missing", "label": "Quels outils, ressources ou formations te manquent pour bien faire ton travail?", "type": "long_text", "required": false}
       ]
     },
@@ -352,9 +358,9 @@
       "title": "Clarite du role",
       "intro": "Version courte de la clarite du role.",
       "questions": [
-        {"id": "gwc_gets_it", "label": "Je comprends clairement ce qui est attendu de moi.", "type": "scale", "scaleId": "agreement4", "required": true},
-        {"id": "gwc_wants_it", "label": "Je veux continuer a porter ce role dans sa forme actuelle.", "type": "scale", "scaleId": "agreement4", "required": true},
-        {"id": "gwc_capacity", "label": "J'ai la capacite d'assumer mes taches et engagements.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "gwc_gets_it", "label": "Est-ce que tu comprends clairement ce qui est attendu de toi?", "type": "single_choice", "required": true, "options": ["Oui", "Partiellement", "Non"]},
+        {"id": "gwc_wants_it", "label": "Est-ce que tu veux continuer a porter ce role dans sa forme actuelle?", "type": "single_choice", "required": true, "options": ["Oui", "Partiellement", "Non"]},
+        {"id": "gwc_capacity", "label": "As-tu la capacite d'assumer tes taches et engagements?", "type": "single_choice", "required": true, "options": ["Oui", "Partiellement", "Non"]},
         {"id": "gwc_comment", "label": "Commentaire sur ton role, si utile", "type": "long_text", "required": false}
       ]
     },
