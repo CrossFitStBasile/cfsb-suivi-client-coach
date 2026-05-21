@@ -7,7 +7,8 @@ const LOCAL_TASK_KEY = "cfsbCoachLocalHiddenTasks";
 const state = {
   apiUrl: normalizeApiUrl(localStorage.getItem("cfsbCoachApiUrl") || DEFAULT_API_URL),
   appPin: localStorage.getItem("cfsbCoachAppPin") || "",
-  activeView: "today",
+  activeView: normalizeView(localStorage.getItem("cfsbCoachView") || "mission"),
+  activeMissionFilter: "all",
   activeCoach: localStorage.getItem("cfsbCoachName") || "",
   selectedClientKey: "",
   data: null,
@@ -31,6 +32,7 @@ const els = {
 document.querySelectorAll(".views button").forEach((button) => {
   button.addEventListener("click", () => {
     state.activeView = button.dataset.view;
+    localStorage.setItem("cfsbCoachView", state.activeView);
     document.querySelectorAll(".views button").forEach((item) => item.classList.toggle("active", item === button));
     render();
   });
@@ -201,12 +203,11 @@ function render() {
   els.sourceLine.textContent = `${data.activeCoach || "Coach"} | Dashboard: ${data.dashboardUpdatedAt || "-"} | App: ${data.generatedAt || "-"}${sourceSuffix}`;
 
   if (state.activeView === "clients") return renderClients(data.clients || []);
-  if (state.activeView === "retention") return renderRetention(data.v3 || {});
-  if (state.activeView === "alumni") return renderAlumni(data.v3 || {});
-  if (state.activeView === "impacts") return renderImpacts(data.v3 || {});
+  if (state.activeView === "performance") return renderPerformance(data);
+  if (state.activeView === "admin") return renderAdmin(data);
 
   const tasks = filterTasks(data.tasks || []).filter((task) => !state.localHiddenTaskIds.has(task.taskId));
-  if (state.activeView === "today") return renderMission(tasks, data.clients || []);
+  if (state.activeView === "mission") return renderMission(tasks, data.clients || []);
   renderTaskBoard(tasks, data.clients || []);
 }
 
@@ -214,10 +215,11 @@ function renderCoachSelect(data) {
   const coaches = data.coaches || [];
   els.coachSelect.innerHTML = coaches.map((coach) => `<option value="${escapeAttr(coach.coach)}">${escapeHtml(coach.coach)}</option>`).join("");
   els.coachSelect.value = state.activeCoach || data.activeCoach || "";
+  document.querySelectorAll(".views button").forEach((item) => item.classList.toggle("active", item.dataset.view === state.activeView));
 }
 
 function filterTasks(tasks) {
-  if (state.activeView === "today") return tasks.filter((task) => task.priority === "P1" || ["Programme", "Rebooking", "Formulaire", "Validation", "Retention", "Impact"].includes(task.type));
+  if (state.activeView === "mission") return tasks.filter((task) => task.priority === "P1" || ["Programme", "Rebooking", "Formulaire", "Validation", "Retention", "Impact", "Suivi client"].includes(task.type));
   const map = { programs: "Programme", rebookings: "Rebooking", forms: "Formulaire", validations: "Validation" };
   return map[state.activeView] ? tasks.filter((task) => task.type === map[state.activeView]) : tasks;
 }
@@ -228,16 +230,18 @@ function renderMission(tasks, clients) {
   const programTasks = tasks.filter((task) => task.type === "Programme");
   const rebookingTasks = tasks.filter((task) => task.type === "Rebooking");
   const formTasks = tasks.filter((task) => task.type === "Formulaire");
+  const visibleTasks = filterMissionTasks(tasks);
   const firstTask = tasks[0];
   if (!state.selectedClientKey && firstTask) state.selectedClientKey = firstTask.clientKey || "";
-  const selectedClient = getSelectedClient(clients, tasks);
+  const selectedClient = getSelectedClient(clients, visibleTasks.length ? visibleTasks : tasks);
 
   els.content.innerHTML = `
     <section class="mission-panel">
-      <div class="section-head">
+      <div class="command-hero">
         <div>
           <p class="eyebrow">Mission du jour</p>
-          <h2>${tasks.length ? `${tasks.length} action${tasks.length > 1 ? "s" : ""} a traiter` : "Aucune action ouverte"}</h2>
+          <h2>${tasks.length ? `${tasks.length} action${tasks.length > 1 ? "s" : ""} a traiter` : "Tout est clair"}</h2>
+          <p>Priorise les clients qui demandent une action concrete aujourd'hui. Clique un nom pour voir le contexte avant d'agir.</p>
         </div>
         <span class="freshness">${escapeHtml(state.sourceMode)}</span>
       </div>
@@ -247,12 +251,14 @@ function renderMission(tasks, clients) {
         ${priorityTile("Rebookings", rebookingTasks.length, "p3")}
         ${priorityTile("Questionnaires", formTasks.length, "p4")}
       </div>
-      ${tasks.length ? `<div class="action-list">${tasks.slice(0, 14).map(taskRow).join("")}</div>` : '<div class="empty">Aucune action ici.</div>'}
+      ${missionFilters(tasks)}
+      ${visibleTasks.length ? `<div class="action-list">${visibleTasks.slice(0, 18).map(taskRow).join("")}</div>` : '<div class="empty">Aucune action ici.</div>'}
     </section>
     ${clientFocusPanel(selectedClient, tasks)}
   `;
   attachTaskControls();
   attachClientSelectors();
+  attachMissionFilters();
 }
 
 function renderTaskBoard(tasks, clients) {
@@ -277,6 +283,28 @@ function renderTaskBoard(tasks, clients) {
 
 function priorityTile(label, value, tone) {
   return `<div class="priority-tile ${tone}"><strong>${value}</strong><span>${escapeHtml(label)}</span></div>`;
+}
+
+function missionFilters(tasks) {
+  const filters = [
+    ["all", "Tout", tasks.length],
+    ["urgent", "Urgent", tasks.filter((task) => task.priority === "P1").length],
+    ["programs", "Programmes", tasks.filter((task) => task.type === "Programme").length],
+    ["rebookings", "Rebookings", tasks.filter((task) => task.type === "Rebooking").length],
+    ["forms", "Questionnaires", tasks.filter((task) => task.type === "Formulaire").length],
+    ["validations", "A valider", tasks.filter((task) => task.type === "Validation").length]
+  ];
+  return `<div class="mission-filters">${filters.map(([id, label, count]) => `<button class="${state.activeMissionFilter === id ? "active" : ""}" data-mission-filter="${id}">${escapeHtml(label)} <span>${count}</span></button>`).join("")}</div>`;
+}
+
+function filterMissionTasks(tasks) {
+  const filter = state.activeMissionFilter;
+  if (filter === "urgent") return tasks.filter((task) => task.priority === "P1");
+  if (filter === "programs") return tasks.filter((task) => task.type === "Programme");
+  if (filter === "rebookings") return tasks.filter((task) => task.type === "Rebooking");
+  if (filter === "forms") return tasks.filter((task) => task.type === "Formulaire");
+  if (filter === "validations") return tasks.filter((task) => task.type === "Validation");
+  return tasks;
 }
 
 function taskRow(task) {
@@ -383,6 +411,15 @@ function attachClientSelectors() {
   });
 }
 
+function attachMissionFilters() {
+  els.content.querySelectorAll("[data-mission-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activeMissionFilter = button.dataset.missionFilter;
+      render();
+    });
+  });
+}
+
 function viewLabel(view) {
   const labels = {
     programs: "Programmes",
@@ -393,17 +430,58 @@ function viewLabel(view) {
   return labels[view] || "Actions";
 }
 
+function normalizeView(view) {
+  const map = {
+    today: "mission",
+    programs: "mission",
+    rebookings: "mission",
+    forms: "mission",
+    validations: "mission",
+    retention: "performance",
+    alumni: "performance",
+    impacts: "performance"
+  };
+  return map[view] || (["mission", "clients", "performance", "admin"].includes(view) ? view : "mission");
+}
+
 function renderClients(clients) {
-  els.content.className = "content";
-  els.content.innerHTML = clients.length ? clients.map((client) => `
-    <article class="card">
-      <div class="card-head"><div><div class="client">${escapeHtml(client.client)}</div><div class="why">${escapeHtml(client.signal || client.objective || "")}</div></div><span class="tag">${client.openTasks || 0} action(s)</span></div>
-      <div class="facts">
-        ${client.activePackage ? `<span class="fact"><b>Membership:</b> ${escapeHtml(client.activePackage)}</span>` : ""}
-        ${client.riskLevel && client.riskLevel !== "Stable" ? `<span class="fact"><b>Risque:</b> ${escapeHtml(client.riskLevel)}</span>` : ""}
-        ${client.rebookingTotal ? `<span class="fact"><b>Rebooking:</b> ${escapeHtml(client.rebookingTotal)}</span>` : ""}
+  const sortedClients = clients.slice().sort((a, b) => Number(b.openTasks || 0) - Number(a.openTasks || 0));
+  if (!state.selectedClientKey && sortedClients[0]) state.selectedClientKey = sortedClients[0].clientKey;
+  els.content.className = "content mission-layout";
+  els.content.innerHTML = `
+    <section class="mission-panel">
+      <div class="command-hero">
+        <div>
+          <p class="eyebrow">Portefeuille client</p>
+          <h2>${clients.length} client${clients.length > 1 ? "s" : ""} supervises</h2>
+          <p>La liste est triee par nombre d'actions ouvertes pour aider le coach a commencer par les clients qui demandent le plus d'attention.</p>
+        </div>
       </div>
-    </article>`).join("") : '<div class="empty">Aucun client consolide.</div>';
+      <div class="client-directory">
+        ${sortedClients.length ? sortedClients.map(clientDirectoryRow).join("") : '<div class="empty">Aucun client consolide.</div>'}
+      </div>
+    </section>
+    ${clientFocusPanel(getSelectedClient(sortedClients, []), state.data.tasks || [])}
+  `;
+  attachClientSelectors();
+}
+
+function clientDirectoryRow(client) {
+  return `
+    <article class="directory-row ${state.selectedClientKey === client.clientKey ? "selected" : ""}">
+      <button class="client-trigger" data-client-key="${escapeAttr(client.clientKey || "")}">
+        <span class="priority-dot"></span>
+        <span>
+          <strong>${escapeHtml(client.client || "Client")}</strong>
+          <small>${escapeHtml(client.activePackage || client.signal || "Aucun signal majeur")}</small>
+        </span>
+      </button>
+      <div class="task-context">
+        <span class="tag">${client.openTasks || 0} action(s)</span>
+        ${client.riskLevel ? `<span class="tag bad">${escapeHtml(client.riskLevel)}</span>` : ""}
+        ${client.program ? `<span class="tag warn">${escapeHtml(client.program)}</span>` : ""}
+      </div>
+    </article>`;
 }
 
 function renderRetention(v3) {
@@ -458,6 +536,77 @@ function renderImpacts(v3) {
     </section>
     ${rows.length ? rows.slice().reverse().slice(0, 20).map((row) => `<article class="compact-row"><strong>${escapeHtml(row.impactType || "Impact")} ${row.client ? "- " + escapeHtml(row.client) : ""}</strong><p>${escapeHtml(row.impactDate || "")} ${row.amount ? "| " + escapeHtml(row.amount) + "$" : ""}</p><p>${escapeHtml(row.notes || "")}</p></article>`).join("") : '<div class="empty">Aucun impact declare.</div>'}`;
   document.getElementById("saveImpactBtn").addEventListener("click", saveImpact);
+}
+
+function renderPerformance(data) {
+  const v3 = data.v3 || {};
+  const k = v3.kpis || {};
+  const riskRows = (v3.retention || []).filter((row) => row.riskLevel && row.riskLevel !== "Stable");
+  const alumni = v3.alumni || [];
+  const impacts = (v3.impacts && v3.impacts.log) || [];
+  els.content.className = "content performance-grid";
+  els.content.innerHTML = `
+    <section class="mission-panel performance-hero">
+      <div class="command-hero">
+        <div>
+          <p class="eyebrow">Performance coach</p>
+          <h2>Retention, impacts et developpement</h2>
+          <p>Cette section sert au pilotage hebdomadaire: garder les clients, reactiver les anciens, et documenter les revenus crees par les coachs.</p>
+        </div>
+      </div>
+      <div class="priority-strip">
+        ${priorityTile("Retention approx.", `${k.retentionRate || 0}%`, "p4")}
+        ${priorityTile("Clients a risque", k.atRisk || 0, "p1")}
+        ${priorityTile("Fins 30 jours", k.serviceEnding30 || 0, "p2")}
+        ${priorityTile("Impacts semaine", k.impactsWeek || 0, "p3")}
+      </div>
+    </section>
+    <section class="mission-panel">
+      <div class="section-head"><div><p class="eyebrow">Risques</p><h2>Clients a surveiller</h2></div></div>
+      ${riskRows.length ? riskRows.slice(0, 8).map((row) => `<article class="compact-row"><strong>${escapeHtml(row.client)} <span class="tag bad">${escapeHtml(row.riskLevel)}</span></strong><p>${escapeHtml(row.riskReasons || "A valider")}</p></article>`).join("") : '<div class="empty">Aucun signal de risque notable.</div>'}
+    </section>
+    <section class="mission-panel">
+      <div class="section-head"><div><p class="eyebrow">Alumni</p><h2>Reactivation</h2></div></div>
+      ${alumni.length ? alumni.slice(0, 8).map((row) => `<article class="compact-row"><strong>${escapeHtml(row.client)}</strong><p>Prochain contact: ${escapeHtml(row.nextContactDue || "A planifier")}</p><p>${escapeHtml(row.notes || "")}</p></article>`).join("") : '<div class="empty">Aucun alumni entre.</div>'}
+    </section>
+    <section class="mission-panel">
+      <div class="section-head"><div><p class="eyebrow">Impacts</p><h2>Revenus crees</h2></div></div>
+      ${impacts.length ? impacts.slice().reverse().slice(0, 8).map((row) => `<article class="compact-row"><strong>${escapeHtml(row.impactType || "Impact")} ${row.client ? "- " + escapeHtml(row.client) : ""}</strong><p>${escapeHtml(row.impactDate || "")} ${row.amount ? "| " + escapeHtml(row.amount) + "$" : ""}</p><p>${escapeHtml(row.notes || "")}</p></article>`).join("") : '<div class="empty">Aucun impact declare.</div>'}
+    </section>
+  `;
+}
+
+function renderAdmin(data) {
+  const counts = data.counts || {};
+  els.content.className = "content performance-grid";
+  els.content.innerHTML = `
+    <section class="mission-panel performance-hero">
+      <div class="command-hero">
+        <div>
+          <p class="eyebrow">Donnees et mise a jour</p>
+          <h2>Etat de la source</h2>
+          <p>Le dashboard lit une sauvegarde GitHub pour eviter les problemes Apps Script dans Chrome. Les snapshots se regenerent automatiquement par GitHub Actions.</p>
+        </div>
+      </div>
+      <div class="focus-facts">
+        ${focusFact("Coach", data.activeCoach || "-")}
+        ${focusFact("Dernier snapshot", data.snapshot && data.snapshot.generatedAt ? data.snapshot.generatedAt : "-")}
+        ${focusFact("Derniere reconstruction", data.generatedAt || "-")}
+        ${focusFact("Clients", counts.clients || 0)}
+      </div>
+    </section>
+    <section class="mission-panel">
+      <div class="section-head"><div><p class="eyebrow">Procedure</p><h2>Mettre a jour</h2></div></div>
+      <div class="focus-note"><strong>CoachRx</strong><p>Le coach utilise encore l'extension pour synchroniser CoachRx. Ensuite, GitHub Actions regenere le snapshot public.</p></div>
+      <div class="focus-note"><strong>Actions live</strong><p>Les actions permanentes restent a connecter a un backend stable. En mode test, certaines actions peuvent seulement se masquer localement.</p></div>
+    </section>
+    <section class="mission-panel">
+      <div class="section-head"><div><p class="eyebrow">Prochains chantiers</p><h2>Avant de deployer large</h2></div></div>
+      <article class="compact-row"><strong>Backend actions</strong><p>Sortir les ecritures de Apps Script pour que Fait, rappels, alumni et impacts soient fiables.</p></article>
+      <article class="compact-row"><strong>Questionnaires</strong><p>Brancher les reponses GitHub Pages vers la base dashboard et creer les taches automatiques.</p></article>
+      <article class="compact-row"><strong>Fiche client</strong><p>Ajouter une page detaillee avec historique, notes, objectifs et prochaines actions.</p></article>
+    </section>
+  `;
 }
 
 async function updateTask(taskId, rowNumber, status) {
