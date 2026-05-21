@@ -205,6 +205,33 @@ button.primary {
   margin-top: 12px;
 }
 
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.close-panel {
+  flex: 0 0 auto;
+  min-width: 36px;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.close-panel:hover,
+.close-panel:focus-visible {
+  border-color: var(--red);
+  background: var(--red);
+  outline: none;
+}
+
 .system-actions {
   display: flex;
   flex-wrap: wrap;
