@@ -1,7 +1,6 @@
 const DEPLOYMENT_ID = "AKfycbz1qODx2pCWQ2yHhkse6FBxdyn741cYObW_qGsuox4RmVs7m6WYy3YqFTSti8YcRiGQ";
 const DEFAULT_API_URL = `https://script.google.com/macros/s/${DEPLOYMENT_ID}/exec`;
 const DEFAULT_AUTHUSER = "0";
-const STATIC_INDEX_URL = "./data/index.json";
 const LOCAL_TASK_KEY = "cfsbCoachLocalHiddenTasks";
 
 const state = {
@@ -9,10 +8,11 @@ const state = {
   appPin: localStorage.getItem("cfsbCoachAppPin") || "",
   activeView: normalizeView(localStorage.getItem("cfsbCoachView") || "mission"),
   activeMissionFilter: "all",
+  activeQuestionnaireFilter: "all",
   activeCoach: localStorage.getItem("cfsbCoachName") || "",
   selectedClientKey: "",
   data: null,
-  sourceMode: "Snapshot GitHub",
+  sourceMode: "Backend prive",
   localHiddenTaskIds: new Set(readStoredArray(LOCAL_TASK_KEY))
 };
 
@@ -37,6 +37,14 @@ document.querySelectorAll(".views button").forEach((button) => {
     document.querySelectorAll(".views button").forEach((item) => item.classList.toggle("active", item === button));
     render();
   });
+});
+
+document.addEventListener("click", (event) => {
+  const questionnaireButton = event.target.closest("[data-questionnaire-filter]");
+  if (questionnaireButton) {
+    state.activeQuestionnaireFilter = questionnaireButton.dataset.questionnaireFilter || "all";
+    render();
+  }
 });
 
 document.getElementById("refreshBtn").addEventListener("click", () => loadData(false, true));
@@ -72,64 +80,23 @@ function saveSettings() {
 
 async function loadData(rebuild, notify) {
   els.content.innerHTML = '<div class="empty">Chargement du dashboard...</div>';
+  if (!state.appPin) {
+    state.data = null;
+    renderPrivateGate();
+    return;
+  }
   try {
-    if (!rebuild) {
-      await loadStaticSnapshot();
-      if (notify) showToast("Sauvegarde GitHub chargee.");
-      return;
-    }
     const response = await callApi(rebuild ? "rebuild" : "getData", {});
     state.data = response.result;
-    state.sourceMode = "Live Apps Script";
+    state.sourceMode = "Backend prive";
     if (!state.activeCoach) {
       state.activeCoach = state.data.activeCoach || "";
       localStorage.setItem("cfsbCoachName", state.activeCoach);
     }
     render();
   } catch (error) {
-    if (rebuild) {
-      try {
-        await loadStaticSnapshot();
-        showToast("Backend live bloque; sauvegarde GitHub chargee.");
-        return;
-      } catch (_snapshotError) {
-        // The live error is more useful for the user-facing diagnostic.
-      }
-    }
     renderError(error);
   }
-}
-
-async function loadStaticSnapshot() {
-  const index = await fetchJson(STATIC_INDEX_URL);
-  const coaches = index.coaches || [];
-  if (!coaches.length) throw new Error("Aucun coach dans la sauvegarde GitHub.");
-  if (!state.activeCoach || !coaches.some((coach) => coach.coach === state.activeCoach)) {
-    state.activeCoach = index.defaultCoach || coaches[0].coach;
-    localStorage.setItem("cfsbCoachName", state.activeCoach);
-  }
-  const selectedCoach = coaches.find((coach) => coach.coach === state.activeCoach) || coaches[0];
-  const data = await fetchJson(`${selectedCoach.path}?v=${encodeURIComponent(index.generatedAt || Date.now())}`);
-  data.coaches = coaches.map((coach) => ({
-    coach: coach.coach,
-    coachId: coach.coachId || "",
-    dashboardSheet: coach.dashboardSheet || "",
-    active: "Oui"
-  }));
-  data.activeCoach = selectedCoach.coach;
-  data.snapshot = data.snapshot || {
-    generatedAt: index.generatedAt,
-    source: "GitHub Pages static snapshot"
-  };
-  state.data = data;
-  state.sourceMode = "Snapshot GitHub";
-  render();
-}
-
-async function fetchJson(url) {
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) throw new Error(`Sauvegarde GitHub non disponible (${response.status}).`);
-  return response.json();
 }
 
 function callApi(action, payload) {
@@ -201,12 +168,11 @@ function render() {
   document.getElementById("metricUrgent").textContent = data.counts.p1 || 0;
   document.getElementById("metricRisk").textContent = kpis.atRisk || 0;
   document.getElementById("metricImpacts").textContent = kpis.impactsWeek || 0;
-  const sourceSuffix = state.sourceMode === "Snapshot GitHub"
-    ? ` | Source: sauvegarde GitHub ${data.snapshot && data.snapshot.generatedAt ? data.snapshot.generatedAt : ""}`
-    : " | Source: live";
+  const sourceSuffix = " | Source: backend prive";
   els.sourceLine.textContent = `${data.activeCoach || "Coach"} | Dashboard: ${data.dashboardUpdatedAt || "-"} | App: ${data.generatedAt || "-"}${sourceSuffix}`;
 
   if (state.activeView === "clients") return renderClients(data.clients || []);
+  if (state.activeView === "questionnaires") return renderQuestionnaireInbox(data);
   if (state.activeView === "performance") return renderPerformance(data);
   if (state.activeView === "admin") return renderAdmin(data);
 
@@ -220,6 +186,38 @@ function renderCoachSelect(data) {
   els.coachSelect.innerHTML = coaches.map((coach) => `<option value="${escapeAttr(coach.coach)}">${escapeHtml(coach.coach)}</option>`).join("");
   els.coachSelect.value = state.activeCoach || data.activeCoach || "";
   document.querySelectorAll(".views button").forEach((item) => item.classList.toggle("active", item.dataset.view === state.activeView));
+}
+
+function renderPrivateGate() {
+  document.getElementById("metricTasks").textContent = "-";
+  document.getElementById("metricUrgent").textContent = "-";
+  document.getElementById("metricRisk").textContent = "-";
+  document.getElementById("metricImpacts").textContent = "-";
+  els.coachSelect.innerHTML = '<option>Connexion requise</option>';
+  els.sourceLine.textContent = "Mode prive requis. Aucun snapshot client n'est charge depuis GitHub Pages.";
+  els.content.className = "content";
+  els.content.innerHTML = `
+    <section class="mission-panel performance-hero security-panel">
+      <div class="command-hero">
+        <div>
+          <p class="eyebrow">Acces prive</p>
+          <h2>Dashboard verrouille</h2>
+          <p>Les donnees client ne sont plus chargees depuis GitHub Pages. Entre le PIN ou le jeton du backend prive dans Systeme > Configuration pour ouvrir le dashboard.</p>
+        </div>
+      </div>
+      <div class="focus-note"><strong>Pourquoi</strong><p>Le questionnaire public peut rester sur GitHub Pages, mais les reponses clients et les fiches coach doivent passer par un backend authentifie.</p></div>
+      <div class="actions-row">
+        <button class="primary" id="openPrivateSettings">Ouvrir la configuration</button>
+      </div>
+    </section>
+  `;
+  const openSettings = document.getElementById("openPrivateSettings");
+  if (openSettings) openSettings.addEventListener("click", () => {
+    document.getElementById("apiUrlInput").value = state.apiUrl;
+    document.getElementById("appPinInput").value = state.appPin;
+    els.systemPanel.classList.remove("hidden");
+    els.settingsPanel.classList.remove("hidden");
+  });
 }
 
 function filterTasks(tasks) {
@@ -445,7 +443,7 @@ function normalizeView(view) {
     alumni: "performance",
     impacts: "performance"
   };
-  return map[view] || (["mission", "clients", "performance", "admin"].includes(view) ? view : "mission");
+  return map[view] || (["mission", "clients", "questionnaires", "performance", "admin"].includes(view) ? view : "mission");
 }
 
 function renderClients(clients) {
@@ -486,6 +484,180 @@ function clientDirectoryRow(client) {
         ${client.program ? `<span class="tag warn">${escapeHtml(client.program)}</span>` : ""}
       </div>
     </article>`;
+}
+
+function renderQuestionnaireInbox(data) {
+  const responses = collectQuestionnaireResponses(data);
+  const sends = collectQuestionnaireSendLog(data);
+  const filtered = filterQuestionnaireResponses(responses);
+  const urgent = responses.filter((row) => ["rouge", "orange"].includes(row.triageStatus));
+  const unmatched = responses.filter((row) => row.matchStatus === "non_matche");
+  const unread = responses.filter((row) => !["lu", "action_completee", "archive"].includes(row.processingStatus));
+  els.content.className = "content performance-grid";
+  els.content.innerHTML = `
+    <section class="mission-panel performance-hero">
+      <div class="command-hero">
+        <div>
+          <p class="eyebrow">Inbox questionnaire</p>
+          <h2>Suivis clients recus</h2>
+          <p>Cette vue centralise les reponses du questionnaire client-coach. Elle doit rester privee: aucun detail client ne doit etre servi depuis un fichier JSON public.</p>
+        </div>
+      </div>
+      <div class="priority-strip">
+        ${priorityTile("Reponses", responses.length, "p4")}
+        ${priorityTile("Urgentes", urgent.length, "p1")}
+        ${priorityTile("Non matchees", unmatched.length, "p2")}
+        ${priorityTile("Non traitees", unread.length, "p3")}
+      </div>
+      ${questionnaireFilters(responses)}
+    </section>
+    <section class="mission-panel performance-hero">
+      <div class="section-head"><div><p class="eyebrow">A traiter</p><h2>${filtered.length} reponse${filtered.length > 1 ? "s" : ""}</h2></div></div>
+      ${filtered.length ? `<div class="questionnaire-list">${filtered.map(questionnaireRow).join("")}</div>` : '<div class="empty">Aucune reponse dans ce filtre.</div>'}
+    </section>
+    <section class="mission-panel">
+      <div class="section-head"><div><p class="eyebrow">Non matchees</p><h2>Validation client</h2></div></div>
+      ${unmatched.length ? unmatched.slice(0, 8).map((row) => `<article class="compact-row"><strong>${escapeHtml(row.clientName || "Client a valider")}</strong><p>Telephone: ${escapeHtml(row.clientPhoneNormalized || "-")}</p><p>Action: creer ou corriger le lien client dans CORE_Clients.</p></article>`).join("") : '<div class="empty">Toutes les reponses recues sont matchees ou aucune reponse recue.</div>'}
+    </section>
+    <section class="mission-panel">
+      <div class="section-head"><div><p class="eyebrow">Relances</p><h2>Envoyes sans reponse</h2></div></div>
+      ${sends.length ? sends.slice(0, 8).map((row) => `<article class="compact-row"><strong>${escapeHtml(row.client || row.clientName || "Client")}</strong><p>Envoye: ${escapeHtml(row.sentAt || row.sent_at || "-")} | statut: ${escapeHtml(row.status || "a suivre")}</p><p>${escapeHtml(row.note || row.details || "")}</p></article>`).join("") : '<div class="empty">Journal des formulaires envoyes a connecter au backend.</div>'}
+    </section>
+  `;
+}
+
+function collectQuestionnaireResponses(data) {
+  const candidates = [
+    data.questionnaireInbox,
+    data.questionnaires,
+    data.clientCoachResponses,
+    data.responses,
+    data.v3 && data.v3.questionnaires,
+    data.v3 && data.v3.questionnaireInbox
+  ].filter(Array.isArray);
+  const rows = candidates.flat();
+  if (rows.length) return rows.map(normalizeQuestionnaireResponse);
+  return (data.tasks || [])
+    .filter((task) => task.type === "Formulaire")
+    .map((task) => normalizeQuestionnaireResponse({
+      response_id: task.taskId,
+      client_name: task.client,
+      coach_name: task.coach,
+      submitted_at: task.dueDate,
+      triage_status: inferTriageFromPriority(task.priority),
+      coach_action_type: task.action,
+      dashboard_sync_status: task.status || "tache_creee",
+      processing_status: "recu",
+      source: task.source,
+      open_note: task.why
+    }));
+}
+
+function collectQuestionnaireSendLog(data) {
+  const candidates = [
+    data.questionnaireSendLog,
+    data.formSendLog,
+    data.formsSent,
+    data.v3 && data.v3.questionnaireSendLog
+  ].filter(Array.isArray);
+  return candidates.flat();
+}
+
+function normalizeQuestionnaireResponse(row) {
+  const triageStatus = normalizeLower(row.triage_status || row.triageStatus || inferTriageFromAction(row.coach_action_type || row.coachActionType));
+  const matchStatus = normalizeLower(row.match_status || row.matchStatus || row.dashboard_match_status || row.dashboardMatchStatus);
+  const processingStatus = normalizeLower(row.processing_status || row.processingStatus || row.dashboard_sync_status || row.dashboardSyncStatus || "recu");
+  const clientKey = cleanValue(row.client_key || row.clientKey || row.client_id || row.clientId);
+  return {
+    responseId: cleanValue(row.response_id || row.responseId || row.id),
+    submittedAt: cleanValue(row.submitted_at || row.submittedAt || row.received_at || row.receivedAt),
+    receivedAt: cleanValue(row.received_at || row.receivedAt),
+    clientName: cleanValue(row.client_name || row.clientName || row.client),
+    clientEmail: cleanValue(row.client_email || row.clientEmail),
+    clientPhone: cleanValue(row.client_phone || row.clientPhone),
+    clientPhoneNormalized: cleanValue(row.client_phone_normalized || row.clientPhoneNormalized),
+    coachName: cleanValue(row.coach_name || row.coachName || row.coach),
+    followupType: cleanValue(row.followup_type || row.followupType),
+    generalState: cleanValue(row.general_state || row.generalState),
+    motivationLevel: cleanValue(row.motivation_level || row.motivationLevel),
+    goalStatus: cleanValue(row.goal_status || row.goalStatus),
+    goalClarityScore: cleanValue(row.goal_clarity_score || row.goalClarityScore),
+    programFit: cleanValue(row.program_fit || row.programFit),
+    painStatus: cleanValue(row.pain_status || row.painStatus),
+    contactRequest: cleanValue(row.contact_request || row.contactRequest),
+    openNote: cleanValue(row.open_note || row.openNote || row.note),
+    improvementsRequested: cleanValue(row.improvements_requested || row.improvementsRequested),
+    finalPosition: cleanValue(row.final_position || row.finalPosition),
+    triageStatus: triageStatus || "vert",
+    coachActionType: cleanValue(row.coach_action_type || row.coachActionType || actionForTriage(triageStatus)),
+    processingStatus,
+    matchStatus: matchStatus || (clientKey || cleanValue(row.coach_name || row.coachName) ? "matche" : "non_matche"),
+    clientKey
+  };
+}
+
+function questionnaireFilters(responses) {
+  const filters = [
+    ["all", "Toutes", responses.length],
+    ["unmatched", "Non matchees", responses.filter((row) => row.matchStatus === "non_matche").length],
+    ["urgent", "Rouge / orange", responses.filter((row) => ["rouge", "orange"].includes(row.triageStatus)).length],
+    ["unread", "Non traitees", responses.filter((row) => !["lu", "action_completee", "archive"].includes(row.processingStatus)).length]
+  ];
+  return `<div class="mission-filters">${filters.map(([id, label, count]) => `<button class="${state.activeQuestionnaireFilter === id ? "active" : ""}" data-questionnaire-filter="${id}">${escapeHtml(label)} <span>${count}</span></button>`).join("")}</div>`;
+}
+
+function filterQuestionnaireResponses(responses) {
+  const filter = state.activeQuestionnaireFilter;
+  if (filter === "unmatched") return responses.filter((row) => row.matchStatus === "non_matche");
+  if (filter === "urgent") return responses.filter((row) => ["rouge", "orange"].includes(row.triageStatus));
+  if (filter === "unread") return responses.filter((row) => !["lu", "action_completee", "archive"].includes(row.processingStatus));
+  return responses;
+}
+
+function questionnaireRow(row) {
+  const tone = row.triageStatus === "rouge" ? "bad" : row.triageStatus === "orange" || row.triageStatus === "jaune" ? "warn" : "good";
+  return `
+    <article class="compact-row questionnaire-row">
+      <strong>${escapeHtml(row.clientName || "Client a valider")} <span class="tag ${tone}">${escapeHtml(row.triageStatus)}</span></strong>
+      <p>${escapeHtml(row.submittedAt || row.receivedAt || "-")} | ${escapeHtml(row.coachName || "Coach a deriver")} | ${escapeHtml(row.matchStatus)}</p>
+      <p><strong>Action:</strong> ${escapeHtml(actionForTriage(row.triageStatus, row.coachActionType))}</p>
+      <p>${escapeHtml(questionnaireSummary(row))}</p>
+    </article>
+  `;
+}
+
+function questionnaireSummary(row) {
+  return [
+    row.generalState && `Etat: ${row.generalState}`,
+    row.motivationLevel && `Motivation: ${row.motivationLevel}`,
+    row.goalStatus && `Objectif: ${row.goalStatus}`,
+    row.programFit && `Programme: ${row.programFit}`,
+    row.painStatus && `Douleur: ${row.painStatus}`,
+    row.openNote
+  ].filter(Boolean).join(" | ") || "Reponse a lire.";
+}
+
+function inferTriageFromPriority(priority) {
+  if (priority === "P1") return "rouge";
+  if (priority === "P2") return "orange";
+  return "vert";
+}
+
+function inferTriageFromAction(action) {
+  const value = normalizeLower(action);
+  if (value.includes("contacter") || value.includes("prioritaire")) return "rouge";
+  if (value.includes("discussion") || value.includes("planifier")) return "orange";
+  if (value.includes("ajustement") || value.includes("valider")) return "jaune";
+  return "vert";
+}
+
+function actionForTriage(triage, fallback) {
+  const value = normalizeLower(triage);
+  if (fallback) return fallback;
+  if (value === "rouge") return "contacter rapidement";
+  if (value === "orange") return "planifier une discussion";
+  if (value === "jaune") return "valider les ajustements";
+  return "lire le suivi client";
 }
 
 function renderRetention(v3) {
@@ -589,12 +761,12 @@ function renderAdmin(data) {
         <div>
           <p class="eyebrow">Acces et confidentialite</p>
           <h2>Logins requis avant le deploiement</h2>
-          <p>La version pilote lit des snapshots GitHub pour eviter le blocage Apps Script dans Chrome. C'est utile pour tester l'experience, mais ce n'est pas encore acceptable comme securite finale pour des donnees client.</p>
+          <p>La version publique ne charge plus de donnees client depuis GitHub Pages. Les donnees coach doivent venir d'un backend prive qui valide l'acces avant de retourner les clients, les taches et les reponses questionnaire.</p>
         </div>
       </div>
       <div class="focus-facts security-facts">
         ${focusFact("Statut", "Pilote seulement")}
-        ${focusFact("Lecture", "Snapshots publics")}
+        ${focusFact("Lecture", "Backend prive")}
         ${focusFact("Ecritures", "Backend protege requis")}
         ${focusFact("Deploiement", "Bloque avant login")}
       </div>
@@ -606,20 +778,20 @@ function renderAdmin(data) {
         <div>
           <p class="eyebrow">Systeme et mise a jour</p>
           <h2>Etat de la source</h2>
-          <p>Le dashboard lit une sauvegarde GitHub pour rester accessible aux coachs pendant le pilote. Les snapshots se regenerent automatiquement par GitHub Actions.</p>
+          <p>Les snapshots publics sont desactives. Le dashboard doit lire les donnees depuis le backend Apps Script prive ou le futur backend authentifie.</p>
         </div>
       </div>
       <div class="focus-facts">
         ${focusFact("Coach", data.activeCoach || "-")}
-        ${focusFact("Dernier snapshot", data.snapshot && data.snapshot.generatedAt ? data.snapshot.generatedAt : "-")}
+        ${focusFact("Reponses", "Sheet prive backend")}
         ${focusFact("Derniere reconstruction", data.generatedAt || "-")}
         ${focusFact("Clients", counts.clients || 0)}
       </div>
     </section>
     <section class="mission-panel">
       <div class="section-head"><div><p class="eyebrow">Procedure</p><h2>Mettre a jour</h2></div></div>
-      <div class="focus-note"><strong>CoachRx</strong><p>Le coach utilise encore l'extension pour synchroniser CoachRx. Ensuite, GitHub Actions regenere le snapshot public.</p></div>
-      <div class="focus-note"><strong>Actions live</strong><p>Les actions permanentes restent a connecter a un backend stable. En mode test, certaines actions peuvent seulement se masquer localement.</p></div>
+      <div class="focus-note"><strong>CoachRx</strong><p>Le coach utilise encore l'extension pour synchroniser CoachRx. Ensuite, le backend reconstruit les donnees privees du dashboard.</p></div>
+      <div class="focus-note"><strong>Questionnaires</strong><p>Le questionnaire GitHub Pages envoie les reponses au Sheet de reception. Le backend dashboard doit matcher par client_phone_normalized avec CORE_Clients et retourner l'inbox privee.</p></div>
     </section>
     <section class="mission-panel">
       <div class="section-head"><div><p class="eyebrow">Interface</p><h2>Ce qui reste volontairement discret</h2></div></div>
@@ -630,7 +802,7 @@ function renderAdmin(data) {
       <div class="section-head"><div><p class="eyebrow">Prochains chantiers</p><h2>Avant de deployer large</h2></div></div>
       <article class="compact-row"><strong>Login coach</strong><p>Authentifier chaque coach, filtrer ses donnees, et garder un acces admin pour remplacer un coach absent.</p></article>
       <article class="compact-row"><strong>Backend actions</strong><p>Sortir les ecritures de Apps Script pour que Fait, rappels, alumni et impacts soient fiables.</p></article>
-      <article class="compact-row"><strong>Questionnaires</strong><p>Brancher les reponses GitHub Pages vers la base dashboard et creer les taches automatiques.</p></article>
+      <article class="compact-row"><strong>Inbox questionnaire</strong><p>Retourner questionnaireInbox, questionnaireSendLog et les statuts recu, matche, assigne, lu, action_completee ou erreur.</p></article>
       <article class="compact-row"><strong>Fiche client</strong><p>Ajouter une page detaillee avec historique, notes, objectifs et prochaines actions.</p></article>
     </section>
   `;
@@ -738,6 +910,18 @@ function readStoredArray(key) {
 
 function writeStoredArray(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
+}
+
+function cleanValue(value) {
+  return String(value == null ? "" : value).trim();
+}
+
+function normalizeLower(value) {
+  return cleanValue(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "_");
 }
 
 function escapeHtml(value) {

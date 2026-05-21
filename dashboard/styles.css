@@ -751,7 +751,7 @@ button.primary {
 }
 
 .views {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .app-header p,
@@ -989,6 +989,15 @@ button.primary,
 
 .security-facts div {
   border-color: rgba(214, 40, 40, 0.45);
+}
+
+.questionnaire-list {
+  display: grid;
+  gap: 10px;
+}
+
+.questionnaire-row {
+  box-shadow: inset 3px 0 0 #3b3f47;
 }
 
 .client-directory {

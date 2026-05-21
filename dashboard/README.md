@@ -1,6 +1,6 @@
 # Dashboard Coach CFSB - GitHub Pages
 
-Interface statique pilote pour remplacer l'interface Apps Script du dashboard coach.
+Interface GitHub Pages du dashboard coach. La page publique ne doit servir que le shell visuel: les donnees client doivent venir d'un backend prive/authentifie.
 
 ## URL prevue
 
@@ -10,10 +10,10 @@ Quand GitHub Pages publie ce dossier:
 
 ## Architecture de transition
 
-- GitHub Pages: interface coach.
-- GitHub Pages JSON snapshots: source de lecture principale pour eviter les blocages Chrome/Apps Script.
-- Apps Script Dashboard Coach: backend JSONP temporaire pour generer les snapshots et tenter les actions live.
+- GitHub Pages: interface coach publique, sans donnees client embarquees.
+- Apps Script Dashboard Coach: backend JSONP temporaire pour retourner les donnees privees apres validation de l'acces.
 - Google Sheet Dashboard Coach CFSB: base de donnees.
+- Sheet de reception questionnaire: source privee des reponses client-coach.
 - Extension CoachRx: continue d'envoyer les donnees dans le backend actuel.
 
 ## Endpoint utilise
@@ -28,21 +28,17 @@ L'app appelle:
 
 Les actions coach passent aussi par ce endpoint pendant le pilote.
 
-## Snapshots GitHub
+## Donnees publiques desactivees
 
-Les fichiers sous `dashboard/data/` sont lus directement par l'app. Ils permettent au dashboard de s'ouvrir meme si le navigateur du coach bloque Apps Script.
+Les anciens snapshots JSON publics sont desactives. Les fichiers sous `dashboard/data/` ne doivent contenir aucune donnee client reelle.
 
-Regeneration locale:
+La commande suivante ne genere qu'un index public non sensible et supprime les anciens fichiers coach:
 
 ```bash
 node dashboard/scripts/refresh-dashboard-snapshots.mjs
 ```
 
-Regeneration publiee:
-
-- GitHub Actions lance le workflow `Refresh dashboard snapshots` aux 30 minutes.
-- Le workflow peut aussi etre lance manuellement.
-- Les snapshots sont committes dans le repo et servis par GitHub Pages.
+Le workflow GitHub Actions qui regenerait les snapshots a ete retire pour eviter toute republication accidentelle de donnees client.
 
 ## Diagnostic rapide
 
@@ -61,4 +57,4 @@ Les appels ajoutent aussi `authuser=0` pour eviter que Chrome choisisse automati
 - Aucun secret GHL ne doit etre stocke dans cette app.
 - Si `COACH_APP_PIN` est configure dans Apps Script, le PIN peut etre entre dans la configuration locale du navigateur.
 - Cette version utilise JSONP pour contourner les limites CORS d'Apps Script avec GitHub Pages.
-- Pour la production, il faudra idealement remplacer JSONP par un backend moderne avec authentification coach.
+- Pour la production, il faut remplacer ou renforcer JSONP par un backend moderne avec authentification coach.
