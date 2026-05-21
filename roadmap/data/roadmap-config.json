@@ -1,0 +1,414 @@
+{
+  "meta": {
+    "project": "roadmap-trimestrielle-cfsb",
+    "version": "0.1.0",
+    "updated": "2026-05-20",
+    "language": "fr-CA"
+  },
+  "scales": {
+    "agreement4": {
+      "min": 1,
+      "max": 4,
+      "labels": {
+        "1": "Ne correspond pas aux attentes",
+        "2": "Ameliorations requises",
+        "3": "Correspond aux attentes",
+        "4": "Depasse les attentes"
+      }
+    },
+    "readiness4": {
+      "min": 1,
+      "max": 4,
+      "labels": {
+        "1": "Pas maintenant",
+        "2": "Curieux, mais pas pret",
+        "3": "Pret a explorer",
+        "4": "Tres motive et pret a agir"
+      }
+    }
+  },
+  "roles": [
+    {
+      "id": "coach_communaute",
+      "label": "Coach Communaute",
+      "family": "coach",
+      "level": "N1",
+      "description": "Cours de groupe uniquement, energie, securite, standards et experience membre.",
+      "moduleIds": ["common_identity", "common_why", "common_previous_quarter", "common_values", "common_gwc", "coach_communaute_responsibilities", "common_leadership", "common_commitments", "coach_pathway"]
+    },
+    {
+      "id": "coach_developpement",
+      "label": "Coach Developpement",
+      "family": "coach",
+      "level": "N2",
+      "description": "Cours de groupe et Fondations, avec focus sur l'accueil et l'integration des nouveaux membres.",
+      "moduleIds": ["common_identity", "common_why", "common_previous_quarter", "common_values", "common_gwc", "coach_developpement_responsibilities", "common_leadership", "common_commitments", "coach_pathway"]
+    },
+    {
+      "id": "coach_professionnel",
+      "label": "Coach Professionnel",
+      "family": "coach",
+      "level": "N3",
+      "description": "Cours, Fondations, services personnalises, portefeuille client, CSM et responsabilite de revenu.",
+      "moduleIds": ["common_identity", "common_why", "common_previous_quarter", "common_values", "common_gwc", "coach_professionnel_responsibilities", "common_leadership", "common_commitments", "coach_pathway"]
+    },
+    {
+      "id": "head_coach",
+      "label": "Head Coach",
+      "family": "coordination",
+      "level": "N5",
+      "description": "Qualite technique, programmation, observations, feedback et developpement technique des coachs.",
+      "moduleIds": ["common_identity", "common_why", "common_previous_quarter", "common_values", "common_gwc", "head_coach_responsibilities", "common_leadership", "common_commitments"]
+    },
+    {
+      "id": "coordinatrice",
+      "label": "Coordinatrice du centre",
+      "family": "operations",
+      "level": "N5",
+      "description": "Coordination administrative, operations, succes clients, ventes encadrees et reporting.",
+      "moduleIds": ["common_identity", "common_why", "common_previous_quarter", "common_values", "common_gwc", "coordinatrice_responsibilities", "common_leadership", "common_commitments"]
+    },
+    {
+      "id": "entretien_menager",
+      "label": "Entretien menager",
+      "family": "support",
+      "level": "support",
+      "description": "Qualite de l'entretien, fiabilite, autonomie et signalement des anomalies.",
+      "moduleIds": ["common_identity", "common_why_light", "common_previous_quarter_light", "common_values_light", "common_gwc_light", "entretien_responsibilities", "common_leadership_light", "common_commitments_light"]
+    },
+    {
+      "id": "engagement_evenements",
+      "label": "Engagement communautaire et evenements",
+      "family": "community",
+      "level": "support",
+      "description": "Animation de la communaute, evenements, inclusion et mise en valeur des membres.",
+      "moduleIds": ["common_identity", "common_why", "common_previous_quarter", "common_values", "common_gwc", "engagement_responsibilities", "common_leadership", "common_commitments"]
+    },
+    {
+      "id": "admin_autre",
+      "label": "Administration / autre role",
+      "family": "support",
+      "level": "support",
+      "description": "Role administratif ou de support qui ne correspond pas exactement aux options ci-dessus.",
+      "moduleIds": ["common_identity", "common_why_light", "common_previous_quarter_light", "common_values_light", "common_gwc_light", "admin_other_responsibilities", "common_leadership_light", "common_commitments_light"]
+    }
+  ],
+  "pathways": [
+    {
+      "id": "none",
+      "fromRoleIds": ["coach_communaute", "coach_developpement", "coach_professionnel"],
+      "toRoleId": "",
+      "label": "Je ne veux pas explorer un autre role pour l'instant",
+      "summary": "Tu peux rester concentre sur ton role actuel. Un excellent fit dans le bon role a beaucoup de valeur."
+    },
+    {
+      "id": "path_communaute_to_developpement",
+      "fromRoleIds": ["coach_communaute"],
+      "toRoleId": "coach_developpement",
+      "label": "Explorer Coach Developpement",
+      "summary": "Ajouter les Fondations et le coaching 1:1 d'integration des nouveaux membres.",
+      "expectations": ["Livrer des Fondations selon les procedures CFSB", "Creer une premiere experience rassurante", "Developper la pedagogie 1:1", "Communiquer clairement les prochaines etapes au membre"]
+    },
+    {
+      "id": "path_developpement_to_professionnel",
+      "fromRoleIds": ["coach_developpement"],
+      "toRoleId": "coach_professionnel",
+      "label": "Explorer Coach Professionnel",
+      "summary": "Ajouter PT/SP, portefeuille client, CSM et responsabilite de revenu.",
+      "expectations": ["Suivre des clients sur 3-6-12 mois", "Developper un portefeuille", "Faire des check-ups et suivis", "Recommander les bons services au bon moment"]
+    },
+    {
+      "id": "path_professionnel_to_superstar",
+      "fromRoleIds": ["coach_professionnel"],
+      "toRoleId": "coach_superstar",
+      "label": "Explorer Coach Superstar / Specialiste",
+      "summary": "Approfondir une niche, une expertise ou une population cible.",
+      "expectations": ["Identifier une niche", "Generer une demande organique", "Devenir une reference interne", "Documenter ce qui cree de la valeur"]
+    },
+    {
+      "id": "path_professionnel_to_coordination",
+      "fromRoleIds": ["coach_professionnel"],
+      "toRoleId": "coordination_coach",
+      "label": "Explorer Coordination / Chef d'equipe",
+      "summary": "Bifurquer vers le support a l'equipe, le mentorat ou l'operation. Ce n'est pas une promotion automatique.",
+      "expectations": ["Aider d'autres coachs a progresser", "Contribuer aux processus", "Porter des projets d'equipe", "Developper un leadership horizontal"]
+    }
+  ],
+  "modules": [
+    {
+      "id": "common_identity",
+      "title": "Identite et role",
+      "intro": "Ces informations nous aident a adapter le formulaire a ton role actuel.",
+      "questions": [
+        {"id": "employee_name", "label": "Nom complet", "type": "short_text", "required": true},
+        {"id": "employee_email", "label": "Adresse courriel", "type": "email", "required": true},
+        {"id": "selected_role_confirmation", "label": "Est-ce que le role choisi represente bien ce que tu portes actuellement a CFSB?", "type": "single_choice", "required": true, "options": ["Oui", "Partiellement", "Non"]},
+        {"id": "selected_role_notes", "label": "Si ton role actuel est hybride ou different, precise-le ici.", "type": "long_text", "required": false, "showIf": {"questionId": "selected_role_confirmation", "notEquals": "Oui"}}
+      ]
+    },
+    {
+      "id": "common_why",
+      "title": "Why et alignement",
+      "intro": "Avant d'evaluer les taches, on veut comprendre ce qui te garde connecte au projet CFSB.",
+      "questions": [
+        {"id": "why_joined_and_stays", "label": "Qu'est-ce qui t'a attire chez CFSB au depart, et aujourd'hui qu'est-ce qui te garde ici?", "type": "long_text", "required": true},
+        {"id": "most_aligned_moment", "label": "Quand est-ce que tu te sens le plus aligne et utile dans ton role? Decris un moment recent.", "type": "long_text", "required": true},
+        {"id": "three_year_contribution", "label": "Dans 3 ans, qu'aimerais-tu avoir construit, appris ou contribue a CFSB?", "type": "long_text", "required": false},
+        {"id": "vision_misalignment", "label": "Y a-t-il un aspect de notre vision ou tu te sens moins aligne, ou que tu vois differemment?", "type": "long_text", "required": false}
+      ]
+    },
+    {
+      "id": "common_why_light",
+      "title": "Alignement",
+      "intro": "Une version courte pour comprendre ce qui fonctionne dans ton role.",
+      "questions": [
+        {"id": "why_joined_and_stays", "label": "Qu'est-ce qui te garde connecte a CFSB aujourd'hui?", "type": "long_text", "required": false},
+        {"id": "most_aligned_moment", "label": "Quand est-ce que tu sens que ton travail aide vraiment l'equipe ou les membres?", "type": "long_text", "required": false}
+      ]
+    },
+    {
+      "id": "common_previous_quarter",
+      "title": "Retour sur le trimestre precedent",
+      "intro": "Un engagement non tenu n'est pas un echec. C'est une donnee utile pour mieux ajuster le prochain trimestre.",
+      "questions": [
+        {"id": "previous_commitments", "label": "Quels etaient tes engagements ou objectifs principaux du trimestre precedent?", "type": "long_text", "required": false},
+        {"id": "commitments_kept", "label": "Lesquels as-tu tenus? Pourquoi?", "type": "long_text", "required": false},
+        {"id": "commitments_not_kept", "label": "Lesquels n'as-tu pas tenus? Quels ont ete les obstacles?", "type": "long_text", "required": false},
+        {"id": "quarter_pride", "label": "Ta plus grande fierte du trimestre", "type": "short_text", "required": false},
+        {"id": "quarter_learning", "label": "Ton plus grand apprentissage du trimestre", "type": "short_text", "required": false}
+      ]
+    },
+    {
+      "id": "common_previous_quarter_light",
+      "title": "Retour rapide sur le trimestre",
+      "intro": "Un court bilan pour preparer la rencontre.",
+      "questions": [
+        {"id": "quarter_pride", "label": "Ta plus grande fierte du trimestre", "type": "short_text", "required": false},
+        {"id": "quarter_obstacle", "label": "Le principal obstacle ou irritant du trimestre", "type": "short_text", "required": false}
+      ]
+    },
+    {
+      "id": "common_values",
+      "title": "Valeurs CFSB",
+      "intro": "Evalue comment tu incarnes les valeurs dans ton role actuel. Ajoute un exemple quand c'est utile.",
+      "questions": [
+        {"id": "value_courage_score", "label": "Courage: dire les vraies choses, demander de l'aide, essayer, prendre initiative.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "value_courage_example", "label": "Exemple concret lie au courage", "type": "long_text", "required": false},
+        {"id": "value_bienveillance_score", "label": "Bienveillance: accueillir, soutenir, inclure et se soucier de la progression des autres.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "value_bienveillance_example", "label": "Exemple concret lie a la bienveillance", "type": "long_text", "required": false},
+        {"id": "value_professionalism_score", "label": "Professionnalisme: etre prepare, ponctuel, constant, fiable et forme.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "value_professionalism_example", "label": "Exemple concret lie au professionnalisme", "type": "long_text", "required": false},
+        {"id": "value_team_score", "label": "Esprit d'equipe: collaborer, partager l'information, soutenir et celebrer les autres.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "value_team_example", "label": "Exemple concret lie a l'esprit d'equipe", "type": "long_text", "required": false}
+      ]
+    },
+    {
+      "id": "common_values_light",
+      "title": "Valeurs CFSB",
+      "intro": "Version courte: evalue ton alignement global aux valeurs CFSB.",
+      "questions": [
+        {"id": "value_courage_score", "label": "Courage", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "value_bienveillance_score", "label": "Bienveillance", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "value_professionalism_score", "label": "Professionnalisme", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "value_team_score", "label": "Esprit d'equipe", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "values_comment", "label": "Commentaire optionnel sur les valeurs", "type": "long_text", "required": false}
+      ]
+    },
+    {
+      "id": "common_gwc",
+      "title": "Clarite du role - GWC",
+      "intro": "Gets it, Wants it, Capacity: comprendre le role, vouloir le role, avoir la capacite de le porter.",
+      "questions": [
+        {"id": "gwc_gets_it", "label": "GET IT: je comprends clairement ma description de poste, mes responsabilites et ce qui est attendu.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "gwc_gets_it_gap", "label": "Si ce n'est pas clair, quels aspects doivent etre clarifies?", "type": "long_text", "required": false, "showIfMax": {"questionId": "gwc_gets_it", "max": 2}},
+        {"id": "gwc_wants_it", "label": "WANT IT: je veux ce role tel qu'il est decrit, avec les responsabilites et la remuneration.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "gwc_wants_it_gap", "label": "Si quelque chose ne te convient pas, quoi?", "type": "long_text", "required": false, "showIfMax": {"questionId": "gwc_wants_it", "max": 2}},
+        {"id": "gwc_capacity", "label": "CAPACITY: j'ai le temps, l'energie et les competences pour assumer ce role.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "gwc_capacity_gap", "label": "Qu'est-ce qui te manque pour avoir la pleine capacite?", "type": "long_text", "required": false, "showIfMax": {"questionId": "gwc_capacity", "max": 2}},
+        {"id": "tools_training_missing", "label": "Quels outils, ressources ou formations te manquent pour bien faire ton travail?", "type": "long_text", "required": false}
+      ]
+    },
+    {
+      "id": "common_gwc_light",
+      "title": "Clarite du role",
+      "intro": "Version courte de la clarite du role.",
+      "questions": [
+        {"id": "gwc_gets_it", "label": "Je comprends clairement ce qui est attendu de moi.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "gwc_wants_it", "label": "Je veux continuer a porter ce role dans sa forme actuelle.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "gwc_capacity", "label": "J'ai la capacite d'assumer mes taches et engagements.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "gwc_comment", "label": "Commentaire sur ton role, si utile", "type": "long_text", "required": false}
+      ]
+    },
+    {
+      "id": "coach_communaute_responsibilities",
+      "title": "Responsabilites - Coach Communaute",
+      "intro": "Tu es evalue sur ton role actuel: cours de groupe, experience membre, standards et fiabilite.",
+      "questions": [
+        {"id": "coach_comm_group_quality", "label": "Je livre mes cours avec securite, energie et clarte.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "coach_comm_standards", "label": "J'applique les standards techniques et pedagogiques CFSB avec constance.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "coach_comm_member_connection", "label": "Je cree une experience chaleureuse et motivante pour les membres.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "coach_comm_reliability", "label": "Je suis prepare, ponctuel et fiable dans mes engagements.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "coach_comm_signal", "label": "Je remonte les informations importantes a la bonne personne.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "coach_comm_comment", "label": "Commentaire sur ton role de Coach Communaute", "type": "long_text", "required": false}
+      ]
+    },
+    {
+      "id": "coach_developpement_responsibilities",
+      "title": "Responsabilites - Coach Developpement",
+      "intro": "Tu es evalue sur les cours de groupe et les Fondations.",
+      "questions": [
+        {"id": "coach_dev_group_quality", "label": "Je livre mes cours avec securite, energie, progression et constance.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "coach_dev_foundations", "label": "Je livre les Fondations avec accueil, pedagogie et progression claire.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "coach_dev_first_experience", "label": "Je contribue a transformer l'arrivee d'un nouveau membre en experience rassurante et motivante.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "coach_dev_standards", "label": "J'applique les standards CFSB et je sais adapter selon le niveau du membre.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "coach_dev_referrals", "label": "Je sais reperer quand un membre beneficierait d'un service ou soutien supplementaire.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "coach_dev_comment", "label": "Commentaire sur ton role de Coach Developpement", "type": "long_text", "required": false}
+      ]
+    },
+    {
+      "id": "coach_professionnel_responsibilities",
+      "title": "Responsabilites - Coach Professionnel",
+      "intro": "Tu es evalue sur les services personnalises, le portefeuille client, le CSM et la progression de carriere.",
+      "questions": [
+        {"id": "coach_pro_service_delivery", "label": "Je livre mes services personnalises avec plan, progression et suivi.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "coach_pro_portfolio", "label": "Je developpe et maintiens activement mon portefeuille de clients.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "coach_pro_csm", "label": "Je fais les check-ups, suivis et ajustements necessaires pour garder mes clients engages.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "coach_pro_revenue", "label": "Je comprends et assume la responsabilite economique associee a mon role.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "coach_pro_competence", "label": "Je developpe une competence ou niche qui augmente la valeur livree aux membres.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "coach_pro_relation", "label": "Je cree des relations qui soutiennent la retention, les referrals et l'acquisition.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "coach_pro_numbers", "label": "Si pertinent: nombre de seances groupe, clients PT/SP vises, disponibilites ou preferences horaires.", "type": "long_text", "required": false}
+      ]
+    },
+    {
+      "id": "head_coach_responsibilities",
+      "title": "Responsabilites - Head Coach",
+      "intro": "Focus sur la qualite technique, la programmation, le feedback et le developpement des coachs.",
+      "questions": [
+        {"id": "head_programming_quality", "label": "La programmation est livree avec logique, clarte et respect des echeanciers.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "head_observations_feedback", "label": "Les observations et feedbacks techniques sont faits, documentes et utiles.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "head_onboarding", "label": "L'onboarding technique des nouveaux coachs est structure et suivi.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "head_standards_evolution", "label": "Je fais evoluer les standards et outils techniques de facon proactive.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "head_comment", "label": "Commentaire sur le role Head Coach", "type": "long_text", "required": false}
+      ]
+    },
+    {
+      "id": "coordinatrice_responsibilities",
+      "title": "Responsabilites - Coordinatrice du centre",
+      "intro": "Focus sur l'execution administrative, operationnelle, succes clients et ventes encadrees.",
+      "questions": [
+        {"id": "coord_admin_finance", "label": "La gestion administrative et financiere est rigoureuse et fiable.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "coord_operations", "label": "La coordination quotidienne du centre est fluide et anticipee.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "coord_client_success", "label": "Les processus de succes clients sont executes avec constance.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "coord_sales_execution", "label": "Les suivis ventes sont executes selon le processus defini.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "coord_reporting", "label": "Les donnees et signaux importants sont rapportes clairement a la direction.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "coord_comment", "label": "Commentaire sur le role de coordination", "type": "long_text", "required": false}
+      ]
+    },
+    {
+      "id": "entretien_responsibilities",
+      "title": "Responsabilites - Entretien menager",
+      "intro": "Version adaptee au role: qualite, fiabilite, autonomie et communication.",
+      "questions": [
+        {"id": "cleaning_quality", "label": "Les espaces sont propres aux standards CFSB apres chaque seance.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "cleaning_equipment", "label": "Le materiel, les surfaces, toilettes, douches et vestiaires sont ranges/desinfectes correctement.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "cleaning_reliability", "label": "Je suis fiable selon l'horaire convenu et je communique les imprevus.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "cleaning_autonomy", "label": "Je travaille en autonomie selon la liste et je maintiens le standard sans supervision.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "cleaning_signal", "label": "Je signale rapidement les bris, anomalies, manques ou enjeux de securite.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "cleaning_comment", "label": "Commentaire sur l'entretien menager", "type": "long_text", "required": false}
+      ]
+    },
+    {
+      "id": "engagement_responsibilities",
+      "title": "Responsabilites - Engagement communautaire et evenements",
+      "intro": "Focus sur l'organisation, l'animation, l'inclusion et l'impact communautaire.",
+      "questions": [
+        {"id": "event_planning", "label": "Les evenements sont planifies, communiques et executes avec rigueur.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "community_animation", "label": "La communaute est animee avec chaleur, inclusion et regularite.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "member_stories", "label": "Les membres sont mis en valeur de facon authentique.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "team_involvement", "label": "L'equipe est impliquee et informee dans les projets communautaires.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "event_comment", "label": "Commentaire sur l'engagement communautaire", "type": "long_text", "required": false}
+      ]
+    },
+    {
+      "id": "admin_other_responsibilities",
+      "title": "Responsabilites - Administration / autre",
+      "intro": "Role de support ou administratif a preciser.",
+      "questions": [
+        {"id": "admin_role_description", "label": "Quelles sont tes responsabilites principales actuellement?", "type": "long_text", "required": true},
+        {"id": "admin_reliability", "label": "Je livre mes responsabilites avec fiabilite et constance.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "admin_collaboration", "label": "Je collabore efficacement avec la direction et l'equipe.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "admin_support_needed", "label": "Quel support ou clarification te serait utile?", "type": "long_text", "required": false}
+      ]
+    },
+    {
+      "id": "common_leadership",
+      "title": "Leadership, mentorat, equipe et systemes",
+      "intro": "Ces reponses aident Gabriel et Michael a ameliorer le soutien offert a l'equipe.",
+      "questions": [
+        {"id": "lever_mentorship", "label": "Mentorat recu de la direction: 1:1, roadmap, feedback continu.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "lever_team", "label": "Soutien et collaboration de l'equipe: entraide, codeveloppement, ambiance.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "lever_systems", "label": "Qualite des systemes CFSB: outils, procedures, communication, structure.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "lever_priority", "label": "Lequel de ces leviers a le plus de potentiel d'amelioration?", "type": "single_choice", "required": true, "options": ["Mentorat", "Equipe", "Systemes"]},
+        {"id": "lever_improvement", "label": "Quelle amelioration concrete serait la plus utile?", "type": "long_text", "required": false},
+        {"id": "leadership_start", "label": "La direction devrait COMMENCER a...", "type": "long_text", "required": false},
+        {"id": "leadership_stop", "label": "La direction devrait ARRETER de...", "type": "long_text", "required": false},
+        {"id": "leadership_continue", "label": "La direction devrait CONTINUER a...", "type": "long_text", "required": false}
+      ]
+    },
+    {
+      "id": "common_leadership_light",
+      "title": "Soutien de l'equipe et de la direction",
+      "intro": "Version courte du feedback ascendant.",
+      "questions": [
+        {"id": "lever_support", "label": "Je recois le soutien necessaire pour bien faire mon travail.", "type": "scale", "scaleId": "agreement4", "required": true},
+        {"id": "leadership_comment", "label": "Qu'est-ce que la direction pourrait ameliorer pour te soutenir?", "type": "long_text", "required": false}
+      ]
+    },
+    {
+      "id": "common_commitments",
+      "title": "Engagements pour le prochain trimestre",
+      "intro": "Choisis peu d'engagements, mais assez concrets pour qu'on puisse les suivre.",
+      "questions": [
+        {"id": "next_objectives", "label": "Tes 1 a 3 objectifs cles et mesurables pour le prochain trimestre", "type": "long_text", "required": true},
+        {"id": "skill_priority", "label": "La competence prioritaire que tu veux developper ce trimestre", "type": "short_text", "required": false},
+        {"id": "skill_problem", "label": "Quel probleme cette competence va-t-elle t'aider a mieux resoudre?", "type": "long_text", "required": false},
+        {"id": "development_method", "label": "Quelle formation, lecture, mentorat ou pratique vas-tu utiliser?", "type": "long_text", "required": false},
+        {"id": "stop_doing", "label": "Ce que tu vas arreter de faire pour liberer de l'espace", "type": "short_text", "required": false},
+        {"id": "direction_support", "label": "Comment Gabriel et Michael peuvent-ils t'aider concretement ce trimestre?", "type": "long_text", "required": false}
+      ]
+    },
+    {
+      "id": "common_commitments_light",
+      "title": "Engagements pour le prochain trimestre",
+      "intro": "Version courte.",
+      "questions": [
+        {"id": "next_objectives", "label": "Quel est ton engagement principal pour le prochain trimestre?", "type": "long_text", "required": false},
+        {"id": "direction_support", "label": "Quel soutien serait utile?", "type": "long_text", "required": false}
+      ]
+    },
+    {
+      "id": "coach_pathway",
+      "title": "Trajectoire coach",
+      "intro": "Cette section n'est pas une promesse ni une evaluation du niveau suivant. Elle sert a ouvrir la bonne conversation.",
+      "questions": [
+        {"id": "coach_aspiration_select", "label": "Est-ce qu'un role ou niveau t'interesse a explorer?", "type": "pathway_choice", "required": true},
+        {"id": "coach_aspiration_why", "label": "Qu'est-ce qui t'attire dans cette trajectoire?", "type": "long_text", "required": false, "showIfPathway": true},
+        {"id": "coach_aspiration_readiness", "label": "A quel point te sens-tu pret a explorer cette trajectoire?", "type": "scale", "scaleId": "readiness4", "required": false, "showIfPathway": true},
+        {"id": "coach_aspiration_gap", "label": "Qu'est-ce qui te manque pour te rapprocher de cette trajectoire?", "type": "long_text", "required": false, "showIfPathway": true},
+        {"id": "coach_aspiration_support", "label": "Quel support concret de CFSB t'aiderait a progresser?", "type": "long_text", "required": false, "showIfPathway": true},
+        {"id": "coach_aspiration_next_step", "label": "Quelle petite action pourrais-tu tester au prochain trimestre?", "type": "short_text", "required": false, "showIfPathway": true}
+      ]
+    }
+  ],
+  "ownerFields": [
+    {"id": "owner_reviewer", "label": "Evaluateur", "type": "single_choice", "options": ["Gabriel", "Michael", "Calibration"]},
+    {"id": "owner_people_values", "label": "Lecture owners - valeurs", "type": "long_text"},
+    {"id": "owner_gwc", "label": "Lecture owners - GWC", "type": "long_text"},
+    {"id": "owner_performance", "label": "Lecture owners - performance operationnelle", "type": "long_text"},
+    {"id": "owner_priority_topics", "label": "3 sujets prioritaires a aborder", "type": "long_text"},
+    {"id": "owner_questions", "label": "Questions d'approfondissement", "type": "long_text"},
+    {"id": "owner_meeting_format", "label": "Format de rencontre recommande", "type": "single_choice", "options": ["Gabriel seul", "Gabriel seul + Michael consulte", "Gabriel + Michael", "Gabriel + Michael + discussion RH"]},
+    {"id": "owner_direction_commitments", "label": "Engagements de la direction", "type": "long_text"},
+    {"id": "owner_followup_notes", "label": "Notes de suivi", "type": "long_text"}
+  ]
+}

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="fr-CA">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Dashboard Owners - Roadmap CFSB</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <strong>Dashboard owners</strong>
+          <span>Preparation des rencontres roadmap</span>
+        </div>
+        <div class="top-actions">
+          <a class="button secondary" href="./index.html">Formulaire employe</a>
+          <button class="button secondary" id="settingsButton" type="button">Parametres</button>
+          <button class="button secondary" id="importButton" type="button">Importer JSON</button>
+          <button class="button warn" id="clearLocalButton" type="button">Vider tests locaux</button>
+        </div>
+      </header>
+
+      <main class="container">
+        <section class="hero">
+          <div>
+            <h1>Lire, annoter, preparer.</h1>
+            <p>
+              Cette vue est pensee pour Michael et Gabriel: reponses employe a gauche,
+              notes owners et decision de format de rencontre a droite.
+            </p>
+          </div>
+          <aside class="status-panel">
+            <h2>Vue locale MVP</h2>
+            <p>
+              Pour le prototype, les soumissions et notes sont gardees dans ce navigateur.
+              L'Apps Script utilisera les memes champs dans Google Sheets.
+            </p>
+          </aside>
+        </section>
+
+        <section class="admin-grid">
+          <aside class="panel">
+            <h2>Soumissions</h2>
+            <p id="submissionCount">Aucune soumission locale.</p>
+            <div class="submission-list" id="submissionList"></div>
+          </aside>
+
+          <section class="form-area" id="detailArea">
+            <div class="notice">Selectionne une soumission a gauche.</div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <div class="modal-backdrop" id="importModal" role="dialog" aria-modal="true" aria-labelledby="importTitle">
+      <div class="modal-card">
+        <h2 id="importTitle">Importer une soumission JSON</h2>
+        <label class="field">
+          <span>Payload JSON</span>
+          <textarea id="importPayload" placeholder='{"selectedRoleId":"coach_communaute","answers":{...}}'></textarea>
+        </label>
+        <div class="actions">
+          <button class="button secondary" id="closeImportButton" type="button">Fermer</button>
+          <button class="button" id="saveImportButton" type="button">Importer</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div class="modal-card">
+        <h2 id="settingsTitle">Parametres dashboard</h2>
+        <label class="field">
+          <span>URL Apps Script Web App</span>
+          <input class="input" id="endpointInput" type="url" placeholder="https://script.google.com/macros/s/.../exec">
+          <small>Utilise la meme URL que le formulaire. Laisse vide pour sauvegarder les notes localement.</small>
+        </label>
+        <div class="actions">
+          <button class="button secondary" id="closeSettingsButton" type="button">Fermer</button>
+          <button class="button" id="saveSettingsButton" type="button">Enregistrer</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="./owners.js"></script>
+  </body>
+</html>
