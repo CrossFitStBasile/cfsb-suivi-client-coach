@@ -733,6 +733,14 @@ button.primary {
   font-weight: 800;
 }
 
+.toast button {
+  margin-left: 12px;
+  padding: 6px 10px;
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+}
+
 @media (min-width: 760px) {
   .metrics {
     grid-template-columns: repeat(4, minmax(0, 1fr));

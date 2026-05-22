@@ -6,6 +6,9 @@ Derniere mise a jour : 2026-05-21
 
 - Le dashboard coach est maintenant servi par GitHub Pages, avec donnees privees recues du backend Apps Script via PIN.
 - Un mode demo/sandbox local est ajoute pour tester les workflows sans toucher aux vraies donnees, GHL, CoachRx ou CSM.
+- Le mode demo a maintenant des boutons contextuels par type de tache : Programme = Fait/Masquer, Rebooking = Envoyer rappel/Masquer, Questionnaire = Envoyer questionnaire/Masquer, Validation = Valider/Masquer.
+- Les actions demo affichent un bouton Annuler dans la confirmation pour revenir en arriere apres un clic accidentel.
+- Les clients demo peuvent etre modifies ou retires du dashboard depuis la fiche client.
 - Le backend Apps Script actif est le deployment `AKfycbz1qODx2pCWQ2yHhkse6FBxdyn741cYObW_qGsuox4RmVs7m6WYy3YqFTSti8YcRiGQ`.
 - Les coachs peuvent choisir un coach dans le menu deroulant quand les donnees sont chargees.
 - L'extension CoachRx permet de pousser les donnees CoachRx vers le backend.
@@ -35,8 +38,11 @@ Derniere mise a jour : 2026-05-21
 0. Utiliser le mode demo pour valider le produit
    - Ouvrir `Coach Test CFSB`.
    - Tester les 10 clients fictifs.
-   - Cliquer `Fait`, `Masquer`, `Envoyer questionnaire`, `Marquer traite`.
+   - Cliquer `Fait`, `Masquer`, `Envoyer rappel`, `Envoyer questionnaire`, `Marquer traite`.
+   - Tester `Annuler` apres un clic accidentel.
    - Ajouter un client fictif.
+   - Modifier un client fictif.
+   - Retirer un client fictif du dashboard.
    - Entrer une date Kilo.
    - Marquer un risque.
    - Utiliser `Reset demo` pour revenir au scenario initial.
@@ -97,7 +103,7 @@ Derniere mise a jour : 2026-05-21
 2. Mission du jour
    - Clarifier les types d'actions : Programme, Rebooking, Questionnaire, Validation, Retention, Impact.
    - S'assurer que les filtres affichent seulement les bonnes taches.
-   - Clarifier les boutons `En cours`, `Masquer`, `Fait`.
+   - Continuer a personnaliser les boutons selon le type de tache, pas avec un trio generique.
    - Prevoir une fonction de reset des tests avant de passer en production.
 
 3. Questionnaires
