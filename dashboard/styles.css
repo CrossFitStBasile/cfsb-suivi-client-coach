@@ -825,7 +825,7 @@ button.primary {
 }
 
 .views {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
 }
 
 .app-header p,
@@ -1122,6 +1122,80 @@ button.primary,
   align-items: center;
   border-radius: 8px;
   padding: 10px;
+}
+
+.scenario-map {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.scenario-map span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #15171b;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  padding: 6px 10px;
+}
+
+.scenario-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+.scenario-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #1e2126, #17191d);
+  padding: 14px;
+  min-height: 270px;
+}
+
+.scenario-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.scenario-number {
+  color: #ff4646;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.scenario-card h3 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.scenario-card p,
+.scenario-card li {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.scenario-card ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.scenario-card button {
+  align-self: end;
+  min-height: 40px;
+  border: 1px solid var(--red);
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 900;
 }
 
 @media (min-width: 920px) {

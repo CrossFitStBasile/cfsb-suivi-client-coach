@@ -1,6 +1,6 @@
 # Memoire - Dashboard Coach CFSB
 
-Derniere mise a jour : 2026-05-21
+Derniere mise a jour : 2026-05-22
 
 ## Etat actuel
 
@@ -15,6 +15,7 @@ Derniere mise a jour : 2026-05-21
 - Le bouton Systeme ne doit apparaitre qu'en haut a droite pres du choix du coach. Il ne doit pas doubler la navigation principale.
 - Alumni est maintenant une section visible dans la navigation principale, separee de Performance.
 - Les boutons d'action dans Mission doivent rester alignes et lisibles, meme pour `Envoyer questionnaire`.
+- La section `Scenarios` sert de banc d'essai demo : elle permet de provoquer 9 cas importants sans toucher aux vraies donnees.
 - Le backend Apps Script actif est le deployment `AKfycbz1qODx2pCWQ2yHhkse6FBxdyn741cYObW_qGsuox4RmVs7m6WYy3YqFTSti8YcRiGQ`.
 - Les coachs peuvent choisir un coach dans le menu deroulant quand les donnees sont chargees.
 - L'extension CoachRx permet de pousser les donnees CoachRx vers le backend.
@@ -50,6 +51,7 @@ Derniere mise a jour : 2026-05-21
    - Modifier un client fictif.
    - Retirer/classer un client fictif du dashboard vers Alumni, Hold, Retire ou Erreur.
    - Ouvrir la section Alumni et creer une mission depuis un alumni.
+   - Ouvrir `Scenarios` et lancer les 9 cas : Programme, Rebooking, Questionnaire du, Reponse rouge, Fin membership, Fin prevue coach, Hold, Alumni, Impact.
    - Entrer une date Kilo.
    - Marquer un risque.
    - Utiliser `Reset demo` pour revenir au scenario initial.
