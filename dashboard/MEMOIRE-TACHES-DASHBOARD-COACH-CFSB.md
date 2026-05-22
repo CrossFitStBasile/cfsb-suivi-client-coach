@@ -9,6 +9,9 @@ Derniere mise a jour : 2026-05-21
 - Le mode demo a maintenant des boutons contextuels par type de tache : Programme = Fait/Masquer, Rebooking = Envoyer rappel/Masquer, Questionnaire = Envoyer questionnaire/Masquer, Validation = Valider/Masquer.
 - Les actions demo affichent un bouton Annuler dans la confirmation pour revenir en arriere apres un clic accidentel.
 - Les clients demo peuvent etre modifies ou retires du dashboard depuis la fiche client.
+- Modifier client est maintenant affiche directement dans la fiche client active, pas en haut de la liste.
+- Retirer/classer un client demande maintenant une destination : Alumni a reactiver, Retire definitivement, Sur hold, ou Erreur/hors liste.
+- Le risque coach doit rester une decision manuelle. Les indices calcules ou inventes en demo doivent etre affiches comme `Signal systeme`.
 - Le backend Apps Script actif est le deployment `AKfycbz1qODx2pCWQ2yHhkse6FBxdyn741cYObW_qGsuox4RmVs7m6WYy3YqFTSti8YcRiGQ`.
 - Les coachs peuvent choisir un coach dans le menu deroulant quand les donnees sont chargees.
 - L'extension CoachRx permet de pousser les donnees CoachRx vers le backend.
@@ -42,7 +45,8 @@ Derniere mise a jour : 2026-05-21
    - Tester `Annuler` apres un clic accidentel.
    - Ajouter un client fictif.
    - Modifier un client fictif.
-   - Retirer un client fictif du dashboard.
+   - Retirer/classer un client fictif du dashboard vers Alumni, Hold, Retire ou Erreur.
+   - Creer une mission depuis un alumni.
    - Entrer une date Kilo.
    - Marquer un risque.
    - Utiliser `Reset demo` pour revenir au scenario initial.
@@ -97,6 +101,7 @@ Derniere mise a jour : 2026-05-21
    - Afficher derniere date Kilo planifiee.
    - Afficher dernier questionnaire.
    - Afficher risque coach manuel.
+   - Afficher signal systeme separement du risque coach.
    - Afficher objectifs/notes coach.
    - Ajouter historique client plus complet quand disponible.
 
@@ -116,8 +121,8 @@ Derniere mise a jour : 2026-05-21
    - Relance ou tache automatique si pas de reponse apres X jours.
 
 4. Alumni / reactivation
-   - Ajouter un alumni plus simplement.
-   - Creer une tache de recontact.
+   - Ajouter/classer un alumni plus simplement.
+   - Creer une tache de recontact depuis la liste alumni.
    - Archiver les suivis completes.
    - Associer les reactivations aux impacts quand il y a nouveau revenu.
 

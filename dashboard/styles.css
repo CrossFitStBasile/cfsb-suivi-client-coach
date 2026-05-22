@@ -1085,6 +1085,27 @@ button.primary,
   margin-top: 10px;
 }
 
+.client-toolbar {
+  justify-content: flex-start;
+  margin: 12px 0;
+}
+
+.client-toolbar label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.inline-edit-form {
+  box-shadow: inset 4px 0 0 var(--red);
+}
+
+.mini-head {
+  margin-top: 18px;
+}
+
 .client-directory {
   display: grid;
   gap: 8px;
