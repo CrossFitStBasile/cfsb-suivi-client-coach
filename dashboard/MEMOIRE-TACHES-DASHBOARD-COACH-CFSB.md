@@ -5,6 +5,7 @@ Derniere mise a jour : 2026-05-21
 ## Etat actuel
 
 - Le dashboard coach est maintenant servi par GitHub Pages, avec donnees privees recues du backend Apps Script via PIN.
+- Un mode demo/sandbox local est ajoute pour tester les workflows sans toucher aux vraies donnees, GHL, CoachRx ou CSM.
 - Le backend Apps Script actif est le deployment `AKfycbz1qODx2pCWQ2yHhkse6FBxdyn741cYObW_qGsuox4RmVs7m6WYy3YqFTSti8YcRiGQ`.
 - Les coachs peuvent choisir un coach dans le menu deroulant quand les donnees sont chargees.
 - L'extension CoachRx permet de pousser les donnees CoachRx vers le backend.
@@ -30,6 +31,15 @@ Derniere mise a jour : 2026-05-21
   - quand un client est identifiable, l'action `Envoyer questionnaire` doit rester disponible.
 
 ## Priorites immediates avant meeting / test equipe
+
+0. Utiliser le mode demo pour valider le produit
+   - Ouvrir `Coach Test CFSB`.
+   - Tester les 10 clients fictifs.
+   - Cliquer `Fait`, `Masquer`, `Envoyer questionnaire`, `Marquer traite`.
+   - Ajouter un client fictif.
+   - Entrer une date Kilo.
+   - Marquer un risque.
+   - Utiliser `Reset demo` pour revenir au scenario initial.
 
 1. Stabiliser l'interface visible
    - Fermer clairement les panneaux temporaires avec un bouton X.

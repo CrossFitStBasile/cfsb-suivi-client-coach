@@ -239,6 +239,41 @@ button.primary {
   gap: 8px;
 }
 
+.demo-banner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  align-items: center;
+  margin-bottom: 12px;
+  border: 1px solid rgba(216, 154, 33, 0.55);
+  border-radius: 8px;
+  background: rgba(216, 154, 33, 0.12);
+  padding: 10px;
+}
+
+.demo-banner strong,
+.demo-banner span {
+  grid-column: 1;
+}
+
+.demo-banner span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.demo-banner button {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 900;
+}
+
 .icon-button {
   min-height: 40px;
   border: 1px solid var(--line);
