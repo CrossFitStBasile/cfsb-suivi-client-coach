@@ -12,6 +12,9 @@ Derniere mise a jour : 2026-05-21
 - Modifier client est maintenant affiche directement dans la fiche client active, pas en haut de la liste.
 - Retirer/classer un client demande maintenant une destination : Alumni a reactiver, Retire definitivement, Sur hold, ou Erreur/hors liste.
 - Le risque coach doit rester une decision manuelle. Les indices calcules ou inventes en demo doivent etre affiches comme `Signal systeme`.
+- Le bouton Systeme ne doit apparaitre qu'en haut a droite pres du choix du coach. Il ne doit pas doubler la navigation principale.
+- Alumni est maintenant une section visible dans la navigation principale, separee de Performance.
+- Les boutons d'action dans Mission doivent rester alignes et lisibles, meme pour `Envoyer questionnaire`.
 - Le backend Apps Script actif est le deployment `AKfycbz1qODx2pCWQ2yHhkse6FBxdyn741cYObW_qGsuox4RmVs7m6WYy3YqFTSti8YcRiGQ`.
 - Les coachs peuvent choisir un coach dans le menu deroulant quand les donnees sont chargees.
 - L'extension CoachRx permet de pousser les donnees CoachRx vers le backend.
@@ -46,7 +49,7 @@ Derniere mise a jour : 2026-05-21
    - Ajouter un client fictif.
    - Modifier un client fictif.
    - Retirer/classer un client fictif du dashboard vers Alumni, Hold, Retire ou Erreur.
-   - Creer une mission depuis un alumni.
+   - Ouvrir la section Alumni et creer une mission depuis un alumni.
    - Entrer une date Kilo.
    - Marquer un risque.
    - Utiliser `Reset demo` pour revenir au scenario initial.

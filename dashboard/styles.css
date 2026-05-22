@@ -522,7 +522,7 @@ button.primary {
 
 .row-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(70px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 6px;
 }
 
@@ -535,6 +535,10 @@ button.primary {
   cursor: pointer;
   font-size: 12px;
   font-weight: 900;
+  line-height: 1.15;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .row-actions .done {
