@@ -99,6 +99,26 @@
       font-size: 0.95rem;
     }
 
+    .test-banner {
+      display: none;
+      margin: 0 0 20px;
+      border: 1px solid rgba(32, 91, 103, 0.22);
+      border-radius: 7px;
+      padding: 12px;
+      background: rgba(32, 91, 103, 0.08);
+      color: var(--ink);
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+
+    body.test-mode .test-banner {
+      display: block;
+    }
+
+    body:not(.test-mode) .test-only {
+      display: none !important;
+    }
+
     .steps {
       display: grid;
       gap: 10px;
@@ -405,6 +425,21 @@
       color: var(--ink);
     }
 
+    .test-recap-note {
+      margin-top: 18px;
+      border: 1px solid rgba(32, 91, 103, 0.24);
+      border-radius: 7px;
+      padding: 14px;
+      background: rgba(32, 91, 103, 0.08);
+      color: var(--muted);
+      line-height: 1.45;
+      font-size: 0.92rem;
+    }
+
+    .test-recap-note strong {
+      color: var(--ink);
+    }
+
     .status-pill {
       display: inline-flex;
       align-items: center;
@@ -513,6 +548,9 @@
       <p class="intro">
         Quelques minutes pour dire où tu en es, ce qui va bien, et ce que ton coach devrait savoir pour mieux t'accompagner.
       </p>
+      <p class="test-banner test-only">
+        Mode test coach. Les réponses servent à créer une base de données d'essai et à valider la classification, pas à suivre un vrai client.
+      </p>
       <nav class="steps" aria-label="Progression">
         <div class="step-dot active" data-step-label="0"><span>1</span><span>Départ</span></div>
         <div class="step-dot" data-step-label="1"><span>2</span><span>État</span></div>
@@ -521,6 +559,7 @@
         <div class="step-dot" data-step-label="4"><span>5</span><span>Programme</span></div>
         <div class="step-dot" data-step-label="5"><span>6</span><span>Confort</span></div>
         <div class="step-dot" data-step-label="6"><span>7</span><span>Envoi</span></div>
+        <div class="step-dot test-only" data-step-label="7"><span>8</span><span>Test</span></div>
       </nav>
     </aside>
 
@@ -800,6 +839,81 @@
           </div>
         </section>
 
+        <section class="section test-only test-only-section" data-title="Retour test coach">
+          <div class="kicker">Validation coach</div>
+          <h2>Pour ce scénario test, est-ce que le système réagit comme tu t'y attendais ?</h2>
+          <p class="lead">
+            Remplis cette partie comme coach testeur. Tu peux refaire le questionnaire plusieurs fois avec des scénarios différents.
+          </p>
+
+          <div class="field-stack">
+            <div class="field">
+              <label class="question" for="testerName">Ton nom comme coach testeur</label>
+              <input id="testerName" name="testerName" type="text" autocomplete="name" placeholder="Prénom Nom">
+            </div>
+
+            <div class="field">
+              <label class="question">Quel scénario essayais-tu de simuler ?</label>
+              <select name="testScenario">
+                <option value="">Sélectionner</option>
+                <option>Client satisfait, on continue</option>
+                <option>Client satisfait avec petits ajustements</option>
+                <option>Objectif à clarifier</option>
+                <option>Programme mal aligné</option>
+                <option>Baisse de motivation</option>
+                <option>Douleur ou limitation à surveiller</option>
+                <option>Client à contacter rapidement</option>
+                <option>Autre scénario</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label class="question">Selon toi, quel statut aurait dû sortir ?</label>
+              <div class="choice-grid">
+                <label class="choice"><input type="radio" name="expectedStatus" value="vert"><span><strong>Vert</strong><small>Tout va bien, lecture simple.</small></span></label>
+                <label class="choice"><input type="radio" name="expectedStatus" value="jaune"><span><strong>Jaune</strong><small>Ajustement léger ou discussion rapide.</small></span></label>
+                <label class="choice"><input type="radio" name="expectedStatus" value="orange"><span><strong>Orange</strong><small>Désalignement possible ou discussion structurée.</small></span></label>
+                <label class="choice"><input type="radio" name="expectedStatus" value="rouge"><span><strong>Rouge</strong><small>Suivi prioritaire.</small></span></label>
+                <label class="choice"><input type="radio" name="expectedStatus" value="incertain"><span><strong>Je ne suis pas certain</strong></span></label>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="question">Quelle notification ou action t'attendrais-tu à recevoir ?</label>
+              <select name="expectedNotification">
+                <option value="">Sélectionner</option>
+                <option>Aucune notification, seulement archiver la réponse</option>
+                <option>Afficher dans le dashboard du coach</option>
+                <option>Créer une tâche coach</option>
+                <option>Envoyer une notification au coach</option>
+                <option>Alerte prioritaire au coach ou responsable</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label class="question">À quel point le résumé final serait utile pour agir avec ce client ?</label>
+              <p class="help">1 = peu utile, 5 = très utile</p>
+              <div class="scale">
+                <label class="choice"><input type="radio" name="feedbackScore" value="1"><span><strong>1</strong></span></label>
+                <label class="choice"><input type="radio" name="feedbackScore" value="2"><span><strong>2</strong></span></label>
+                <label class="choice"><input type="radio" name="feedbackScore" value="3"><span><strong>3</strong></span></label>
+                <label class="choice"><input type="radio" name="feedbackScore" value="4"><span><strong>4</strong></span></label>
+                <label class="choice"><input type="radio" name="feedbackScore" value="5"><span><strong>5</strong></span></label>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="question">Qu'est-ce qui devrait être amélioré dans le questionnaire ou la classification ?</label>
+              <textarea name="feedbackNotes" placeholder="Exemple : ce cas devrait être orange au lieu de jaune, il manque une question sur les horaires, le résumé devrait montrer tel détail, etc."></textarea>
+            </div>
+
+            <div class="field">
+              <label class="question">As-tu une idée de changement concret à proposer ?</label>
+              <textarea name="improvementSuggestions" placeholder="Question à ajouter, choix de réponse à modifier, action coach à créer, notification à envoyer, etc."></textarea>
+            </div>
+          </div>
+        </section>
+
         <section class="section complete" data-title="Résumé">
           <div class="kicker">Résumé prototype</div>
           <h2>Merci. Voici ce que ton coach recevrait comme signal.</h2>
@@ -818,18 +932,29 @@
   </main>
 
   <script>
-    const sections = Array.from(document.querySelectorAll(".section"));
+    const params = new URLSearchParams(window.location.search);
+    const IS_TEST_MODE = ["1", "true", "coach", "test"].includes(String(params.get("test") || params.get("mode") || "").toLowerCase());
+    document.body.classList.toggle("test-mode", IS_TEST_MODE);
+
+    const sections = Array.from(document.querySelectorAll(".section")).filter((section) => (
+      IS_TEST_MODE || !section.classList.contains("test-only-section")
+    ));
     const progress = document.getElementById("progress");
     const prevBtn = document.getElementById("prevBtn");
     const nextBtn = document.getElementById("nextBtn");
     const summary = document.getElementById("summary");
-    const stepLabels = Array.from(document.querySelectorAll("[data-step-label]"));
-    const params = new URLSearchParams(window.location.search);
+    const stepLabels = Array.from(document.querySelectorAll("[data-step-label]")).filter((label) => (
+      IS_TEST_MODE || !label.classList.contains("test-only")
+    ));
     const DEFAULT_ENDPOINT_URL = "https://script.google.com/macros/s/AKfycbxnhlehsj_NQU73k3csMQPj0NAm3QSQrpjk0Ar6VYOjXYZO-m9_GSxtmEqYw9y_9DSQEA/exec";
     const ENDPOINT_URL = params.get("endpoint") || DEFAULT_ENDPOINT_URL;
-    const APP_VERSION = "github-pages-v5";
+    const APP_VERSION = "github-pages-v6-test-sandbox";
     const SCHEMA_VERSION = "1.0";
     const PAYLOAD_SOURCE = "cfsb-client-coach-questionnaire";
+    const FALLBACK_COACHES = [
+      "Marc-Andre Menard",
+      "Iheb Yahyaoui"
+    ];
     let current = 0;
 
     function paramValue(...names) {
@@ -856,6 +981,18 @@
         option.textContent = coachName;
         const unsure = Array.from(select.options).find((item) => item.textContent === "Je ne suis pas certain");
         select.insertBefore(option, unsure || null);
+      }
+    }
+
+    async function loadCoachOptions() {
+      FALLBACK_COACHES.forEach(addCoachOption);
+      try {
+        const response = await fetch("coaches.json", { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = await response.json();
+        (payload.coaches || []).forEach((coach) => addCoachOption(coach.coach_name || coach.name || ""));
+      } catch (error) {
+        console.warn("Coach list could not be loaded.", error);
       }
     }
 
@@ -1039,8 +1176,18 @@
           coach_action_type: actionCodeFor(status),
           coach_action_done: false,
           coach_action_note: "",
-          dashboard_sync_status: ENDPOINT_URL ? "pending" : "test_mode_no_endpoint",
-          chat_notification_status: "pending"
+          dashboard_sync_status: IS_TEST_MODE ? "test_mode_no_dashboard_sync" : (ENDPOINT_URL ? "pending" : "test_mode_no_endpoint"),
+          chat_notification_status: IS_TEST_MODE ? "test_mode_no_chat" : "pending"
+        },
+        test_feedback: {
+          tester_name: fieldValue("testerName"),
+          tester_role: IS_TEST_MODE ? "coach_tester" : "",
+          scenario_label: fieldValue("testScenario"),
+          classification_expected: valueOf("expectedStatus"),
+          notification_expected: fieldValue("expectedNotification"),
+          feedback_score: valueOf("feedbackScore"),
+          feedback_notes: fieldValue("feedbackNotes"),
+          improvement_suggestions: fieldValue("improvementSuggestions")
         },
         meta: {
           source_app: "cfsb-suivi-client-coach",
@@ -1048,6 +1195,8 @@
           source_url: sourceUrl(),
           client_phone: fieldValue("phone"),
           endpoint_configured: Boolean(ENDPOINT_URL),
+          test_mode: IS_TEST_MODE,
+          test_scenario_label: fieldValue("testScenario"),
           user_agent: window.navigator.userAgent
         }
       };
@@ -1080,12 +1229,21 @@
       };
     }
 
+    function escapeHtml(value) {
+      return String(value == null ? "" : value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
     function renderSummary() {
       const status = computeStatus();
       const improve = valuesOf("improve").join(", ") || "Aucune sélection";
       const challenges = valuesOf("challenges").join(", ") || "Aucune sélection";
       const rows = [
-        ["Statut", `<span class="status-pill ${status}">${labelFor(status)}</span>`],
+        ["Statut", `<span class="status-pill ${status}">${labelFor(status)}</span>`, true],
         ["Action recommandée", actionFor(status)],
         ["Client", fieldValue("name") || "Nom non indiqué"],
         ["Téléphone", fieldValue("phone") || "Téléphone non indiqué"],
@@ -1105,15 +1263,35 @@
         ["Note au coach", fieldValue("note") || "Aucune note"]
       ];
 
-      summary.innerHTML = rows.map(([label, value]) => (
-        `<div class="summary-row"><span>${label}</span><strong>${value}</strong></div>`
+      if (IS_TEST_MODE) {
+        rows.push(
+          ["Scénario testé", fieldValue("testScenario") || "Non indiqué"],
+          ["Coach testeur", fieldValue("testerName") || "Non indiqué"],
+          ["Statut attendu par le coach", valueOf("expectedStatus") || "Non indiqué"],
+          ["Notification attendue", fieldValue("expectedNotification") || "Non indiqué"],
+          ["Utilité du résumé", valueOf("feedbackScore") || "Non indiqué"],
+          ["Commentaire test", fieldValue("feedbackNotes") || "Aucun commentaire"],
+          ["Suggestion test", fieldValue("improvementSuggestions") || "Aucune suggestion"]
+        );
+      }
+
+      summary.innerHTML = rows.map(([label, value, html]) => (
+        `<div class="summary-row"><span>${escapeHtml(label)}</span><strong>${html ? value : escapeHtml(value)}</strong></div>`
       )).join("") + `
         <div class="integration-note">
-          <strong>${ENDPOINT_URL ? "Prêt à transmettre" : "Version pilote"}</strong><br>
-          ${ENDPOINT_URL
-            ? "Quand tu cliques sur Envoyer, tes réponses sont transmises à l'équipe."
-            : "Ce test sert à valider l'expérience. Tes réponses ne sont pas transmises à un coach pour le moment."}
+          <strong>${IS_TEST_MODE ? "Mode test coach" : (ENDPOINT_URL ? "Prêt à transmettre" : "Version pilote")}</strong><br>
+          ${IS_TEST_MODE
+            ? "Quand tu cliques sur Envoyer, cette réponse est stockée dans la base de données test. Elle ne déclenche pas de suivi réel au client."
+            : (ENDPOINT_URL
+              ? "Quand tu cliques sur Envoyer, tes réponses sont transmises à l'équipe."
+              : "Ce test sert à valider l'expérience. Tes réponses ne sont pas transmises à un coach pour le moment.")}
         </div>
+        ${IS_TEST_MODE ? `
+          <div class="test-recap-note">
+            <strong>Suggestion pour le test</strong><br>
+            Refais le questionnaire avec un autre scénario: un client satisfait, un client démotivé, un client avec douleur, puis un client qui veut seulement de petits ajustements.
+          </div>
+        ` : ""}
       `;
     }
 
@@ -1176,8 +1354,10 @@
       update();
     });
 
-    applyUrlPrefill();
-    update();
+    loadCoachOptions().finally(() => {
+      applyUrlPrefill();
+      update();
+    });
   </script>
 </body>
 </html>
