@@ -16,6 +16,7 @@ Derniere mise a jour : 2026-05-22
 - Alumni est maintenant une section visible dans la navigation principale, separee de Performance.
 - Les boutons d'action dans Mission doivent rester alignes et lisibles, meme pour `Envoyer questionnaire`.
 - La section `Scenarios` sert de banc d'essai demo : elle permet de provoquer 9 cas importants sans toucher aux vraies donnees.
+- Le mode demo affiche maintenant un journal des dernieres actions pour confirmer ce qui vient d'etre fait meme apres la disparition du toast.
 - Le backend Apps Script actif est le deployment `AKfycbz1qODx2pCWQ2yHhkse6FBxdyn741cYObW_qGsuox4RmVs7m6WYy3YqFTSti8YcRiGQ`.
 - Les coachs peuvent choisir un coach dans le menu deroulant quand les donnees sont chargees.
 - L'extension CoachRx permet de pousser les donnees CoachRx vers le backend.
