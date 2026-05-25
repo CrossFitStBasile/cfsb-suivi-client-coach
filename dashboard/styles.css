@@ -305,6 +305,39 @@ button.primary {
   font-weight: 900;
 }
 
+.quick-capture {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 12px;
+  border: 1px solid rgba(119, 126, 139, 0.45);
+  border-radius: 8px;
+  background: #15171b;
+  padding: 12px;
+}
+
+.quick-capture strong {
+  display: block;
+  font-size: 14px;
+}
+
+.quick-capture p:not(.eyebrow) {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.quick-capture textarea {
+  min-height: 78px;
+}
+
+.quick-capture-controls {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(140px, 1fr) auto;
+  gap: 8px;
+  align-items: stretch;
+}
+
 .icon-button {
   min-height: 40px;
   border: 1px solid var(--line);
@@ -845,6 +878,10 @@ button.primary {
   }
 
   .row-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-capture-controls {
     grid-template-columns: 1fr;
   }
 }
