@@ -210,3 +210,6 @@ Derniere mise a jour : 2026-05-25
   les holds, les alumni, les impacts et une liste pilote de coachs connus. Si aucun coach reel
   n'apparait apres cette version, le backend ne renvoie pas encore assez de donnees pour construire
   l'annuaire cote frontend et il faudra corriger Apps Script.
+- 2026-05-25, version 52217: l'app utilise maintenant `fetch` en premier pour parler au backend
+  Apps Script, puis JSONP seulement en secours. Le backend renvoie maintenant CORS `*`, donc `fetch`
+  donne une erreur plus juste, comme PIN invalide, au lieu d'un faux blocage navigateur.
