@@ -213,3 +213,6 @@ Derniere mise a jour : 2026-05-25
 - 2026-05-25, version 52217: l'app utilise maintenant `fetch` en premier pour parler au backend
   Apps Script, puis JSONP seulement en secours. Le backend renvoie maintenant CORS `*`, donc `fetch`
   donne une erreur plus juste, comme PIN invalide, au lieu d'un faux blocage navigateur.
+- 2026-05-25, version 52218: les delais frontend passent a 90-100 secondes pour eviter de couper
+  Apps Script pendant une reconstruction lente. Les diagnostics separent maintenant le test `api=status`
+  et le diagnostic complet avec PIN.
