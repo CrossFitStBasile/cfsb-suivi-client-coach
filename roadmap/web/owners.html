@@ -7,7 +7,21 @@
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
-    <div class="app-shell">
+    <div class="owner-gate" id="ownerGate">
+      <form class="owner-gate-card" id="ownerGateForm">
+        <span>Acces reserve</span>
+        <h1>Dashboard owners</h1>
+        <p>Cette section est reservee a Michael et Gabriel pour la preparation des rencontres roadmap.</p>
+        <label class="field">
+          <span>Code d'acces</span>
+          <input class="input" id="ownerPinInput" type="password" inputmode="text" autocomplete="current-password">
+        </label>
+        <button class="button" type="submit">Ouvrir le dashboard</button>
+        <div class="notice error" id="ownerGateError" hidden>Code invalide.</div>
+      </form>
+    </div>
+
+    <div class="app-shell" id="ownerApp" hidden>
       <header class="topbar">
         <div class="brand">
           <strong>Dashboard owners</strong>
@@ -17,6 +31,7 @@
           <a class="button secondary" href="./index.html">Formulaire employe</a>
           <button class="button secondary" id="settingsButton" type="button">Parametres</button>
           <button class="button secondary" id="importButton" type="button">Importer JSON</button>
+          <button class="button secondary" id="lockOwnersButton" type="button">Verrouiller</button>
           <button class="button warn" id="clearLocalButton" type="button">Vider tests locaux</button>
         </div>
       </header>

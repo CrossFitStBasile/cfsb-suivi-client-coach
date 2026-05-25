@@ -434,148 +434,98 @@
     {
       "id": "coach_professionnel_behavioral_values",
       "title": "Valeurs CFSB - comportements Coach Professionnel",
-      "intro": "Auto-evalue des comportements observables dans ton role actuel. Le niveau 3 represente le standard CFSB attendu; le niveau 4 represente une contribution qui cree un impact mesurable, durable et professionnel aupres des membres.",
-      "questions": [
+      "intro": "Audit trimestriel des attentes observables du role. Le niveau 3 represente le standard CFSB attendu; le niveau 4 represente une contribution qui cree un impact mesurable, durable et professionnel aupres des membres.",
+      "groups": [
         {
-          "id": "coach_pro_bienveillance_relationship_score",
-          "label": "Bienveillance - Je construis des relations de confiance qui soutiennent la progression et la retention des membres.",
-          "type": "scale",
-          "scaleId": "agreement4",
-          "required": true,
-          "rubric": {
-            "1": "Mes relations restent superficielles ou transactionnelles. Des membres peuvent se sentir peu vus, peu suivis ou peu consideres entre les seances.",
-            "2": "Je cree de bonnes interactions, mais le suivi et la connaissance des membres varient selon les clients ou mon horaire.",
-            "3": "Je connais mes membres, je prends des nouvelles, je souligne leurs progres et je maintiens une relation professionnelle qui soutient leur engagement.",
-            "4": "Je deviens un repere de confiance: les membres se sentent compris, encadres et motives a rester engages meme quand leur contexte devient difficile."
-          }
+          "title": "Relation membre et retention",
+          "intro": "Ces standards verifient la qualite du lien humain, la connaissance des membres et la capacite a soutenir l'engagement dans le temps.",
+          "questions": [
+            {"id": "coach_pro_relationship_trust_score", "label": "Bienveillance - Je construis des relations de confiance avec les membres que je suis.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Mes relations restent superficielles ou transactionnelles.", "2": "Je cree de bonnes interactions, mais le suivi varie selon les membres.", "3": "Je connais mes membres, je prends des nouvelles et je soutiens leur engagement.", "4": "Je deviens un repere de confiance quand leur contexte devient difficile."}},
+            {"id": "coach_pro_relationship_trust_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_relationship_trust_score", "max": 2}},
+            {"id": "coach_pro_member_context_score", "label": "Bienveillance - Je connais le contexte, les objectifs, les contraintes et les motivations de mes clients.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Je connais mal les objectifs ou contraintes de certains clients.", "2": "Je connais le portrait general, mais pas toujours les details utiles.", "3": "Je tiens compte des objectifs, blessures, horaire, stress et motivation.", "4": "J'utilise cette connaissance pour personnaliser le coaching et prevenir les obstacles."}},
+            {"id": "coach_pro_member_context_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_member_context_score", "max": 2}},
+            {"id": "coach_pro_retention_signals_score", "label": "Courage - Je remarque les signaux de decrochage et j'agis avant qu'un membre s'eloigne.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Je vois souvent le probleme trop tard.", "2": "Je remarque certains signaux, mais mes actions restent reactives.", "3": "Je surveille absences, baisse de motivation, blessures et frustrations, puis je fais un suivi.", "4": "Je protege activement la retention avec des interventions rapides et bien communiquees."}},
+            {"id": "coach_pro_retention_signals_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_retention_signals_score", "max": 2}},
+            {"id": "coach_pro_memorable_experience_score", "label": "Bienveillance - Je cree des experiences memorables autour des seances et dans la vie du centre.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Je livre surtout le service minimal.", "2": "Je cree parfois de bons moments, mais de facon inconstante.", "3": "J'ajoute reconnaissance, encouragements et presence humaine dans l'experience.", "4": "Les membres sentent que leur parcours compte et parlent positivement du service."}},
+            {"id": "coach_pro_memorable_experience_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_memorable_experience_score", "max": 2}},
+            {"id": "coach_pro_progress_celebration_score", "label": "Bienveillance - Je rends les progres visibles et je celebre les victoires importantes.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les progres passent souvent sous silence.", "2": "Je felicite, mais sans toujours relier les progres aux objectifs.", "3": "Je souligne les progres concrets et je les relie au plan du membre.", "4": "Je transforme les progres en moteur de confiance, de retention et de fierte."}},
+            {"id": "coach_pro_progress_celebration_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_progress_celebration_score", "max": 2}},
+            {"id": "coach_pro_professional_boundaries_score", "label": "Professionnalisme - Je garde une relation chaleureuse, claire et professionnelle avec mes membres.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "La relation peut devenir floue, trop distante ou trop informelle.", "2": "Je garde un bon lien, mais les attentes ou limites ne sont pas toujours claires.", "3": "Je suis humain, fiable et clair sur le cadre, les horaires et les responsabilites.", "4": "La relation inspire confiance tout en protegeant le membre, le coach et le centre."}},
+            {"id": "coach_pro_professional_boundaries_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_professional_boundaries_score", "max": 2}}
+          ]
         },
-        {"id": "coach_pro_bienveillance_relationship_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_bienveillance_relationship_score", "max": 2}},
         {
-          "id": "coach_pro_bienveillance_memorable_score",
-          "label": "Bienveillance - Je cree des experiences memorables autour des seances et dans la vie du centre.",
-          "type": "scale",
-          "scaleId": "agreement4",
-          "required": true,
-          "rubric": {
-            "1": "Je livre le service minimalement, sans attention particuliere a l'ambiance, au lien humain ou aux petits moments qui marquent les membres.",
-            "2": "Je cree parfois de bons moments, mais de facon spontanee ou inconstante.",
-            "3": "Je contribue regulierement a une experience positive: accueil, reconnaissance, encouragements, interaction autour des seances et presence dans la communaute.",
-            "4": "Je cree un effet memorable et coherent: les membres sentent que leur parcours compte, parlent positivement du service et ont envie de revenir."
-          }
+          "title": "Livraison des services personnalises",
+          "intro": "Ces standards couvrent la preparation, l'adaptation, la qualite de coaching et la progression dans les services personnalises.",
+          "questions": [
+            {"id": "coach_pro_session_preparation_score", "label": "Professionnalisme - Je prepare mes seances personnalisees avec intention, plan et options.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Mes seances peuvent sembler improvisees.", "2": "Je prepare l'essentiel, mais l'intention ou les options varient.", "3": "J'arrive avec objectif, plan, adaptations et priorites de coaching.", "4": "Chaque seance s'inscrit clairement dans une progression individualisee."}},
+            {"id": "coach_pro_session_preparation_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_session_preparation_score", "max": 2}},
+            {"id": "coach_pro_assessment_goals_score", "label": "Professionnalisme - Je relie mes interventions aux objectifs et evaluations du membre.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Le lien avec les objectifs du membre est flou.", "2": "Je garde les objectifs en tete, mais ils ne guident pas toujours mes choix.", "3": "Mes choix de coaching sont relies aux objectifs, contraintes et evaluations.", "4": "Le membre comprend pourquoi chaque intervention sert sa progression."}},
+            {"id": "coach_pro_assessment_goals_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_assessment_goals_score", "max": 2}},
+            {"id": "coach_pro_program_intention_score", "label": "Professionnalisme - Je comprends l'intention du programme et je protege le stimulus voulu.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Je fais executer sans toujours comprendre l'intention.", "2": "Je comprends l'intention generale, mais mes ajustements manquent parfois de precision.", "3": "Je protege le stimulus et j'explique le pourquoi des choix importants.", "4": "J'adapte sans perdre le sens du programme ni la valeur du service."}},
+            {"id": "coach_pro_program_intention_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_program_intention_score", "max": 2}},
+            {"id": "coach_pro_adaptation_scaling_score", "label": "Professionnalisme - J'adapte selon blessures, niveau, energie, confiance et progression.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Je laisse passer des risques ou j'adapte trop peu.", "2": "J'adapte les cas evidents, mais avec une precision variable.", "3": "Je propose des options securitaires, utiles et coherentes avec l'objectif.", "4": "Mes adaptations creent une experience securitaire, stimulante et personnalisee."}},
+            {"id": "coach_pro_adaptation_scaling_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_adaptation_scaling_score", "max": 2}},
+            {"id": "coach_pro_coaching_feedback_score", "label": "Bienveillance - Je donne du feedback precis, priorise et utile pendant les seances.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Mes feedbacks sont rares, generiques ou trop nombreux.", "2": "Je corrige, mais la priorite n'est pas toujours claire.", "3": "Je cible la correction la plus importante et je renforce les bons progres.", "4": "Mon feedback augmente la competence, la confiance et l'autonomie du membre."}},
+            {"id": "coach_pro_coaching_feedback_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_coaching_feedback_score", "max": 2}},
+            {"id": "coach_pro_progress_review_score", "label": "Professionnalisme - Je fais des retours de progression et j'ajuste le plan au bon moment.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les ajustements arrivent sans structure ou trop tard.", "2": "Je fais des retours, mais pas toujours a une frequence claire.", "3": "Je revise la progression, les obstacles et les prochaines priorites.", "4": "Le membre voit son chemin, ses resultats et les ajustements necessaires."}},
+            {"id": "coach_pro_progress_review_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_progress_review_score", "max": 2}}
+          ]
         },
-        {"id": "coach_pro_bienveillance_memorable_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_bienveillance_memorable_score", "max": 2}},
         {
-          "id": "coach_pro_professionalism_service_delivery_score",
-          "label": "Professionnalisme - Je livre mes services personnalises avec preparation, plan, adaptation et suivi.",
-          "type": "scale",
-          "scaleId": "agreement4",
-          "required": true,
-          "rubric": {
-            "1": "Mes seances ou services peuvent sembler improvises, peu relies aux objectifs du membre ou insuffisamment suivis.",
-            "2": "Je livre le service, mais la preparation, l'adaptation ou le suivi varient selon les semaines.",
-            "3": "Je prepare mes seances, je connais les objectifs, blessures et options de scaling, puis j'adapte le service pour livrer une progression claire.",
-            "4": "Je cree une experience professionnelle complete: chaque service a une intention, une progression, des ajustements pertinents et un suivi qui renforce la valeur percue."
-          }
+          "title": "Portefeuille, ventes et realite economique",
+          "intro": "Ces standards clarifient que le role professionnel inclut le developpement responsable du portefeuille de clients et de la valeur economique creee.",
+          "questions": [
+            {"id": "coach_pro_portfolio_ownership_score", "label": "Courage - Je prends ownership de mon portefeuille de clients.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "J'attends surtout que les clients me soient assignes.", "2": "Je veux developper mon portefeuille, mais mes actions sont ponctuelles.", "3": "Je pose des actions regulieres pour developper et maintenir mon portefeuille.", "4": "Je gere mon portefeuille comme une responsabilite professionnelle durable."}},
+            {"id": "coach_pro_portfolio_ownership_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_portfolio_ownership_score", "max": 2}},
+            {"id": "coach_pro_pipeline_availability_score", "label": "Professionnalisme - Je garde mes disponibilites, opportunites et suivis de pipeline clairs.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Mes disponibilites ou opportunites ne sont pas claires.", "2": "Je les communique, mais souvent tard ou de facon incomplete.", "3": "Je tiens l'equipe informee de mes disponibilites et suivis importants.", "4": "Mes informations aident l'equipe a convertir les bonnes opportunites au bon moment."}},
+            {"id": "coach_pro_pipeline_availability_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_pipeline_availability_score", "max": 2}},
+            {"id": "coach_pro_service_knowledge_score", "label": "Professionnalisme - Je comprends les services, forfaits, prix et parcours CFSB.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Je connais mal l'offre ou les prix.", "2": "Je connais l'essentiel, mais je reste vague quand on me questionne.", "3": "J'explique clairement les services pertinents et le deroulement.", "4": "Je relie les options au besoin reel du membre avec aisance et justesse."}},
+            {"id": "coach_pro_service_knowledge_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_service_knowledge_score", "max": 2}},
+            {"id": "coach_pro_ethical_recommendation_score", "label": "Courage - Je recommande les services appropries sans vendre de facon forcee.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "J'evite les conversations de service meme quand elles seraient utiles.", "2": "Je recommande parfois, mais avec inconfort ou manque de clarte.", "3": "Je pose les bonnes questions et je recommande avec respect.", "4": "Le membre se sent guide, compris et libre de choisir la bonne suite."}},
+            {"id": "coach_pro_ethical_recommendation_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_ethical_recommendation_score", "max": 2}},
+            {"id": "coach_pro_upgrade_signal_score", "label": "Courage - Je detecte les opportunites d'upgrade ou de soutien supplementaire.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Je laisse passer des besoins ou opportunites evidents.", "2": "Je les vois parfois, mais je les transmets peu ou trop tard.", "3": "Je signale les besoins pertinents et j'aide l'equipe a proposer la bonne suite.", "4": "Je cree des ponts naturels entre besoin membre, valeur livree et croissance du centre."}},
+            {"id": "coach_pro_upgrade_signal_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_upgrade_signal_score", "max": 2}},
+            {"id": "coach_pro_economic_reality_score", "label": "Courage - J'assume la realite economique du role et je relie mes actions a la valeur creee.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Je traite le role surtout comme des heures a remplir.", "2": "Je comprends l'idee, mais sans plan clair ni constance.", "3": "Je suis mes services, disponibilites, portefeuille et actions de progression.", "4": "Je construis une carriere viable en creant de la valeur mesurable au CFSB."}},
+            {"id": "coach_pro_economic_reality_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_economic_reality_score", "max": 2}}
+          ]
         },
-        {"id": "coach_pro_professionalism_service_delivery_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_professionalism_service_delivery_score", "max": 2}},
         {
-          "id": "coach_pro_professionalism_results_score",
-          "label": "Professionnalisme - Je porte attention aux resultats clients et aux indicateurs de mon role.",
-          "type": "scale",
-          "scaleId": "agreement4",
-          "required": true,
-          "rubric": {
-            "1": "Je ne suis pas clairement les resultats, les absences, les check-ups, les indicateurs ou la livraison attendue de mes services.",
-            "2": "Je regarde certains signaux, mais de facon reactive ou incomplete.",
-            "3": "Je suis les resultats importants: progression, assiduite, check-ups, livraison des services, indicateurs demandes et informations utiles au scoreboard.",
-            "4": "J'utilise les indicateurs pour agir rapidement: ajuster le coaching, prevenir le decrochage, nourrir la relation et ameliorer la valeur livree."
-          }
+          "title": "Systemes, suivis et communication",
+          "intro": "Ces standards assurent que le coaching professionnel reste visible, organise et utilisable par l'equipe.",
+          "questions": [
+            {"id": "coach_pro_schedule_admin_score", "label": "Professionnalisme - J'administre mes rendez-vous, abonnements, forfaits et communications avec fiabilite.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Des rendez-vous, suivis ou infos administratives sont oublies.", "2": "Je gere l'essentiel, mais j'ai besoin de rappels.", "3": "Je garde mes dossiers, horaires et communications a jour.", "4": "Mon organisation protege l'experience client et reduit la friction pour l'equipe."}},
+            {"id": "coach_pro_schedule_admin_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_schedule_admin_score", "max": 2}},
+            {"id": "coach_pro_client_file_notes_score", "label": "Professionnalisme - Je documente les informations utiles dans les dossiers ou outils prevus.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Des informations importantes restent dans ma tete.", "2": "Je note certains elements, mais de facon inconstante.", "3": "Je documente objectifs, blessures, suivis, changements et prochaines actions.", "4": "Mes notes permettent a l'equipe de comprendre rapidement la situation."}},
+            {"id": "coach_pro_client_file_notes_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_client_file_notes_score", "max": 2}},
+            {"id": "coach_pro_attendance_followup_score", "label": "Bienveillance - Je fais les suivis necessaires en cas d'absence, baisse d'assiduite ou changement de routine.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les absences ou baisses d'assiduite passent souvent sans suivi.", "2": "Je fais des suivis, mais pas toujours rapidement.", "3": "Je contacte ou signale les situations qui meritent un suivi.", "4": "Mes suivis aident a prevenir le decrochage et a garder le membre engage."}},
+            {"id": "coach_pro_attendance_followup_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_attendance_followup_score", "max": 2}},
+            {"id": "coach_pro_checkup_csm_score", "label": "Esprit d'equipe - Je contribue aux check-ups, CSM et suivis membres quand mon role est implique.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Je contribue peu aux suivis hors seance.", "2": "Je participe quand on me le demande, mais peu proactivement.", "3": "Je partage les informations utiles aux suivis membres et aux check-ups.", "4": "Je rends les suivis plus pertinents grace a un portrait clair du membre."}},
+            {"id": "coach_pro_checkup_csm_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_checkup_csm_score", "max": 2}},
+            {"id": "coach_pro_issue_escalation_score", "label": "Courage - Je rapporte les enjeux importants a Caroline, au Head Coach ou a la direction.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Des enjeux importants restent non communiques.", "2": "Je transmets certains elements, mais tard ou sans contexte.", "3": "Je communique contexte, impact, urgence et prochaine action suggeree.", "4": "Mes communications aident l'equipe a prevenir les problemes et prendre de meilleures decisions."}},
+            {"id": "coach_pro_issue_escalation_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_issue_escalation_score", "max": 2}},
+            {"id": "coach_pro_scoreboard_reporting_score", "label": "Professionnalisme - Je fournis les indicateurs ou informations attendues pour le scoreboard et la gestion.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les indicateurs ou informations attendues sont absents ou incomplets.", "2": "Je les fournis, mais parfois en retard ou avec peu de precision.", "3": "Je fournis les informations demandees de facon fiable.", "4": "Mes donnees aident l'equipe a voir la realite et a ameliorer les decisions."}},
+            {"id": "coach_pro_scoreboard_reporting_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_scoreboard_reporting_score", "max": 2}}
+          ]
         },
-        {"id": "coach_pro_professionalism_results_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_professionalism_results_score", "max": 2}},
         {
-          "id": "coach_pro_professionalism_admin_score",
-          "label": "Professionnalisme - J'administre mes rendez-vous, abonnements, forfaits, communications et taches connexes avec fiabilite.",
-          "type": "scale",
-          "scaleId": "agreement4",
-          "required": true,
-          "rubric": {
-            "1": "Des suivis, rendez-vous, communications, informations d'abonnement ou taches administratives sont oublies ou faits trop tard.",
-            "2": "Je gere l'essentiel, mais j'ai besoin de rappels ou je manque de constance quand l'horaire devient charge.",
-            "3": "Je reserve du temps chaque semaine pour organiser mes taches, mettre a jour les rendez-vous, communiquer avec les membres et garder mes dossiers en ordre.",
-            "4": "Mon organisation protege l'experience client et l'equipe: les informations sont a jour, les suivis sont faits et les services se livrent sans friction inutile."
-          }
-        },
-        {"id": "coach_pro_professionalism_admin_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_professionalism_admin_score", "max": 2}},
-        {
-          "id": "coach_pro_courage_portfolio_score",
-          "label": "Courage - Je developpe et maintiens activement mon portefeuille de clients.",
-          "type": "scale",
-          "scaleId": "agreement4",
-          "required": true,
-          "rubric": {
-            "1": "J'attends surtout que les clients me soient assignes ou que les opportunites arrivent d'elles-memes.",
-            "2": "Je veux developper mon portefeuille, mais mes actions restent ponctuelles ou peu structurees.",
-            "3": "Je pose des actions regulieres pour developper et maintenir mon portefeuille: relations, suivis, disponibilites, recommandations et conversations pertinentes.",
-            "4": "Je gere mon portefeuille comme une responsabilite professionnelle: je cree de la demande avec ethique, je protege la retention et je vois les opportunites avant qu'elles disparaissent."
-          }
-        },
-        {"id": "coach_pro_courage_portfolio_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_courage_portfolio_score", "max": 2}},
-        {
-          "id": "coach_pro_courage_sales_score",
-          "label": "Courage - Je reconnais les opportunites et je guide les membres vers les services appropries.",
-          "type": "scale",
-          "scaleId": "agreement4",
-          "required": true,
-          "rubric": {
-            "1": "J'evite les conversations de services, d'abonnements ou d'upgrade, meme lorsqu'elles seraient utiles au membre.",
-            "2": "Je peux parler des services, mais je reste vague, inconfortable ou trop passif dans les recommandations.",
-            "3": "Je comprends les services CFSB, je pose les bonnes questions et je recommande la suite appropriee avec clarte et respect.",
-            "4": "Je vends avec integrite: le membre comprend pourquoi le service est pertinent, se sent guide plutot que pousse, et l'equipe peut agir rapidement."
-          }
-        },
-        {"id": "coach_pro_courage_sales_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_courage_sales_score", "max": 2}},
-        {
-          "id": "coach_pro_courage_career_score",
-          "label": "Courage - J'assume la responsabilite de carriere et la realite economique associees au role.",
-          "type": "scale",
-          "scaleId": "agreement4",
-          "required": true,
-          "rubric": {
-            "1": "Je traite encore le role surtout comme des heures a remplir, sans lien clair avec la valeur livree, les revenus ou la croissance de ma clientele.",
-            "2": "Je comprends l'idee, mais je manque de plan ou de constance pour relier mes actions a une trajectoire durable.",
-            "3": "Je comprends les attentes economiques du role, je suis mes disponibilites, mes services, mon portefeuille et les actions qui soutiennent ma progression.",
-            "4": "Je gere ma trajectoire comme un professionnel: je cree de la valeur mesurable, je prends ownership de mes chiffres et je construis une carriere viable au CFSB."
-          }
-        },
-        {"id": "coach_pro_courage_career_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_courage_career_score", "max": 2}},
-        {
-          "id": "coach_pro_team_communication_score",
-          "label": "Esprit d'equipe - Je rapporte les informations, indicateurs et enjeux importants a la bonne personne.",
-          "type": "scale",
-          "scaleId": "agreement4",
-          "required": true,
-          "rubric": {
-            "1": "Des informations importantes restent dans ma tete: absence, risque de decrochage, opportunite, resultat client, enjeu de paiement, horaire ou insatisfaction.",
-            "2": "Je transmets certains elements, mais parfois trop tard, sans assez de contexte ou de facon reactive.",
-            "3": "Je communique clairement les informations utiles a Caroline, au Head Coach ou a la direction: contexte, impact, urgence et prochaine action.",
-            "4": "Je suis un maillon fiable du systeme: mes communications aident l'equipe a prevenir les problemes, soutenir les membres et prendre de meilleures decisions."
-          }
-        },
-        {"id": "coach_pro_team_communication_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_team_communication_score", "max": 2}},
-        {
-          "id": "coach_pro_team_development_score",
-          "label": "Esprit d'equipe - Je continue a developper mes connaissances, mes competences et ma contribution au centre.",
-          "type": "scale",
-          "scaleId": "agreement4",
-          "required": true,
-          "rubric": {
-            "1": "Je progresse peu ou je reste dependant des connaissances actuelles, meme quand le role demande plus d'autonomie et de profondeur.",
-            "2": "Je me developpe quand une formation ou un feedback m'est propose, mais je prends peu d'initiatives.",
-            "3": "Je developpe activement mes competences, je demande du feedback, je reste informe des services/prix/evenements et je contribue positivement a l'equipe.",
-            "4": "Je deviens une reference interne: j'apprends, je partage, je soutiens les autres coachs et j'eleve la qualite globale des services CFSB."
-          }
-        },
-        {"id": "coach_pro_team_development_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_team_development_score", "max": 2}}
+          "title": "Leadership, developpement et equipe",
+          "intro": "Ces standards verifient la maturite professionnelle: contribution au centre, apprentissage continu et ownership de carriere.",
+          "questions": [
+            {"id": "coach_pro_group_class_standard_score", "label": "Professionnalisme - Je maintiens les standards CFSB quand je coach des cours de groupe.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les standards de cours varient trop selon le contexte.", "2": "Je livre correctement, mais avec une constance variable.", "3": "Je garde preparation, securite, energie, feedback et rangement au standard.", "4": "Je suis un repere de qualite en cours de groupe."}},
+            {"id": "coach_pro_group_class_standard_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_group_class_standard_score", "max": 2}},
+            {"id": "coach_pro_foundation_support_score", "label": "Esprit d'equipe - Je peux soutenir les Fondations ou les nouveaux membres quand c'est necessaire.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Je suis peu disponible ou peu aligne avec le parcours Fondation.", "2": "Je peux aider, mais avec des rappels ou une preparation variable.", "3": "Je comprends le parcours Fondation et je peux soutenir un relais clair.", "4": "Je contribue a une experience d'integration fluide entre Fondations et services."}},
+            {"id": "coach_pro_foundation_support_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_foundation_support_score", "max": 2}},
+            {"id": "coach_pro_peer_collaboration_score", "label": "Esprit d'equipe - Je collabore avec les autres coachs et je partage les informations utiles.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Je travaille trop en silo.", "2": "Je collabore quand on me sollicite, mais peu proactivement.", "3": "Je partage les informations, j'aide les relais et je soutiens l'equipe.", "4": "Je rends l'equipe meilleure par ma communication et mon attitude."}},
+            {"id": "coach_pro_peer_collaboration_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_peer_collaboration_score", "max": 2}},
+            {"id": "coach_pro_feedback_learning_score", "label": "Courage - Je demande, recois et applique du feedback pour progresser comme coach professionnel.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "J'evite le feedback ou je progresse peu entre les trimestres.", "2": "J'accepte le feedback, mais je l'applique de facon inconstante.", "3": "Je demande ou accueille le feedback et je pose des actions concretes.", "4": "Je transforme le feedback en progression visible pour les membres et l'equipe."}},
+            {"id": "coach_pro_feedback_learning_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_feedback_learning_score", "max": 2}},
+            {"id": "coach_pro_specialty_development_score", "label": "Professionnalisme - Je developpe une profondeur de competence ou une specialite utile au CFSB.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Je reste surtout sur mes acquis.", "2": "Je me forme quand l'occasion se presente, mais sans direction claire.", "3": "Je developpe activement une competence utile a mes membres et au centre.", "4": "Je deviens une reference interne dans une zone qui augmente la valeur CFSB."}},
+            {"id": "coach_pro_specialty_development_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_specialty_development_score", "max": 2}},
+            {"id": "coach_pro_career_ownership_score", "label": "Courage - Je prends ownership de ma trajectoire de carriere au CFSB.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Je n'ai pas de trajectoire claire ou j'attends que les choses avancent seules.", "2": "J'ai des intentions, mais peu d'actions structurees.", "3": "Je clarifie mes objectifs, mes actions et mes besoins de support.", "4": "Je pilote ma progression avec maturite, ambition et alignement avec le centre."}},
+            {"id": "coach_pro_career_ownership_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_pro_career_ownership_score", "max": 2}}
+          ]
+        }
       ]
     },
     {

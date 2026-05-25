@@ -12,6 +12,9 @@ async function run() {
     await page.getByText("Charte organisationnelle 2026").waitFor({ timeout: 15000 });
     await page.getByText("Michael Grondin").waitFor({ timeout: 15000 });
     await page.getByText("Gabriel Mayer Bedard").waitFor({ timeout: 15000 });
+    await page.getByRole("link", { name: /Dashboard owners/i }).count().then((count) => {
+      if (count !== 0) throw new Error("Dashboard owners link should not be visible on employee form.");
+    });
     await page.getByRole("button", { name: /Coach Communaute/i }).waitFor({ timeout: 15000 });
     await page.getByRole("button", { name: /Coach Communaute/i }).click();
     await page.locator('[data-question-id="employee_name"]').waitFor({ state: "visible" });
@@ -33,8 +36,10 @@ async function run() {
     await page.getByRole("button", { name: /Coach Professionnel/i }).click();
     await page.getByRole("link", { name: /Relire la fiche de poste/i }).waitFor({ timeout: 15000 });
     await page.getByText("Valeurs CFSB - comportements Coach Professionnel").waitFor({ timeout: 15000 });
-    await page.getByText("portefeuille de clients").waitFor({ timeout: 15000 });
-    await page.getByText("realite economique").waitFor({ timeout: 15000 });
+    await page.locator("summary", { hasText: "Portefeuille, ventes et realite economique" }).waitFor({ timeout: 15000 });
+    await page.locator("label", { hasText: "Je prends ownership de mon portefeuille de clients" }).waitFor({ timeout: 15000 });
+    await page.getByText("Relation membre et retention").waitFor({ timeout: 15000 });
+    await page.getByText("Leadership, developpement et equipe").waitFor({ timeout: 15000 });
 
     await page.getByRole("button", { name: /Parametres/i }).click();
     const endpointValue = await page.locator("#endpointInput").inputValue();
@@ -43,6 +48,9 @@ async function run() {
     }
 
     await page.goto(`${baseUrl}owners.html`, { waitUntil: "networkidle" });
+    await page.getByText("Acces reserve").waitFor({ timeout: 15000 });
+    await page.locator("#ownerPinInput").fill("CFSB2026!");
+    await page.getByRole("button", { name: /Ouvrir le dashboard/i }).click();
     await page.getByRole("button", { name: /Importer JSON/i }).waitFor({ timeout: 15000 });
     await page.getByRole("button", { name: /Parametres/i }).click();
     const ownerEndpointValue = await page.locator("#endpointInput").inputValue();

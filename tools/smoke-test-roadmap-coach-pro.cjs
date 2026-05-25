@@ -45,8 +45,10 @@ async function run() {
     await page.locator('[data-question-id="employee_name"]').waitFor({ state: "visible" });
     await page.getByRole("link", { name: /Relire la fiche de poste/i }).waitFor({ timeout: 5000 });
     await page.getByText("Valeurs CFSB - comportements Coach Professionnel").waitFor({ timeout: 5000 });
-    await page.getByText("portefeuille de clients").waitFor({ timeout: 5000 });
-    await page.getByText("realite economique").waitFor({ timeout: 5000 });
+    await page.locator("summary", { hasText: "Portefeuille, ventes et realite economique" }).waitFor({ timeout: 5000 });
+    await page.locator("label", { hasText: "Je prends ownership de mon portefeuille de clients" }).waitFor({ timeout: 5000 });
+    await page.getByText("Relation membre et retention").waitFor({ timeout: 5000 });
+    await page.getByText("Systemes, suivis et communication").waitFor({ timeout: 5000 });
 
     await page.locator('[data-question-id="employee_name"]').fill("Coach Pro Test");
     await page.locator('[data-question-id="employee_email"]').fill("coachpro@example.com");
@@ -55,16 +57,36 @@ async function run() {
     await page.locator('[data-question-id="most_aligned_moment"]').fill("Quand un membre progresse avec un suivi clair.");
 
     const scoreIds = [
-      "coach_pro_bienveillance_relationship_score",
-      "coach_pro_bienveillance_memorable_score",
-      "coach_pro_professionalism_service_delivery_score",
-      "coach_pro_professionalism_results_score",
-      "coach_pro_professionalism_admin_score",
-      "coach_pro_courage_portfolio_score",
-      "coach_pro_courage_sales_score",
-      "coach_pro_courage_career_score",
-      "coach_pro_team_communication_score",
-      "coach_pro_team_development_score"
+      "coach_pro_relationship_trust_score",
+      "coach_pro_member_context_score",
+      "coach_pro_retention_signals_score",
+      "coach_pro_memorable_experience_score",
+      "coach_pro_progress_celebration_score",
+      "coach_pro_professional_boundaries_score",
+      "coach_pro_session_preparation_score",
+      "coach_pro_assessment_goals_score",
+      "coach_pro_program_intention_score",
+      "coach_pro_adaptation_scaling_score",
+      "coach_pro_coaching_feedback_score",
+      "coach_pro_progress_review_score",
+      "coach_pro_portfolio_ownership_score",
+      "coach_pro_pipeline_availability_score",
+      "coach_pro_service_knowledge_score",
+      "coach_pro_ethical_recommendation_score",
+      "coach_pro_upgrade_signal_score",
+      "coach_pro_economic_reality_score",
+      "coach_pro_schedule_admin_score",
+      "coach_pro_client_file_notes_score",
+      "coach_pro_attendance_followup_score",
+      "coach_pro_checkup_csm_score",
+      "coach_pro_issue_escalation_score",
+      "coach_pro_scoreboard_reporting_score",
+      "coach_pro_group_class_standard_score",
+      "coach_pro_foundation_support_score",
+      "coach_pro_peer_collaboration_score",
+      "coach_pro_feedback_learning_score",
+      "coach_pro_specialty_development_score",
+      "coach_pro_career_ownership_score"
     ];
     for (const scoreId of scoreIds) {
       await page.locator(`[name="${scoreId}"][value="3"]`).check();

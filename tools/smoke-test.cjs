@@ -91,6 +91,8 @@ async function run() {
   }
 
   await page.goto("http://127.0.0.1:8765/web/owners.html", { waitUntil: "networkidle" });
+  await page.locator("#ownerPinInput").fill("CFSB2026!");
+  await page.getByRole("button", { name: /Ouvrir le dashboard/i }).click();
   await page.getByText("Michael Test").waitFor();
   await page.getByRole("button", { name: /Michael Test/i }).click();
   await page.getByText(/Explorer Coach Developpement/i).waitFor();
