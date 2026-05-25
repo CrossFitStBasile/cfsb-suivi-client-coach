@@ -80,7 +80,7 @@
       "family": "coordination",
       "level": "N5",
       "description": "Qualite technique, programmation, observations, feedback et developpement technique des coachs.",
-      "moduleIds": ["common_identity", "common_why", "common_previous_quarter", "common_values", "common_gwc", "head_coach_responsibilities", "common_leadership", "common_commitments"]
+      "moduleIds": ["common_identity", "common_why", "common_previous_quarter", "head_coach_responsibilities", "common_gwc", "common_leadership", "common_commitments"]
     },
     {
       "id": "coordinatrice",
@@ -96,7 +96,7 @@
       "family": "support",
       "level": "support",
       "description": "Qualite de l'entretien, fiabilite, autonomie et signalement des anomalies.",
-      "moduleIds": ["common_identity", "common_why_light", "common_previous_quarter_light", "common_values_light", "common_gwc_light", "entretien_responsibilities", "common_leadership_light", "common_commitments_light"]
+      "moduleIds": ["common_identity", "common_why_light", "common_previous_quarter_light", "entretien_responsibilities", "common_gwc_light", "common_leadership_light", "common_commitments_light"]
     },
     {
       "id": "engagement_evenements",
@@ -104,7 +104,7 @@
       "family": "community",
       "level": "support",
       "description": "Animation de la communaute, evenements, inclusion et mise en valeur des membres.",
-      "moduleIds": ["common_identity", "common_why", "common_previous_quarter", "common_values", "common_gwc", "engagement_responsibilities", "common_leadership", "common_commitments"]
+      "moduleIds": ["common_identity", "common_why", "common_previous_quarter", "engagement_responsibilities", "common_gwc", "common_leadership", "common_commitments"]
     },
     {
       "id": "admin_autre",
@@ -112,7 +112,7 @@
       "family": "support",
       "level": "support",
       "description": "Role administratif ou de support qui ne correspond pas exactement aux options ci-dessus.",
-      "moduleIds": ["common_identity", "common_why_light", "common_previous_quarter_light", "common_values_light", "common_gwc_light", "admin_other_responsibilities", "common_leadership_light", "common_commitments_light"]
+      "moduleIds": ["common_identity", "common_why_light", "common_previous_quarter_light", "admin_other_responsibilities", "common_gwc_light", "common_leadership_light", "common_commitments_light"]
     }
   ],
   "pathways": [
@@ -622,14 +622,73 @@
     },
     {
       "id": "head_coach_responsibilities",
-      "title": "Responsabilites - Head Coach",
-      "intro": "Focus sur la qualite technique, la programmation, le feedback et le developpement des coachs.",
-      "questions": [
-        {"id": "head_programming_quality", "label": "La programmation est livree avec logique, clarte et respect des echeanciers.", "type": "scale", "scaleId": "agreement4", "required": true},
-        {"id": "head_observations_feedback", "label": "Les observations et feedbacks techniques sont faits, documentes et utiles.", "type": "scale", "scaleId": "agreement4", "required": true},
-        {"id": "head_onboarding", "label": "L'onboarding technique des nouveaux coachs est structure et suivi.", "type": "scale", "scaleId": "agreement4", "required": true},
-        {"id": "head_standards_evolution", "label": "Je fais evoluer les standards et outils techniques de facon proactive.", "type": "scale", "scaleId": "agreement4", "required": true},
-        {"id": "head_comment", "label": "Commentaire sur le role Head Coach", "type": "long_text", "required": false}
+      "title": "Valeurs CFSB - comportements Head Coach",
+      "intro": "Audit trimestriel des attentes observables du role. Le niveau 3 represente le standard CFSB attendu; le niveau 4 represente une contribution qui eleve durablement la qualite de coaching du centre.",
+      "groups": [
+        {
+          "title": "Programmation, standards et intention technique",
+          "intro": "Ces standards couvrent la qualite de la programmation, la clarte des intentions et la coherence technique livree aux coachs.",
+          "questions": [
+            {"id": "head_programming_logic_score", "label": "Professionnalisme - Je livre une programmation logique, claire, coherente et adaptee au projet CFSB.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "La programmation manque de logique, de clarte ou arrive trop tard.", "2": "La structure globale est presente, mais certaines intentions ou progressions restent floues.", "3": "La programmation est claire, livree a temps et soutient la progression des membres.", "4": "La programmation devient un outil de culture technique: les coachs comprennent le pourquoi et coachent mieux."}},
+            {"id": "head_programming_logic_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "head_programming_logic_score", "max": 2}},
+            {"id": "head_stimulus_clarity_score", "label": "Professionnalisme - Je clarifie le stimulus, les priorites de coaching et les options d'adaptation importantes.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les coachs doivent deviner l'intention ou improviser les adaptations.", "2": "Je donne certaines indications, mais pas toujours assez de contexte.", "3": "Je rends clairs stimulus, objectifs, risques, points techniques et options d'adaptation.", "4": "Les coachs arrivent mieux prepares parce que mes intentions sont simples, precises et utiles."}},
+            {"id": "head_stimulus_clarity_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "head_stimulus_clarity_score", "max": 2}},
+            {"id": "head_standards_documentation_score", "label": "Professionnalisme - Je documente les standards techniques et outils de coaching pour qu'ils soient faciles a appliquer.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les standards restent surtout verbaux ou implicites.", "2": "Certains standards existent, mais sont incomplets ou difficiles a retrouver.", "3": "Les standards importants sont documentes, accessibles et suffisamment clairs.", "4": "Les outils reduisent les zones grises et accelerent l'onboarding des coachs."}},
+            {"id": "head_standards_documentation_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "head_standards_documentation_score", "max": 2}},
+            {"id": "head_scaling_framework_score", "label": "Bienveillance - Je fournis des reperes d'adaptation qui protegent securite, progression et confiance des membres.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les adaptations varient trop selon les coachs ou les cours.", "2": "Les options existent, mais manquent parfois de nuance.", "3": "Je donne des reperes clairs pour adapter selon niveau, blessure, confiance et stimulus.", "4": "Les membres recoivent une experience coherente et securitaire peu importe le coach."}},
+            {"id": "head_scaling_framework_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "head_scaling_framework_score", "max": 2}},
+            {"id": "head_programming_feedback_loop_score", "label": "Courage - J'utilise les observations terrain et feedbacks des coachs pour ameliorer la programmation.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "La programmation evolue peu a partir de ce qui se passe sur le plancher.", "2": "J'entends certains feedbacks, mais ils ne se transforment pas toujours en ajustements.", "3": "Je recueille les signaux utiles et j'ajuste quand la realite terrain le demande.", "4": "La programmation s'ameliore continuellement parce qu'elle reste connectee au plancher."}},
+            {"id": "head_programming_feedback_loop_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "head_programming_feedback_loop_score", "max": 2}}
+          ]
+        },
+        {
+          "title": "Observation, feedback et developpement des coachs",
+          "intro": "Ces standards mesurent la capacite du Head Coach a elever les coachs par observation, feedback, formation et suivi.",
+          "questions": [
+            {"id": "head_observation_cadence_score", "label": "Professionnalisme - J'observe les coachs avec une cadence suffisante et une intention claire.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les observations sont rares ou trop informelles.", "2": "J'observe, mais sans cadence ou priorite claire.", "3": "J'observe les coachs avec des objectifs definis et une frequence utile.", "4": "Les observations creent une culture de progression continue, pas de surveillance."}},
+            {"id": "head_observation_cadence_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "head_observation_cadence_score", "max": 2}},
+            {"id": "head_feedback_quality_score", "label": "Bienveillance - Je donne du feedback clair, priorise et applicable aux coachs.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Le feedback est rare, vague ou difficile a appliquer.", "2": "Je donne du feedback, mais parfois trop general ou sans prochaine action.", "3": "Je donne un feedback concret, priorise, respectueux et lie a une action observable.", "4": "Mes feedbacks aident les coachs a progresser vite sans se sentir diminues."}},
+            {"id": "head_feedback_quality_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "head_feedback_quality_score", "max": 2}},
+            {"id": "head_followup_accountability_score", "label": "Courage - Je fais le suivi des feedbacks donnes et je tiens les standards avec constance.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les feedbacks ne sont pas suivis ou les standards restent variables.", "2": "Je fais certains suivis, mais pas toujours avec assez de constance.", "3": "Je revisite les points importants et je clarifie ce qui doit changer.", "4": "Les standards deviennent fiables parce que les attentes sont suivies avec maturite."}},
+            {"id": "head_followup_accountability_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "head_followup_accountability_score", "max": 2}},
+            {"id": "head_onboarding_coaches_score", "label": "Professionnalisme - J'onboarde les nouveaux coachs avec une structure claire et progressive.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "L'onboarding depend trop du hasard ou des disponibilites.", "2": "Une structure existe, mais elle manque de suivi ou de progression.", "3": "Les nouveaux coachs savent quoi apprendre, observer, pratiquer et valider.", "4": "L'onboarding cree rapidement de la confiance, de l'autonomie et de la coherence."}},
+            {"id": "head_onboarding_coaches_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "head_onboarding_coaches_score", "max": 2}},
+            {"id": "head_training_moments_score", "label": "Esprit d'equipe - Je cree des moments de formation ou de partage qui font progresser l'equipe.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "L'equipe progresse surtout individuellement, sans moments communs.", "2": "Des moments existent, mais ils sont ponctuels ou peu structures.", "3": "Je cree ou facilite des apprentissages utiles pour les besoins du moment.", "4": "L'equipe devient plus forte parce que le savoir circule et se transforme en pratique."}},
+            {"id": "head_training_moments_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "head_training_moments_score", "max": 2}}
+          ]
+        },
+        {
+          "title": "Qualite plancher et experience membre",
+          "intro": "Ces standards assurent que la qualite de coaching livree dans les cours reste visible, stable et connectee a l'experience membre.",
+          "questions": [
+            {"id": "head_floor_quality_score", "label": "Professionnalisme - Je protege la qualite plancher: securite, presence, feedback, rythme et experience membre.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "La qualite plancher varie trop ou certains enjeux passent longtemps sans correction.", "2": "Je vois les enjeux, mais je ne les transforme pas toujours en actions claires.", "3": "Je surveille la qualite plancher et j'agis sur les ecarts importants.", "4": "Les membres ressentent une experience plus coherente parce que le standard est vivant."}},
+            {"id": "head_floor_quality_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "head_floor_quality_score", "max": 2}},
+            {"id": "head_feedback_culture_score", "label": "Bienveillance - Je renforce une culture ou le feedback est normal, utile et securisant.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Le feedback peut etre evite ou percu comme une critique.", "2": "La culture s'ameliore, mais reste fragile selon les personnes.", "3": "Je normalise le feedback comme un outil de progression et de respect du standard.", "4": "Les coachs se donnent davantage de feedback entre eux avec maturite."}},
+            {"id": "head_feedback_culture_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "head_feedback_culture_score", "max": 2}},
+            {"id": "head_member_safety_score", "label": "Courage - J'interviens quand un enjeu technique ou de securite met les membres a risque.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Des enjeux de securite ou technique restent non traites.", "2": "J'interviens, mais parfois tard ou indirectement.", "3": "Je nomme les enjeux importants et j'aide le coach a corriger rapidement.", "4": "La securite et la progression des membres passent avant l'inconfort de la conversation."}},
+            {"id": "head_member_safety_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "head_member_safety_score", "max": 2}},
+            {"id": "head_coach_strengths_score", "label": "Bienveillance - J'identifie et valorise les forces des coachs autant que leurs points de developpement.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Je souligne peu les forces ou je me concentre surtout sur les corrections.", "2": "Je valorise certaines forces, mais sans toujours les utiliser pour faire progresser le coach.", "3": "Je nomme les forces observables et je les relie a l'impact membre.", "4": "Les coachs savent ce qui les distingue et comment s'appuyer dessus pour progresser."}},
+            {"id": "head_coach_strengths_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "head_coach_strengths_score", "max": 2}},
+            {"id": "head_member_feedback_signal_score", "label": "Professionnalisme - J'utilise les signaux membres pour ajuster les standards et priorites de coaching.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les signaux membres influencent peu les priorites de coaching.", "2": "Je les considere, mais sans systeme clair.", "3": "J'utilise feedbacks, observations et irritants membres pour prioriser les ameliorations.", "4": "La voix des membres aide directement a elever la qualite de coaching."}},
+            {"id": "head_member_feedback_signal_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "head_member_feedback_signal_score", "max": 2}}
+          ]
+        },
+        {
+          "title": "Leadership technique, alignement et communication",
+          "intro": "Ces standards verifient que le Head Coach agit comme un pont clair entre direction, coachs, standards et realite terrain.",
+          "questions": [
+            {"id": "head_direction_alignment_score", "label": "Esprit d'equipe - Je reste aligne avec Gabriel et Michael sur les priorites techniques et operationnelles.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les priorites techniques et direction peuvent diverger ou rester floues.", "2": "L'alignement existe, mais il depend trop des discussions ponctuelles.", "3": "Je clarifie les priorites avec la direction et je les traduis pour l'equipe coach.", "4": "Je deviens un relais fiable entre vision, operations et realite plancher."}},
+            {"id": "head_direction_alignment_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "head_direction_alignment_score", "max": 2}},
+            {"id": "head_team_communication_score", "label": "Professionnalisme - Je communique clairement les changements, standards et attentes aux coachs.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les informations importantes arrivent tard ou restent implicites.", "2": "Je communique, mais certains coachs manquent encore de clarte.", "3": "Je communique les attentes au bon moment, avec contexte et prochaine action.", "4": "L'equipe sait quoi faire, pourquoi le faire et comment appliquer le standard."}},
+            {"id": "head_team_communication_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "head_team_communication_score", "max": 2}},
+            {"id": "head_conflict_courage_score", "label": "Courage - Je nomme les ecarts de standard ou tensions d'equipe avec respect et clarte.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "J'evite certaines conversations difficiles.", "2": "Je les aborde, mais parfois tard ou avec un message trop indirect.", "3": "Je nomme les ecarts clairement, avec respect et attente observable.", "4": "Je protege la culture d'equipe en traitant les tensions avant qu'elles deviennent lourdes."}},
+            {"id": "head_conflict_courage_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "head_conflict_courage_score", "max": 2}},
+            {"id": "head_ownership_development_score", "label": "Professionnalisme - Je developpe moi-meme mes competences de Head Coach avec intention.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Mon propre developpement est peu structure.", "2": "Je progresse, mais surtout quand une occasion se presente.", "3": "Je clarifie mes propres objectifs de progression et je cherche du feedback.", "4": "Je modele l'apprentissage continu que j'attends des autres coachs."}},
+            {"id": "head_ownership_development_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "head_ownership_development_score", "max": 2}},
+            {"id": "head_system_building_score", "label": "Esprit d'equipe - Je construis des systemes techniques qui rendent l'equipe moins dependante de moi.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Trop d'informations dependent encore de ma presence ou de ma memoire.", "2": "Je cree certains outils, mais ils ne sont pas toujours adoptes.", "3": "Je construis des outils simples qui rendent les standards reproductibles.", "4": "Le systeme technique devient plus autonome, clair et durable pour l'equipe."}},
+            {"id": "head_system_building_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "head_system_building_score", "max": 2}}
+          ]
+        }
       ]
     },
     {
@@ -705,38 +764,157 @@
     },
     {
       "id": "entretien_responsibilities",
-      "title": "Responsabilites - Entretien menager",
-      "intro": "Version adaptee au role: qualite, fiabilite, autonomie et communication.",
-      "questions": [
-        {"id": "cleaning_quality", "label": "Les espaces sont propres aux standards CFSB apres chaque seance.", "type": "scale", "scaleId": "agreement4", "required": true},
-        {"id": "cleaning_equipment", "label": "Le materiel, les surfaces, toilettes, douches et vestiaires sont ranges/desinfectes correctement.", "type": "scale", "scaleId": "agreement4", "required": true},
-        {"id": "cleaning_reliability", "label": "Je suis fiable selon l'horaire convenu et je communique les imprevus.", "type": "scale", "scaleId": "agreement4", "required": true},
-        {"id": "cleaning_autonomy", "label": "Je travaille en autonomie selon la liste et je maintiens le standard sans supervision.", "type": "scale", "scaleId": "agreement4", "required": true},
-        {"id": "cleaning_signal", "label": "Je signale rapidement les bris, anomalies, manques ou enjeux de securite.", "type": "scale", "scaleId": "agreement4", "required": true},
-        {"id": "cleaning_comment", "label": "Commentaire sur l'entretien menager", "type": "long_text", "required": false}
+      "title": "Valeurs CFSB - comportements Entretien menager",
+      "intro": "Audit adapte au role: le niveau 3 represente le standard attendu; le niveau 4 represente une contribution qui rend le centre plus propre, plus securitaire et plus fiable sans supervision.",
+      "groups": [
+        {
+          "title": "Qualite, hygiene et details visibles",
+          "intro": "Ces standards mesurent la qualite concrete de l'entretien dans les zones que les membres voient et utilisent.",
+          "questions": [
+            {"id": "cleaning_space_quality_score", "label": "Professionnalisme - Les espaces d'entrainement sont propres et remis aux standards CFSB apres l'entretien.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Des zones importantes restent sales ou incompletes.", "2": "Le travail est fait, mais certains details visibles reviennent souvent.", "3": "Les espaces sont propres, ranges et prets a accueillir les membres.", "4": "Le centre donne une impression de soin constant, meme dans les details."}},
+            {"id": "cleaning_space_quality_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "cleaning_space_quality_score", "max": 2}},
+            {"id": "cleaning_bathroom_locker_score", "label": "Professionnalisme - Les toilettes, douches et vestiaires sont propres, approvisionnes et agreables a utiliser.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Ces zones peuvent rester mal propres ou manquer de produits.", "2": "Elles sont generalement correctes, mais avec des oublis ou variations.", "3": "Elles sont nettoyees, verifiees et reapprovisionnees selon le standard.", "4": "Ces zones renforcent la confiance des membres dans la qualite du centre."}},
+            {"id": "cleaning_bathroom_locker_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "cleaning_bathroom_locker_score", "max": 2}},
+            {"id": "cleaning_equipment_surfaces_score", "label": "Professionnalisme - Le materiel, les surfaces et les zones de contact sont nettoyes ou desinfectes correctement.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Des zones de contact importantes sont oubliees.", "2": "Le nettoyage est fait, mais pas toujours avec la meme rigueur.", "3": "Les zones importantes sont traitees avec constance et methode.", "4": "Je remarque les zones a risque et je protege l'experience membre avant qu'on me le demande."}},
+            {"id": "cleaning_equipment_surfaces_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "cleaning_equipment_surfaces_score", "max": 2}},
+            {"id": "cleaning_detail_eye_score", "label": "Bienveillance - Je remarque les petits details qui influencent le confort et la fierte des membres.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Je fais surtout les taches evidentes et je manque certains details.", "2": "Je remarque certains details, mais de facon variable.", "3": "Je repere odeurs, traces, poubelles, coins, rangement et details visibles.", "4": "Je prends soin du centre comme si chaque detail etait un message envoye aux membres."}},
+            {"id": "cleaning_detail_eye_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "cleaning_detail_eye_score", "max": 2}}
+          ]
+        },
+        {
+          "title": "Fiabilite, autonomie et constance",
+          "intro": "Ces standards verifient que le role peut etre porte avec regularite, autonomie et peu de relances.",
+          "questions": [
+            {"id": "cleaning_reliability_schedule_score", "label": "Professionnalisme - Je respecte l'horaire convenu et je communique rapidement les imprevus.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les retards, absences ou changements creent des surprises.", "2": "Je communique les imprevus, mais parfois trop tard.", "3": "Je suis fiable et je previens rapidement quand un ajustement est necessaire.", "4": "La direction peut planifier avec confiance parce que je suis previsible."}},
+            {"id": "cleaning_reliability_schedule_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "cleaning_reliability_schedule_score", "max": 2}},
+            {"id": "cleaning_checklist_autonomy_score", "label": "Professionnalisme - Je suis la liste de taches avec autonomie et je m'assure que rien d'important n'est oublie.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "J'ai souvent besoin de rappels ou certains elements sont oublies.", "2": "Je suis la liste, mais des oublis arrivent quand le contexte change.", "3": "Je travaille avec methode et je verifie les taches importantes.", "4": "Je maintiens le standard avec autonomie, meme quand personne ne supervise."}},
+            {"id": "cleaning_checklist_autonomy_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "cleaning_checklist_autonomy_score", "max": 2}},
+            {"id": "cleaning_time_management_score", "label": "Courage - Je gere mon temps pour couvrir les priorites sans couper dans la qualite.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Certaines priorites sont sautees quand le temps est serre.", "2": "Je termine l'essentiel, mais la qualite varie selon le temps disponible.", "3": "Je priorise les zones importantes et j'ajuste mon rythme sans perdre le standard.", "4": "Je sais quoi faire quand le temps est limite et je communique ce qui reste a traiter."}},
+            {"id": "cleaning_time_management_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "cleaning_time_management_score", "max": 2}},
+            {"id": "cleaning_supplies_ownership_score", "label": "Esprit d'equipe - Je remarque les produits ou materiels manquants et je le signale avant que ca bloque le travail.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les manques sont remarques trop tard.", "2": "Je les signale, mais pas toujours avec assez d'avance.", "3": "Je surveille les produits et je signale les besoins de reapprovisionnement.", "4": "Je protege la continuite du standard en anticipant les besoins materiels."}},
+            {"id": "cleaning_supplies_ownership_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "cleaning_supplies_ownership_score", "max": 2}}
+          ]
+        },
+        {
+          "title": "Communication, securite et collaboration",
+          "intro": "Ces standards assurent que les anomalies, bris et enjeux de securite sont vus et relayes rapidement.",
+          "questions": [
+            {"id": "cleaning_safety_signal_score", "label": "Courage - Je signale rapidement les bris, anomalies ou enjeux de securite.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Des enjeux de securite ou bris restent non signales.", "2": "Je signale les cas evidents, mais parfois sans detail suffisant.", "3": "Je signale rapidement le probleme, l'endroit et l'impact possible.", "4": "Je contribue a prevenir les accidents et irritants avant qu'ils deviennent gros."}},
+            {"id": "cleaning_safety_signal_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "cleaning_safety_signal_score", "max": 2}},
+            {"id": "cleaning_team_communication_score", "label": "Esprit d'equipe - Je communique clairement avec la direction ou l'equipe quand une information est utile.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Des informations utiles ne sont pas partagees.", "2": "Je communique, mais parfois tard ou trop vaguement.", "3": "Je partage les informations importantes avec clarte et au bon moment.", "4": "Ma communication aide l'equipe a mieux proteger l'experience centre."}},
+            {"id": "cleaning_team_communication_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "cleaning_team_communication_score", "max": 2}},
+            {"id": "cleaning_respect_space_score", "label": "Bienveillance - Je respecte les membres, les coachs et le rythme du centre pendant mon travail.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Mon travail peut deranger ou manquer de consideration pour les activites en cours.", "2": "Je m'adapte, mais pas toujours avec assez d'anticipation.", "3": "Je travaille avec discretion, respect et attention aux gens presents.", "4": "Je contribue a une ambiance agreable tout en gardant un haut standard de proprete."}},
+            {"id": "cleaning_respect_space_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "cleaning_respect_space_score", "max": 2}},
+            {"id": "cleaning_improvement_feedback_score", "label": "Courage - Je propose des ameliorations simples quand je vois une facon de rendre l'entretien plus efficace.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Je garde les irritants pour moi.", "2": "Je partage parfois des idees, mais sans beaucoup de precision.", "3": "Je propose des ameliorations concretes quand je vois une friction.", "4": "J'aide le centre a ameliorer ses routines de proprete et de rangement."}},
+            {"id": "cleaning_improvement_feedback_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "cleaning_improvement_feedback_score", "max": 2}}
+          ]
+        }
       ]
     },
     {
       "id": "engagement_responsibilities",
-      "title": "Responsabilites - Engagement communautaire et evenements",
-      "intro": "Focus sur l'organisation, l'animation, l'inclusion et l'impact communautaire.",
-      "questions": [
-        {"id": "event_planning", "label": "Les evenements sont planifies, communiques et executes avec rigueur.", "type": "scale", "scaleId": "agreement4", "required": true},
-        {"id": "community_animation", "label": "La communaute est animee avec chaleur, inclusion et regularite.", "type": "scale", "scaleId": "agreement4", "required": true},
-        {"id": "member_stories", "label": "Les membres sont mis en valeur de facon authentique.", "type": "scale", "scaleId": "agreement4", "required": true},
-        {"id": "team_involvement", "label": "L'equipe est impliquee et informee dans les projets communautaires.", "type": "scale", "scaleId": "agreement4", "required": true},
-        {"id": "event_comment", "label": "Commentaire sur l'engagement communautaire", "type": "long_text", "required": false}
+      "title": "Valeurs CFSB - comportements Engagement communautaire et evenements",
+      "intro": "Audit trimestriel des attentes observables du role. Le niveau 3 represente le standard CFSB attendu; le niveau 4 represente une contribution qui renforce la communaute et l'attachement au centre.",
+      "groups": [
+        {
+          "title": "Planification et execution des evenements",
+          "intro": "Ces standards couvrent la preparation, la communication, la logistique et la qualite d'execution.",
+          "questions": [
+            {"id": "event_planning_structure_score", "label": "Professionnalisme - Je planifie les evenements avec objectifs, echeancier, responsabilites et besoins clairs.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les evenements sont improvises ou manquent de structure.", "2": "La planification existe, mais certains details arrivent tard.", "3": "Objectif, dates, taches, responsables et besoins sont clairs avant l'evenement.", "4": "La planification donne confiance a l'equipe et rend l'execution fluide."}},
+            {"id": "event_planning_structure_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "event_planning_structure_score", "max": 2}},
+            {"id": "event_communication_score", "label": "Professionnalisme - Je communique les evenements clairement aux membres et a l'equipe.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les communications sont tardives, incompletes ou peu visibles.", "2": "Les infos sortent, mais manquent parfois de repetition ou de clarte.", "3": "Les membres et l'equipe savent quoi, quand, ou, pour qui et comment participer.", "4": "La communication cree de l'energie et facilite l'inscription ou la participation."}},
+            {"id": "event_communication_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "event_communication_score", "max": 2}},
+            {"id": "event_execution_reliability_score", "label": "Professionnalisme - J'execute les evenements avec fiabilite, presence et attention aux details.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "L'execution depend trop de l'improvisation ou des autres.", "2": "L'evenement fonctionne, mais des details importants echappent.", "3": "Je suis present, organise et attentif aux details importants le jour meme.", "4": "L'evenement se vit comme une experience fluide, chaleureuse et bien portee."}},
+            {"id": "event_execution_reliability_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "event_execution_reliability_score", "max": 2}},
+            {"id": "event_followup_learning_score", "label": "Courage - Je fais un retour apres les evenements pour apprendre et ameliorer la prochaine fois.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "On passe au prochain projet sans tirer d'apprentissage.", "2": "Je note certains apprentissages, mais de facon informelle.", "3": "Je retiens ce qui a marche, ce qui a bloque et les ajustements a faire.", "4": "Chaque evenement rend le suivant plus simple, plus fort et mieux aligne."}},
+            {"id": "event_followup_learning_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "event_followup_learning_score", "max": 2}}
+          ]
+        },
+        {
+          "title": "Inclusion, chaleur et culture CFSB",
+          "intro": "Ces standards mesurent la capacite a faire sentir aux membres qu'ils font partie de quelque chose.",
+          "questions": [
+            {"id": "community_inclusion_score", "label": "Bienveillance - Je cree des occasions ou les membres se sentent inclus, reconnus et bienvenus.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les initiatives rejoignent surtout les gens deja impliques.", "2": "J'inclus plusieurs membres, mais certains profils restent moins rejoints.", "3": "Je pense aux nouveaux, aux plus discrets et aux differents groupes de membres.", "4": "La communaute devient plus accessible parce que chacun peut trouver sa place."}},
+            {"id": "community_inclusion_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "community_inclusion_score", "max": 2}},
+            {"id": "community_energy_score", "label": "Bienveillance - J'amene une energie positive qui renforce le sentiment d'appartenance.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "L'energie communautaire est peu visible ou depend des autres.", "2": "Je contribue, mais de facon ponctuelle.", "3": "Je cree de l'elan, de la chaleur et de la reconnaissance autour des moments communautaires.", "4": "Mon energie aide les membres a se sentir fiers d'appartenir au CFSB."}},
+            {"id": "community_energy_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "community_energy_score", "max": 2}},
+            {"id": "community_member_connection_score", "label": "Esprit d'equipe - Je facilite les liens entre les membres, pas seulement entre le centre et les membres.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les membres sont surtout connectes au staff, peu entre eux.", "2": "Je cree certains liens, mais sans intention claire.", "3": "Je facilite les introductions, conversations et moments qui rapprochent les membres.", "4": "Les membres developpent des liens qui augmentent leur attachement au centre."}},
+            {"id": "community_member_connection_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "community_member_connection_score", "max": 2}},
+            {"id": "community_values_fit_score", "label": "Professionnalisme - Je garde les initiatives communautaires alignees avec la mission et les valeurs CFSB.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les initiatives peuvent sembler deconnectees du projet CFSB.", "2": "L'alignement est present, mais pas toujours explicite.", "3": "Les initiatives soutiennent la sante, le lien humain, la progression et la culture du centre.", "4": "Chaque initiative renforce l'identite CFSB et donne du sens a la communaute."}},
+            {"id": "community_values_fit_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "community_values_fit_score", "max": 2}}
+          ]
+        },
+        {
+          "title": "Mise en valeur, contenu et histoires membres",
+          "intro": "Ces standards couvrent la capacite a capter et partager ce qui rend la communaute vivante.",
+          "questions": [
+            {"id": "community_story_capture_score", "label": "Bienveillance - Je repere et mets en valeur les histoires, progres et moments significatifs des membres.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les belles histoires passent souvent sans etre captees.", "2": "Je repere certaines histoires, mais de facon ponctuelle.", "3": "Je remarque les progres, moments et personnes qui meritent d'etre soulignes.", "4": "Les membres se sentent vus parce que leurs efforts et histoires comptent."}},
+            {"id": "community_story_capture_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "community_story_capture_score", "max": 2}},
+            {"id": "community_authentic_content_score", "label": "Professionnalisme - Je contribue a du contenu authentique qui represente bien la vie du centre.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Le contenu est rare, force ou peu representatif.", "2": "Je contribue parfois, mais sans rythme ou intention claire.", "3": "Je capte du contenu simple, vrai et utile pour montrer l'ambiance CFSB.", "4": "Le contenu aide les membres et prospects a ressentir ce qui se vit au centre."}},
+            {"id": "community_authentic_content_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "community_authentic_content_score", "max": 2}},
+            {"id": "community_privacy_respect_score", "label": "Courage - Je respecte le consentement, la sensibilite et la dignite des membres dans ce qui est partage.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Le cadre de partage ou consentement peut etre flou.", "2": "Je fais attention, mais certaines situations demandent plus de jugement.", "3": "Je valide ce qui doit l'etre et je partage avec respect.", "4": "Les membres peuvent faire confiance au centre pour les mettre en valeur avec dignite."}},
+            {"id": "community_privacy_respect_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "community_privacy_respect_score", "max": 2}},
+            {"id": "community_recognition_consistency_score", "label": "Esprit d'equipe - Je rends la reconnaissance des membres plus constante et partagee par l'equipe.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "La reconnaissance depend surtout de moments spontanes.", "2": "Il y a des efforts, mais ils restent inconstants.", "3": "Je soutiens des habitudes simples de reconnaissance et de mise en valeur.", "4": "La reconnaissance devient une partie visible et naturelle de la culture CFSB."}},
+            {"id": "community_recognition_consistency_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "community_recognition_consistency_score", "max": 2}}
+          ]
+        },
+        {
+          "title": "Collaboration equipe et ownership",
+          "intro": "Ces standards verifient que les projets communautaires sont portes avec l'equipe, la direction et les operations.",
+          "questions": [
+            {"id": "event_team_coordination_score", "label": "Esprit d'equipe - J'implique la bonne personne au bon moment dans les projets communautaires.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les projets avancent en silo ou l'equipe est informee trop tard.", "2": "J'implique l'equipe, mais les roles ou attentes restent parfois flous.", "3": "Je clarifie qui fait quoi et je garde l'equipe informee.", "4": "Les projets deviennent plus faciles parce que l'equipe sait comment contribuer."}},
+            {"id": "event_team_coordination_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "event_team_coordination_score", "max": 2}},
+            {"id": "event_direction_alignment_score", "label": "Professionnalisme - Je reste aligne avec la direction sur les priorites, budgets et objectifs des initiatives.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les initiatives peuvent avancer sans assez de cadrage.", "2": "L'alignement existe, mais certaines decisions restent floues.", "3": "Je valide objectifs, limites, budget et priorites avant d'avancer.", "4": "La direction peut faire confiance au cadre et a l'impact des initiatives."}},
+            {"id": "event_direction_alignment_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "event_direction_alignment_score", "max": 2}},
+            {"id": "event_initiative_ownership_score", "label": "Courage - Je prends ownership des initiatives que je porte, de l'idee jusqu'au suivi.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les initiatives ont besoin de beaucoup de relances.", "2": "Je porte les projets, mais certains suivis echappent.", "3": "Je clarifie la prochaine action et je mene les projets jusqu'a fermeture.", "4": "Je transforme les idees en experiences reelles, suivies et apprenantes."}},
+            {"id": "event_initiative_ownership_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "event_initiative_ownership_score", "max": 2}},
+            {"id": "event_impact_judgment_score", "label": "Courage - Je juge l'impact reel des initiatives et je suis capable de proposer d'arreter, ajuster ou continuer.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "On continue des initiatives sans regarder leur impact.", "2": "Je vois certains signaux, mais je les formalise peu.", "3": "Je regarde participation, energie, feedback, effort requis et apprentissages.", "4": "Je protege l'energie de l'equipe en choisissant les initiatives qui valent vraiment le coup."}},
+            {"id": "event_impact_judgment_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "event_impact_judgment_score", "max": 2}}
+          ]
+        }
       ]
     },
     {
       "id": "admin_other_responsibilities",
-      "title": "Responsabilites - Administration / autre",
-      "intro": "Role de support ou administratif a preciser.",
-      "questions": [
-        {"id": "admin_role_description", "label": "Quelles sont tes responsabilites principales actuellement?", "type": "long_text", "required": true},
-        {"id": "admin_reliability", "label": "Je livre mes responsabilites avec fiabilite et constance.", "type": "scale", "scaleId": "agreement4", "required": true},
-        {"id": "admin_collaboration", "label": "Je collabore efficacement avec la direction et l'equipe.", "type": "scale", "scaleId": "agreement4", "required": true},
-        {"id": "admin_support_needed", "label": "Quel support ou clarification te serait utile?", "type": "long_text", "required": false}
+      "title": "Valeurs CFSB - comportements Administration / autre role",
+      "intro": "Audit flexible pour un role administratif ou de support. Le niveau 3 represente le standard attendu; le niveau 4 represente une contribution qui rend l'equipe plus fiable, claire et efficace.",
+      "groups": [
+        {
+          "title": "Clarification du role et priorites",
+          "intro": "Cette section permet de cadrer le role si les responsabilites ne rentrent pas parfaitement dans une fiche de poste existante.",
+          "questions": [
+            {"id": "admin_role_description", "label": "Quelles sont tes responsabilites principales actuellement?", "type": "long_text", "required": true},
+            {"id": "admin_role_clarity_score", "label": "Professionnalisme - Je comprends clairement mes responsabilites, priorites et limites de role.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Le role est flou ou les attentes changent sans clarte.", "2": "Je comprends l'essentiel, mais certaines priorites ou limites restent floues.", "3": "Je sais ce qui est attendu, ce qui est prioritaire et quand demander une clarification.", "4": "Je peux expliquer mon role clairement et aider l'equipe a mieux l'utiliser."}},
+            {"id": "admin_role_clarity_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "admin_role_clarity_score", "max": 2}},
+            {"id": "admin_priority_management_score", "label": "Professionnalisme - Je gere mes priorites de facon fiable quand plusieurs demandes arrivent.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Je peux me perdre dans les demandes ou traiter les priorites dans le mauvais ordre.", "2": "Je priorise, mais j'ai parfois besoin de relances ou clarifications.", "3": "Je distingue urgence, importance et echeance, puis j'avance dans le bon ordre.", "4": "Je cree de la clarte pour moi et pour les autres meme quand le contexte bouge."}},
+            {"id": "admin_priority_management_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "admin_priority_management_score", "max": 2}}
+          ]
+        },
+        {
+          "title": "Fiabilite, exactitude et confidentialite",
+          "intro": "Ces standards couvrent la qualite d'execution, le respect des delais et le jugement dans la gestion d'informations sensibles.",
+          "questions": [
+            {"id": "admin_reliability_score", "label": "Professionnalisme - Je livre mes responsabilites avec fiabilite, constance et respect des delais.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les livrables ou suivis sont souvent en retard ou incomplets.", "2": "Je livre l'essentiel, mais avec une constance variable.", "3": "Je respecte mes delais, je communique les obstacles et je ferme les boucles.", "4": "On peut me confier une responsabilite en sachant qu'elle sera suivie jusqu'au bout."}},
+            {"id": "admin_reliability_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "admin_reliability_score", "max": 2}},
+            {"id": "admin_accuracy_score", "label": "Professionnalisme - Je travaille avec exactitude dans les informations, documents, chiffres ou suivis que je manipule.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Des erreurs importantes ou oublis reviennent.", "2": "Le travail est generalement bon, mais demande parfois trop de verification.", "3": "Je verifie les informations importantes et je corrige rapidement les erreurs.", "4": "Mon travail inspire confiance parce qu'il est precis, propre et facile a reprendre."}},
+            {"id": "admin_accuracy_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "admin_accuracy_score", "max": 2}},
+            {"id": "admin_confidentiality_score", "label": "Courage - Je gere les informations sensibles avec discretion, jugement et respect.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Le cadre de confidentialite peut etre flou ou insuffisant.", "2": "Je fais attention, mais certaines situations demandent plus de prudence.", "3": "Je partage les informations sensibles seulement avec les bonnes personnes et le bon contexte.", "4": "La direction peut me faire confiance avec des informations sensibles ou administratives."}},
+            {"id": "admin_confidentiality_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "admin_confidentiality_score", "max": 2}}
+          ]
+        },
+        {
+          "title": "Communication, collaboration et amelioration",
+          "intro": "Ces standards assurent que le role de support rend l'equipe plus claire, plus alignee et moins dependante des relances.",
+          "questions": [
+            {"id": "admin_collaboration_score", "label": "Esprit d'equipe - Je collabore efficacement avec la direction et les personnes qui dependent de mon travail.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "La collaboration est reactive ou manque de clarte.", "2": "Je collabore bien, mais certains relais ou suivis restent flous.", "3": "Je communique ce qui est fait, ce qui bloque et ce qui est attendu des autres.", "4": "Mon travail rend les autres plus efficaces parce que les relais sont clairs."}},
+            {"id": "admin_collaboration_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "admin_collaboration_score", "max": 2}},
+            {"id": "admin_problem_signal_score", "label": "Courage - Je signale rapidement les problemes, risques ou zones grises qui peuvent nuire au travail.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Je garde certains problemes pour moi ou je les signale trop tard.", "2": "Je signale les enjeux evidents, mais pas toujours avec assez de contexte.", "3": "Je nomme le probleme, l'impact et la prochaine clarification necessaire.", "4": "J'aide l'equipe a prevenir les erreurs en parlant des risques avant qu'ils grossissent."}},
+            {"id": "admin_problem_signal_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "admin_problem_signal_score", "max": 2}},
+            {"id": "admin_process_improvement_score", "label": "Professionnalisme - Je propose des ameliorations simples pour rendre mon travail ou les processus plus efficaces.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Je subis les irritants sans les faire remonter.", "2": "Je remarque des ameliorations possibles, mais je les formalise peu.", "3": "Je propose des ajustements concrets quand un processus cree de la friction.", "4": "Je rends mon role plus clair, plus simple et plus utile pour l'equipe."}},
+            {"id": "admin_process_improvement_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "admin_process_improvement_score", "max": 2}},
+            {"id": "admin_support_needed", "label": "Quel support, outil ou clarification te serait le plus utile au prochain trimestre?", "type": "long_text", "required": false}
+          ]
+        }
       ]
     },
     {
