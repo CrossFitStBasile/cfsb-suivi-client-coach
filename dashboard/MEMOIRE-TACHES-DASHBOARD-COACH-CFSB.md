@@ -21,6 +21,10 @@ Derniere mise a jour : 2026-05-22
 - Alumni permet maintenant de creer une mission, marquer reactive, classer a ne pas recontacter ou supprimer en mode demo.
 - Mission contient une capture rapide coach pour transformer une note/transcription en missions.
 - Les risques sont separes entre `Risque coach`, `Signal questionnaire` et `Signal systeme`.
+- Performance ne doit contenir que les risques/retention et les impacts/revenus. Les alumni vivent dans Alumni et les holds vivent dans Clients.
+- Les alumni exclus peuvent maintenant etre remis dans `Alumni a travailler` si le coach a clique par erreur.
+- Les holds peuvent maintenant etre ajoutes ou retires directement depuis la fiche client.
+- La capture rapide met la date du jour par defaut.
 - Le backend Apps Script actif est le deployment `AKfycbz1qODx2pCWQ2yHhkse6FBxdyn741cYObW_qGsuox4RmVs7m6WYy3YqFTSti8YcRiGQ`.
 - Les coachs peuvent choisir un coach dans le menu deroulant quand les donnees sont chargees.
 - L'extension CoachRx permet de pousser les donnees CoachRx vers le backend.
@@ -61,6 +65,8 @@ Derniere mise a jour : 2026-05-22
    - Marquer un risque.
    - Declarer un impact, le confirmer, l'annuler et le supprimer.
    - Ajouter un alumni, creer une mission, puis le supprimer ou le classer.
+   - Remettre un alumni exclu dans la liste a travailler.
+   - Mettre un client sur hold depuis Clients, puis retirer le hold.
    - Utiliser la capture rapide pour creer des missions depuis une note de fin de journee.
    - Utiliser `Reset demo` pour revenir au scenario initial.
 
