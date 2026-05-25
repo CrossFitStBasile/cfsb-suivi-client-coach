@@ -4,8 +4,10 @@ const IS_LOCAL_PREVIEW = ["", "localhost", "127.0.0.1", "::1"].includes(window.l
 const STORAGE_KEYS = {
   settings: "cfsb-roadmap-settings",
   submissions: "cfsb-roadmap-submissions",
-  ownerNotes: "cfsb-roadmap-owner-notes"
+  ownerNotes: "cfsb-roadmap-owner-notes",
+  ownerAccess: "cfsb-roadmap-owner-access"
 };
+const OWNER_PIN_HASH = "2c0e6aedc46934b8f4c0eff7cb21be678c5a35449ea3374b15f3a2f65259c3d7";
 
 const state = {
   config: null,
@@ -16,6 +18,7 @@ const state = {
     endpointUrl: IS_LOCAL_PREVIEW ? "" : DEFAULT_ENDPOINT_URL
   }
 };
+let dashboardStarted = false;
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -27,6 +30,57 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+async function sha256Hex(value) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function showOwnerApp() {
+  $("#ownerGate").hidden = true;
+  $("#ownerApp").hidden = false;
+}
+
+function showOwnerGate() {
+  $("#ownerGate").hidden = false;
+  $("#ownerApp").hidden = true;
+  $("#ownerPinInput").focus();
+}
+
+async function unlockOwners(event) {
+  event.preventDefault();
+  const error = $("#ownerGateError");
+  error.hidden = true;
+
+  if (!crypto.subtle) {
+    error.textContent = "Ce navigateur ne supporte pas la validation du code.";
+    error.hidden = false;
+    return;
+  }
+
+  const enteredHash = await sha256Hex($("#ownerPinInput").value.trim());
+  if (enteredHash !== OWNER_PIN_HASH) {
+    error.textContent = "Code invalide.";
+    error.hidden = false;
+    $("#ownerPinInput").select();
+    return;
+  }
+
+  sessionStorage.setItem(STORAGE_KEYS.ownerAccess, "ok");
+  $("#ownerPinInput").value = "";
+  await startDashboard();
+}
+
+function lockOwners() {
+  sessionStorage.removeItem(STORAGE_KEYS.ownerAccess);
+  showOwnerGate();
+}
+
+function bindOwnerGate() {
+  $("#ownerGateForm").addEventListener("submit", unlockOwners);
+  $("#lockOwnersButton").addEventListener("click", lockOwners);
 }
 
 async function loadConfig() {
@@ -337,8 +391,15 @@ function clearLocal() {
   renderDetail();
 }
 
-async function init() {
+async function startDashboard() {
+  if (dashboardStarted) {
+    showOwnerApp();
+    return;
+  }
+  dashboardStarted = true;
+
   try {
+    showOwnerApp();
     await loadConfig();
     loadLocalData();
     $("#settingsButton").addEventListener("click", openSettings);
@@ -352,6 +413,15 @@ async function init() {
   } catch (error) {
     $("#detailArea").innerHTML = `<div class="notice error">${escapeHtml(error.message)}</div>`;
   }
+}
+
+async function init() {
+  bindOwnerGate();
+  if (sessionStorage.getItem(STORAGE_KEYS.ownerAccess) === "ok") {
+    await startDashboard();
+    return;
+  }
+  showOwnerGate();
 }
 
 init();
