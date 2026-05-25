@@ -54,6 +54,10 @@ Derniere mise a jour : 2026-05-25
   - un module `Actif` peut etre utilise tel quel;
   - un module `En test` ou `Module lie` reste accessible par bouton, mais ne doit pas etre presente comme une integration complete;
   - chaque module devra avoir un contrat de donnees stable avant d'alimenter automatiquement Mission ou Performance.
+- Envoi questionnaire :
+  - le bouton demande maintenant une confirmation avant tout envoi reel;
+  - il bloque l'envoi si le client n'a ni telephone ni courriel;
+  - l'envoi live passe par le backend `sendQuestionnaire`, qui doit ajouter le tag GHL `programme` au contact trouve par telephone/courriel.
 
 ## Priorites immediates avant meeting / test equipe
 
@@ -91,6 +95,7 @@ Derniere mise a jour : 2026-05-25
 3. Tester les actions sans envoyer a de vrais clients par erreur
    - Ajouter Michael comme client manuel.
    - Envoyer un questionnaire seulement a un contact test.
+   - Confirmer que la fenetre de validation affiche le bon nom et le bon telephone/courriel avant de cliquer OK.
    - Valider que la reponse arrive dans l'inbox questionnaire.
    - Valider que `Marquer traite` retire la reponse des vues actives.
    - Valider que la date Kilo cree une tache de rebooking au bon moment.
