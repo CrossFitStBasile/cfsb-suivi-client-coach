@@ -202,3 +202,11 @@ Derniere mise a jour : 2026-05-25
 - Il peut ajouter un client manuel/test.
 - Il peut mettre a jour CoachRx avec une procedure simple.
 - Un admin peut comprendre quoi faire avec les clients a valider.
+
+## Notes techniques recentes
+
+- 2026-05-25, version 52216: le menu des coachs ne depend plus seulement de `data.coaches`.
+  L'app deduit aussi les coachs depuis le coach actif, les clients, les taches, les questionnaires,
+  les holds, les alumni, les impacts et une liste pilote de coachs connus. Si aucun coach reel
+  n'apparait apres cette version, le backend ne renvoie pas encore assez de donnees pour construire
+  l'annuaire cote frontend et il faudra corriger Apps Script.
