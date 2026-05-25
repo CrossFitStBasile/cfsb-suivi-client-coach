@@ -27,7 +27,9 @@ async function run() {
     await page.getByRole("button", { name: /Coach Developpement/i }).click();
     await page.getByRole("link", { name: /Relire le suivi Fondations/i }).waitFor({ timeout: 15000 });
     await page.getByText("Valeurs CFSB - comportements Coach Developpement").waitFor({ timeout: 15000 });
-    await page.getByText("Kilo, CHIP, les politiques").waitFor({ timeout: 15000 });
+    await page.getByText("Cours de groupe - standards de base").waitFor({ timeout: 15000 });
+    await page.getByText("Documentation, communication et relais").waitFor({ timeout: 15000 });
+    await page.locator("label", { hasText: "Je guide le membre dans Kilo, CHIP, documents" }).waitFor({ timeout: 15000 });
     await page.getByRole("button", { name: /Coach Professionnel/i }).click();
     await page.getByRole("link", { name: /Relire la fiche de poste/i }).waitFor({ timeout: 15000 });
     await page.getByText("Valeurs CFSB - comportements Coach Professionnel").waitFor({ timeout: 15000 });

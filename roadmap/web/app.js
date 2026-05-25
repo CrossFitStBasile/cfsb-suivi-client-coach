@@ -156,10 +156,28 @@ function renderModule(module, role) {
         <p>${escapeHtml(module.intro || "")}</p>
       </div>
       <div class="section-body">
-        ${module.questions.map((question) => renderQuestion(question, role)).join("")}
+        ${renderModuleBody(module, role)}
       </div>
     </section>
   `;
+}
+
+function renderModuleBody(module, role) {
+  if (module.groups?.length) {
+    return module.groups.map((group) => `
+      <details class="question-group" open>
+        <summary>
+          <strong>${escapeHtml(group.title)}</strong>
+          ${group.intro ? `<span>${escapeHtml(group.intro)}</span>` : ""}
+        </summary>
+        <div class="question-group-body">
+          ${(group.questions || []).map((question) => renderQuestion(question, role)).join("")}
+        </div>
+      </details>
+    `).join("");
+  }
+
+  return (module.questions || []).map((question) => renderQuestion(question, role)).join("");
 }
 
 function renderQuestion(question, role) {

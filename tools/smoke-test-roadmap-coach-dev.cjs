@@ -46,8 +46,10 @@ async function run() {
     await page.getByRole("link", { name: /Relire la fiche de poste/i }).waitFor({ timeout: 5000 });
     await page.getByRole("link", { name: /Relire le suivi Fondations/i }).waitFor({ timeout: 5000 });
     await page.getByText("Valeurs CFSB - comportements Coach Developpement").waitFor({ timeout: 5000 });
-    await page.getByText("Kilo, CHIP, les politiques").waitFor({ timeout: 5000 });
-    await page.getByText("Caroline ou a un autre coach").waitFor({ timeout: 5000 });
+    await page.getByText("Cours de groupe - standards de base").waitFor({ timeout: 5000 });
+    await page.getByText("Documentation, communication et relais").waitFor({ timeout: 5000 });
+    await page.locator("label", { hasText: "Je guide le membre dans Kilo, CHIP, documents" }).waitFor({ timeout: 5000 });
+    await page.locator("label", { hasText: "Je communique avec Caroline" }).waitFor({ timeout: 5000 });
 
     await page.locator('[data-question-id="employee_name"]').fill("Coach Dev Test");
     await page.locator('[data-question-id="employee_email"]').fill("coachdev@example.com");
@@ -56,15 +58,26 @@ async function run() {
     await page.locator('[data-question-id="most_aligned_moment"]').fill("Quand une Fondation rend un membre plus confiant.");
 
     const scoreIds = [
-      "coach_dev_bienveillance_first_experience_score",
-      "coach_dev_bienveillance_progression_score",
-      "coach_dev_professionalism_foundations_admin_score",
-      "coach_dev_professionalism_pedagogy_score",
-      "coach_dev_professionalism_notes_score",
-      "coach_dev_courage_signal_score",
-      "coach_dev_courage_services_score",
-      "coach_dev_team_handoff_score",
-      "coach_dev_team_group_class_score"
+      "coach_dev_group_preparation_score",
+      "coach_dev_group_brief_score",
+      "coach_dev_group_observation_score",
+      "coach_dev_group_safety_score",
+      "coach_dev_group_closing_score",
+      "coach_dev_foundation_first_experience_score",
+      "coach_dev_foundation_admin_score",
+      "coach_dev_foundation_planning_score",
+      "coach_dev_foundation_goal_score",
+      "coach_dev_foundation_services_score",
+      "coach_dev_pedagogy_simple_score",
+      "coach_dev_pedagogy_tell_show_do_check_score",
+      "coach_dev_pedagogy_adaptation_score",
+      "coach_dev_pedagogy_feedback_score",
+      "coach_dev_pedagogy_autonomy_score",
+      "coach_dev_documentation_session_score",
+      "coach_dev_documentation_injury_score",
+      "coach_dev_communication_caroline_score",
+      "coach_dev_handoff_completion_score",
+      "coach_dev_development_feedback_score"
     ];
     for (const scoreId of scoreIds) {
       await page.locator(`[name="${scoreId}"][value="3"]`).check();
