@@ -28,6 +28,11 @@ async function run() {
     await page.getByRole("link", { name: /Relire le suivi Fondations/i }).waitFor({ timeout: 15000 });
     await page.getByText("Valeurs CFSB - comportements Coach Developpement").waitFor({ timeout: 15000 });
     await page.getByText("Kilo, CHIP, les politiques").waitFor({ timeout: 15000 });
+    await page.getByRole("button", { name: /Coach Professionnel/i }).click();
+    await page.getByRole("link", { name: /Relire la fiche de poste/i }).waitFor({ timeout: 15000 });
+    await page.getByText("Valeurs CFSB - comportements Coach Professionnel").waitFor({ timeout: 15000 });
+    await page.getByText("portefeuille de clients").waitFor({ timeout: 15000 });
+    await page.getByText("realite economique").waitFor({ timeout: 15000 });
 
     await page.getByRole("button", { name: /Parametres/i }).click();
     const endpointValue = await page.locator("#endpointInput").inputValue();
