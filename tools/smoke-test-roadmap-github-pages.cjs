@@ -39,7 +39,8 @@ async function run() {
     await page.locator("summary", { hasText: "Portefeuille, ventes et realite economique" }).waitFor({ timeout: 15000 });
     await page.locator("label", { hasText: "Je prends ownership de mon portefeuille de clients" }).waitFor({ timeout: 15000 });
     await page.getByText("Relation membre et retention").waitFor({ timeout: 15000 });
-    await page.getByText("Leadership, developpement et equipe").waitFor({ timeout: 15000 });
+    await page.getByText("Cours de groupe - excellence Coach Professionnel").waitFor({ timeout: 15000 });
+    await page.locator("label", { hasText: "J'identifie rapidement les problemes prioritaires" }).waitFor({ timeout: 15000 });
 
     await page.getByRole("button", { name: /Parametres/i }).click();
     const endpointValue = await page.locator("#endpointInput").inputValue();

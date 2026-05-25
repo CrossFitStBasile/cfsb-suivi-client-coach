@@ -49,6 +49,8 @@ async function run() {
     await page.locator("label", { hasText: "Je prends ownership de mon portefeuille de clients" }).waitFor({ timeout: 5000 });
     await page.getByText("Relation membre et retention").waitFor({ timeout: 5000 });
     await page.getByText("Systemes, suivis et communication").waitFor({ timeout: 5000 });
+    await page.getByText("Cours de groupe - excellence Coach Professionnel").waitFor({ timeout: 5000 });
+    await page.locator("label", { hasText: "J'identifie rapidement les problemes prioritaires" }).waitFor({ timeout: 5000 });
 
     await page.locator('[data-question-id="employee_name"]').fill("Coach Pro Test");
     await page.locator('[data-question-id="employee_email"]').fill("coachpro@example.com");
@@ -81,12 +83,12 @@ async function run() {
       "coach_pro_checkup_csm_score",
       "coach_pro_issue_escalation_score",
       "coach_pro_scoreboard_reporting_score",
-      "coach_pro_group_class_standard_score",
-      "coach_pro_foundation_support_score",
-      "coach_pro_peer_collaboration_score",
-      "coach_pro_feedback_learning_score",
-      "coach_pro_specialty_development_score",
-      "coach_pro_career_ownership_score"
+      "coach_pro_group_intention_preparation_score",
+      "coach_pro_group_floor_presence_score",
+      "coach_pro_group_problem_detection_score",
+      "coach_pro_group_feedback_precision_score",
+      "coach_pro_group_scaling_stimulus_score",
+      "coach_pro_group_professional_bridge_score"
     ];
     for (const scoreId of scoreIds) {
       await page.locator(`[name="${scoreId}"][value="3"]`).check();
