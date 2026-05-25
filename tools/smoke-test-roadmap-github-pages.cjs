@@ -41,6 +41,10 @@ async function run() {
     await page.getByText("Relation membre et retention").waitFor({ timeout: 15000 });
     await page.getByText("Cours de groupe - excellence Coach Professionnel").waitFor({ timeout: 15000 });
     await page.locator("label", { hasText: "J'identifie rapidement les problemes prioritaires" }).waitFor({ timeout: 15000 });
+    await page.getByRole("button", { name: /Coordinatrice du centre/i }).click();
+    await page.getByText("Valeurs CFSB - comportements Coordinatrice du centre").waitFor({ timeout: 15000 });
+    await page.getByText("Parcours membre, Fondations et CSM").waitFor({ timeout: 15000 });
+    await page.locator("label", { hasText: "Je garde une vue claire des nouveaux membres" }).waitFor({ timeout: 15000 });
 
     await page.getByRole("button", { name: /Parametres/i }).click();
     const endpointValue = await page.locator("#endpointInput").inputValue();
