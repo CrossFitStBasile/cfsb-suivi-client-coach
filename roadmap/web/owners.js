@@ -66,7 +66,11 @@ function roleById(roleId) {
 function questionIndex() {
   const index = {};
   state.config.modules.forEach((module) => {
-    module.questions.forEach((question) => {
+    const questions = module.groups?.length
+      ? module.groups.flatMap((group) => group.questions || [])
+      : module.questions || [];
+
+    questions.forEach((question) => {
       index[question.id] = { ...question, moduleTitle: module.title };
     });
   });

@@ -382,6 +382,36 @@ button {
   padding: 18px;
 }
 
+.question-group {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.question-group summary {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.question-group summary strong {
+  font-size: 15px;
+}
+
+.question-group summary span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.question-group-body {
+  display: grid;
+  gap: 16px;
+  padding: 0 14px 14px;
+}
+
 .field {
   display: grid;
   gap: 8px;

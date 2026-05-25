@@ -363,134 +363,72 @@
     {
       "id": "coach_developpement_behavioral_values",
       "title": "Valeurs CFSB - comportements Coach Developpement",
-      "intro": "Auto-evalue des comportements observables dans ton role actuel. Le niveau 3 represente le standard CFSB attendu; le niveau 4 represente une contribution qui eleve l'experience des nouveaux membres, des Fondations ou de l'equipe.",
-      "questions": [
+      "intro": "Audit trimestriel des attentes observables du role. Le niveau 3 represente le standard CFSB attendu; le niveau 4 represente une contribution qui eleve l'experience des nouveaux membres, des Fondations ou de l'equipe.",
+      "groups": [
         {
-          "id": "coach_dev_bienveillance_first_experience_score",
-          "label": "Bienveillance - Je cree une premiere experience rassurante, claire et humaine pour les nouveaux membres.",
-          "type": "scale",
-          "scaleId": "agreement4",
-          "required": true,
-          "rubric": {
-            "1": "Le nouveau membre peut se sentir laisse a lui-meme, confus ou intimide. L'accueil est minimal ou trop transactionnel.",
-            "2": "J'accueille le membre et je donne les informations principales, mais l'experience depend beaucoup du contexte ou de mon energie du moment.",
-            "3": "J'accueille le membre avec chaleur, je clarifie le deroulement, je valide ses questions et je l'aide a se sentir en securite des le depart.",
-            "4": "Je personnalise l'accueil, je normalise ses inquietudes et je transforme la premiere rencontre en moment de confiance qui donne envie de s'engager."
-          }
+          "title": "Cours de groupe - standards de base",
+          "intro": "Ces comportements confirment que le role Coach Developpement reste solide en cours de groupe, meme avec les responsabilites de Fondations.",
+          "questions": [
+            {"id": "coach_dev_group_preparation_score", "label": "Professionnalisme - Je prepare mes cours de groupe avec plan de match, scaling, materiel et intention de coaching.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "J'arrive souvent sans plan clair ou je decouvre la seance sur place.", "2": "Je prepare l'essentiel, mais le scaling, le materiel ou l'intention de coaching restent parfois flous.", "3": "J'arrive avec un plan clair: timing, materiel, options, points de securite et intention de coaching.", "4": "J'anticipe les profils presents, les enjeux de securite et les transitions pour livrer un cours fluide et professionnel."}},
+            {"id": "coach_dev_group_preparation_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_group_preparation_score", "max": 2}},
+            {"id": "coach_dev_group_brief_score", "label": "Professionnalisme - Je lance le cours avec un brief clair: quoi faire, pourquoi, comment, blessures et materiel.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Le depart est confus, trop long ou incomplet; les membres ne savent pas clairement quoi faire.", "2": "Je couvre le principal, mais j'oublie parfois le why, les blessures, le materiel ou les options.", "3": "Je presente clairement le WHAT, WHY, HOW, les blessures/limitations et les consignes de materiel.", "4": "Mon brief capte vite l'attention, donne du sens et met le groupe en action sans perte de temps."}},
+            {"id": "coach_dev_group_brief_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_group_brief_score", "max": 2}},
+            {"id": "coach_dev_group_observation_score", "label": "Professionnalisme - J'observe, je circule et je donne du feedback individuel pendant les cours.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Je reste trop statique ou je donne surtout des encouragements generiques.", "2": "Je circule et corrige, mais mon attention n'est pas distribuee egalement ou mes feedbacks manquent de precision.", "3": "Je circule systematiquement, je me repositionne et chaque membre recoit au moins un feedback utile.", "4": "Je vois vite les fautes importantes, je donne le bon cue au bon moment et je fais progresser le groupe."}},
+            {"id": "coach_dev_group_observation_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_group_observation_score", "max": 2}},
+            {"id": "coach_dev_group_safety_score", "label": "Professionnalisme - J'equilibre securite, intensite et adaptation selon les niveaux et blessures.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Je laisse passer des risques ou je pousse l'intensite sans assez tenir compte des limites.", "2": "J'adapte les cas evidents, mais je manque parfois de precision ou de suivi pendant l'effort.", "3": "Je propose des options claires, je corrige les fautes prioritaires et je protege le stimulus voulu.", "4": "J'ajuste rapidement et naturellement pour que chaque membre vive un entrainement securitaire, stimulant et coherent."}},
+            {"id": "coach_dev_group_safety_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_group_safety_score", "max": 2}},
+            {"id": "coach_dev_group_closing_score", "label": "Bienveillance - Je termine le cours avec reconnaissance, apprentissage, rangement et sentiment d'appartenance.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "La fin du cours est brusque ou passive; peu de reconnaissance, de retour ou de rangement clair.", "2": "Je remercie le groupe, mais je manque de structure pour souligner les apprentissages ou fermer l'experience.", "3": "Je souligne des efforts, je donne une consigne de rangement claire et je termine sur une note positive.", "4": "Je cree une vraie conclusion: les membres repartent vus, fiers, informes et connectes au centre."}},
+            {"id": "coach_dev_group_closing_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_group_closing_score", "max": 2}}
+          ]
         },
-        {"id": "coach_dev_bienveillance_first_experience_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_bienveillance_first_experience_score", "max": 2}},
         {
-          "id": "coach_dev_bienveillance_progression_score",
-          "label": "Bienveillance - J'aide le nouveau membre a comprendre sa progression et a repartir avec confiance.",
-          "type": "scale",
-          "scaleId": "agreement4",
-          "required": true,
-          "rubric": {
-            "1": "Je fais passer la seance sans vraiment nommer ce que le membre apprend, reussit ou doit retenir pour la suite.",
-            "2": "Je donne parfois du renforcement positif, mais de facon generale ou sans lien clair avec la progression du membre.",
-            "3": "Je souligne des progres concrets, je reformule les apprentissages importants et je donne une prochaine etape simple.",
-            "4": "Je rends la progression visible: le membre comprend son niveau, ses victoires, ses priorites et pourquoi les Fondations l'aident a etre plus autonome."
-          }
+          "title": "Fondations - accueil et administration",
+          "intro": "Ces comportements mesurent la qualite de la porte d'entree: premiere experience, outils, politiques, planification et objectifs 12 semaines.",
+          "questions": [
+            {"id": "coach_dev_foundation_first_experience_score", "label": "Bienveillance - Je cree une premiere experience Fondation rassurante, claire et humaine.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Le nouveau membre peut se sentir laisse a lui-meme, confus ou intimide.", "2": "J'accueille le membre, mais l'experience depend trop du contexte ou de mon energie.", "3": "J'accueille avec chaleur, je clarifie le deroulement, je valide les questions et je cree un climat securisant.", "4": "Je personnalise l'accueil et je transforme la premiere rencontre en moment de confiance qui donne envie de s'engager."}},
+            {"id": "coach_dev_foundation_first_experience_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_foundation_first_experience_score", "max": 2}},
+            {"id": "coach_dev_foundation_admin_score", "label": "Professionnalisme - Je guide le membre dans Kilo, CHIP, documents, photo, scores et politiques d'annulation.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Des etapes importantes sont oubliees ou mal expliquees.", "2": "Je couvre la plupart des outils, mais certains details restent flous pour le membre.", "3": "J'explique clairement Kilo, CHIP, documents, scores, photo et politiques 2h/48h.", "4": "Je rends les outils simples: le membre sait quoi faire, ou trouver l'information et comment eviter les frictions."}},
+            {"id": "coach_dev_foundation_admin_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_foundation_admin_score", "max": 2}},
+            {"id": "coach_dev_foundation_planning_score", "label": "Professionnalisme - Je planifie les seances de Fondations restantes et les premiers cours de groupe avec assez d'avance.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les prochaines seances ou premiers cours ne sont pas clairement planifies.", "2": "Je planifie l'essentiel, mais il reste des trous, de l'incertitude ou des suivis a refaire.", "3": "Je planifie les Fondations restantes et les premiers cours de groupe selon les procedures et delais attendus.", "4": "Le membre repart avec un parcours clair, reserve et rassurant pour ses premieres semaines."}},
+            {"id": "coach_dev_foundation_planning_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_foundation_planning_score", "max": 2}},
+            {"id": "coach_dev_foundation_goal_score", "label": "Bienveillance - J'explique l'objectif 12 semaines, les 25 sessions et le sens des niveaux/progres attendus.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Le membre ne comprend pas clairement ce qu'il vise dans ses 12 premieres semaines.", "2": "Je nomme les objectifs, mais sans assez les relier a la motivation ou a la progression du membre.", "3": "J'explique les 25 sessions, les niveaux, les jalons et pourquoi ces reperes soutiennent son integration.", "4": "Je rends l'objectif motivant: le membre comprend le chemin, les victoires a venir et comment se sentir capable."}},
+            {"id": "coach_dev_foundation_goal_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_foundation_goal_score", "max": 2}},
+            {"id": "coach_dev_foundation_services_score", "label": "Courage - Je comprends les services CFSB et je peux orienter le membre sans vendre de facon forcee.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Je connais mal les options ou j'evite d'en parler quand ce serait utile.", "2": "Je connais quelques options, mais je reste vague ou mal a l'aise pour expliquer la suite possible.", "3": "Je peux expliquer simplement les options pertinentes et signaler a Caroline une opportunite ou un besoin.", "4": "Je fais le pont avec ethique: le membre comprend les options, se sent respecte et l'equipe peut proposer la bonne suite."}},
+            {"id": "coach_dev_foundation_services_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_foundation_services_score", "max": 2}}
+          ]
         },
-        {"id": "coach_dev_bienveillance_progression_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_bienveillance_progression_score", "max": 2}},
         {
-          "id": "coach_dev_professionalism_foundations_admin_score",
-          "label": "Professionnalisme - Je livre la partie administrative des Fondations avec rigueur et clarte.",
-          "type": "scale",
-          "scaleId": "agreement4",
-          "required": true,
-          "rubric": {
-            "1": "Des etapes importantes sont oubliees ou mal expliquees: Kilo, CHIP, politiques d'annulation, planification, InBody ou premiers cours.",
-            "2": "Je couvre la plupart des etapes, mais avec des oublis ou des explications rapides qui peuvent laisser le membre incertain.",
-            "3": "Je guide le membre a travers Kilo, CHIP, les politiques, les objectifs 12 semaines et la planification des prochaines seances avec clarte.",
-            "4": "Je rends l'administration simple et rassurante: le membre sait quoi faire, ou trouver l'information et comment vivre ses premieres semaines sans friction."
-          }
+          "title": "Fondations - pedagogie 1:1",
+          "intro": "Ces comportements verifient la qualite de l'enseignement, de l'adaptation et de la confiance creee dans les seances individuelles.",
+          "questions": [
+            {"id": "coach_dev_pedagogy_simple_score", "label": "Professionnalisme - J'explique les mouvements dans un langage simple, sans surcharger le nouveau membre.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Mes explications sont trop techniques, rapides ou confuses.", "2": "J'explique correctement, mais je donne parfois trop d'informations a la fois.", "3": "J'utilise un langage accessible, un point de focus a la fois et je valide la comprehension.", "4": "Je rends les mouvements simples et memorables; le membre sait quoi retenir et pourquoi."}},
+            {"id": "coach_dev_pedagogy_simple_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_pedagogy_simple_score", "max": 2}},
+            {"id": "coach_dev_pedagogy_tell_show_do_check_score", "label": "Professionnalisme - J'utilise une sequence claire: expliquer, demontrer, faire pratiquer, observer et corriger.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Je passe trop vite vers l'execution ou je corrige sans structure.", "2": "J'utilise certaines etapes, mais pas toujours dans un ordre clair.", "3": "J'applique une sequence claire de type TELL, SHOW, DO, CHECK selon le besoin.", "4": "Ma sequence d'enseignement rend le membre actif, confiant et capable de transferer ses apprentissages."}},
+            {"id": "coach_dev_pedagogy_tell_show_do_check_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_pedagogy_tell_show_do_check_score", "max": 2}},
+            {"id": "coach_dev_pedagogy_adaptation_score", "label": "Professionnalisme - J'adapte les mouvements selon le niveau, les blessures, la confiance et les limites du membre.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "J'applique trop le plan tel quel, meme quand le membre aurait besoin d'une adaptation.", "2": "J'adapte les cas evidents, mais je manque parfois d'options ou de confiance.", "3": "Je propose des options securitaires et coherentes avec le niveau, les blessures et l'objectif.", "4": "J'adapte avec fluidite: le membre se sent protege, challenge et capable de progresser."}},
+            {"id": "coach_dev_pedagogy_adaptation_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_pedagogy_adaptation_score", "max": 2}},
+            {"id": "coach_dev_pedagogy_feedback_score", "label": "Bienveillance - Je donne du feedback precis qui corrige la priorite la plus importante et renforce les progres.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Je donne peu de feedback ou trop de corrections d'un coup.", "2": "Je corrige, mais je manque parfois de priorisation ou de renforcement positif.", "3": "Je corrige la faute prioritaire, je donne un cue clair et je souligne les progres observables.", "4": "Mon feedback construit la confiance: le membre comprend quoi ameliorer, voit ses progres et ose pratiquer."}},
+            {"id": "coach_dev_pedagogy_feedback_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_pedagogy_feedback_score", "max": 2}},
+            {"id": "coach_dev_pedagogy_autonomy_score", "label": "Bienveillance - J'aide le membre a devenir autonome, pas seulement a completer la seance.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Le membre execute, mais repart sans reperes clairs pour les prochains cours.", "2": "Je donne quelques reperes, mais ils ne sont pas toujours relies a la suite du parcours.", "3": "Je nomme les apprentissages, les points a surveiller et comment les utiliser en cours de groupe.", "4": "Le membre repart avec une vraie carte mentale: il comprend son niveau, ses options et comment continuer a progresser."}},
+            {"id": "coach_dev_pedagogy_autonomy_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_pedagogy_autonomy_score", "max": 2}}
+          ]
         },
-        {"id": "coach_dev_professionalism_foundations_admin_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_professionalism_foundations_admin_score", "max": 2}},
         {
-          "id": "coach_dev_professionalism_pedagogy_score",
-          "label": "Professionnalisme - J'enseigne en 1:1 avec une pedagogie simple, securitaire et adaptee.",
-          "type": "scale",
-          "scaleId": "agreement4",
-          "required": true,
-          "rubric": {
-            "1": "Mes explications sont trop rapides, trop techniques ou peu adaptees. Le membre peut executer sans vraiment comprendre.",
-            "2": "J'explique les mouvements, mais je surcharge parfois le membre ou je manque de structure dans les corrections.",
-            "3": "J'utilise un langage simple, je demontre, je fais pratiquer, j'observe et je corrige la priorite la plus importante en premier.",
-            "4": "J'adapte naturellement mon enseignement au niveau, a la confiance et aux limites du membre; il repart avec des reperes clairs et applicables."
-          }
-        },
-        {"id": "coach_dev_professionalism_pedagogy_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_professionalism_pedagogy_score", "max": 2}},
-        {
-          "id": "coach_dev_professionalism_notes_score",
-          "label": "Professionnalisme - Je documente les Fondations de facon utile pour Caroline et la suite du parcours membre.",
-          "type": "scale",
-          "scaleId": "agreement4",
-          "required": true,
-          "rubric": {
-            "1": "Les notes sont absentes, incompletes ou difficiles a utiliser. Des informations importantes peuvent se perdre.",
-            "2": "Je note les elements principaux, mais sans assez de precision sur les dates, niveaux, blessures, obstacles ou mentions utiles.",
-            "3": "Je remplis la feuille client avec les informations necessaires: date, coach, niveau complete, notes, blessures, absences et mentions importantes.",
-            "4": "Mes notes permettent a Caroline ou a un autre coach de reprendre le dossier rapidement, de comprendre le membre et de poser la bonne prochaine action."
-          }
-        },
-        {"id": "coach_dev_professionalism_notes_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_professionalism_notes_score", "max": 2}},
-        {
-          "id": "coach_dev_courage_signal_score",
-          "label": "Courage - Je remonte rapidement les signaux importants a Caroline, au Head Coach ou a la bonne personne.",
-          "type": "scale",
-          "scaleId": "agreement4",
-          "required": true,
-          "rubric": {
-            "1": "Je garde pour moi des informations importantes: blessure, absence, inquietude, obstacle, inconfort, risque ou opportunite de service.",
-            "2": "Je transmets certains signaux, mais souvent tard, sans contexte suffisant ou seulement quand on me le demande.",
-            "3": "Je communique rapidement les informations pertinentes avec le contexte utile: qui, quoi, impact, urgence et suivi suggere si necessaire.",
-            "4": "Je detecte les signaux faibles, je protege la continuite du parcours membre et j'aide l'equipe a intervenir avant que le probleme grossisse."
-          }
-        },
-        {"id": "coach_dev_courage_signal_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_courage_signal_score", "max": 2}},
-        {
-          "id": "coach_dev_courage_services_score",
-          "label": "Courage - Je comprends les services CFSB et je peux orienter le membre sans vendre de facon forcee.",
-          "type": "scale",
-          "scaleId": "agreement4",
-          "required": true,
-          "rubric": {
-            "1": "Je connais mal les options du centre ou j'evite d'en parler, meme quand un membre aurait besoin d'etre mieux oriente.",
-            "2": "Je connais quelques options, mais je reste vague ou mal a l'aise quand vient le temps d'expliquer le parcours possible.",
-            "3": "Je peux expliquer simplement les options pertinentes et signaler a Caroline quand un membre pourrait beneficier d'un soutien ou d'un upgrade.",
-            "4": "Je fais le pont avec ethique: le membre comprend les options, se sent respecte et l'equipe a l'information pour proposer la bonne suite."
-          }
-        },
-        {"id": "coach_dev_courage_services_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_courage_services_score", "max": 2}},
-        {
-          "id": "coach_dev_team_handoff_score",
-          "label": "Esprit d'equipe - Je facilite le relais entre les Fondations, Caroline et les coachs qui prendront la suite.",
-          "type": "scale",
-          "scaleId": "agreement4",
-          "required": true,
-          "rubric": {
-            "1": "Le transfert est flou ou incomplet. Caroline ou l'equipe doivent chercher l'information apres coup.",
-            "2": "Je fais le relais de base, mais des details utiles manquent ou arrivent trop tard.",
-            "3": "Je transmets les informations importantes et je laisse le dossier clair une fois les Fondations terminees.",
-            "4": "Je cree une continuite fluide: le membre sent que l'equipe est alignee et Caroline dispose d'un portrait clair pour soutenir la suite."
-          }
-        },
-        {"id": "coach_dev_team_handoff_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_team_handoff_score", "max": 2}},
-        {
-          "id": "coach_dev_team_group_class_score",
-          "label": "Esprit d'equipe - Je maintiens les standards des cours de groupe tout en portant mes responsabilites de Fondations.",
-          "type": "scale",
-          "scaleId": "agreement4",
-          "required": true,
-          "rubric": {
-            "1": "Mes responsabilites de Fondations ou de cours se nuisent: preparation, ponctualite, energie, securite ou rangement deviennent inconstants.",
-            "2": "Je livre les deux volets, mais avec une constance variable selon l'horaire, la charge ou le niveau de fatigue.",
-            "3": "Je reste fiable dans les cours de groupe et dans les Fondations: preparation, securite, presence, standards et communication sont au rendez-vous.",
-            "4": "Je suis un repere stable pour l'equipe: les membres vivent une experience coherente, que je sois en groupe ou en Fondation."
-          }
-        },
-        {"id": "coach_dev_team_group_class_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_team_group_class_score", "max": 2}}
+          "title": "Documentation, communication et relais",
+          "intro": "Ces comportements protegent la continuite du parcours membre et l'alignement avec Caroline, le Head Coach et l'equipe.",
+          "questions": [
+            {"id": "coach_dev_documentation_session_score", "label": "Professionnalisme - Je documente chaque seance de Fondation avec date, coach, notes et niveau complete.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Les notes sont absentes, incompletes ou difficiles a utiliser.", "2": "Je note les elements principaux, mais avec un manque de precision ou de constance.", "3": "Je documente les dates, coachs, niveaux completes, apprentissages, obstacles et mentions importantes.", "4": "Mes notes permettent a quelqu'un d'autre de comprendre rapidement le membre et la prochaine action."}},
+            {"id": "coach_dev_documentation_session_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_documentation_session_score", "max": 2}},
+            {"id": "coach_dev_documentation_injury_score", "label": "Courage - Je note et signale les blessures, limitations, absences, inquietudes ou risques importants.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Des signaux importants restent dans ma tete ou sont notes trop vaguement.", "2": "Je signale certains enjeux, mais parfois tard ou sans assez de contexte.", "3": "Je note et transmets rapidement les informations importantes avec contexte, impact et urgence.", "4": "Je detecte les signaux faibles et j'aide l'equipe a intervenir avant que le probleme grossisse."}},
+            {"id": "coach_dev_documentation_injury_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_documentation_injury_score", "max": 2}},
+            {"id": "coach_dev_communication_caroline_score", "label": "Esprit d'equipe - Je communique avec Caroline quand un suivi, un ajustement ou une opportunite doit etre pris en charge.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Caroline doit deviner ou rechercher des informations importantes.", "2": "Je communique les enjeux evidents, mais pas toujours les nuances utiles.", "3": "Je transmets les informations pertinentes a Caroline au bon moment et avec le bon niveau de detail.", "4": "Je facilite son travail: elle recoit un portrait clair et peut soutenir la suite du parcours sans friction."}},
+            {"id": "coach_dev_communication_caroline_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_communication_caroline_score", "max": 2}},
+            {"id": "coach_dev_handoff_completion_score", "label": "Esprit d'equipe - Je laisse le dossier complet et clair une fois les Fondations terminees.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "Le transfert final est incomplet ou arrive trop tard.", "2": "Je laisse l'essentiel, mais il manque parfois des details utiles pour la suite.", "3": "Je laisse le dossier clair, complet et accessible pour Caroline et l'equipe.", "4": "Le relais est fluide: le membre sent que l'equipe est alignee et Caroline a tout pour soutenir la prochaine etape."}},
+            {"id": "coach_dev_handoff_completion_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_handoff_completion_score", "max": 2}},
+            {"id": "coach_dev_development_feedback_score", "label": "Courage - Je cherche du feedback et je developpe activement mes competences de Coach Developpement.", "type": "scale", "scaleId": "agreement4", "required": true, "rubric": {"1": "J'evite le feedback ou je progresse peu entre les trimestres.", "2": "J'accepte le feedback, mais je l'applique de facon inconstante.", "3": "Je demande ou accueille le feedback, puis je pose des actions concretes pour progresser.", "4": "Je prends ownership de mon developpement: j'observe, je pratique, je teste et je partage ce qui eleve les Fondations."}},
+            {"id": "coach_dev_development_feedback_example", "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.", "type": "long_text", "required": true, "showIfMax": {"questionId": "coach_dev_development_feedback_score", "max": 2}}
+          ]
+        }
       ]
     },
     {
