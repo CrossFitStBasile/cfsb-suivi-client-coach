@@ -40,7 +40,10 @@ Derniere mise a jour : 2026-05-25
   - `Fait` et `Masquer` en mode reel agissent maintenant immediatement dans l'interface, puis synchronisent le backend en arriere-plan.
   - Les compteurs visibles tiennent compte des taches masquees localement, pour que le coach sente que son action a ete prise en compte.
   - Le bouton de rappel rebooking n'est plus presente comme actif en mode reel; il affiche `Rappel a brancher` tant que le workflow GHL correspondant n'est pas confirme.
-  - Prochaine optimisation backend : les petits clics doivent retourner un accusé de reception leger au lieu de reconstruire tout le dashboard.
+  - Les petits clics backend retournent maintenant un accuse de reception leger au lieu de reconstruire tout le dashboard.
+  - L'envoi questionnaire est mis en pause dans le dashboard reel; il reste disponible seulement en simulation demo.
+  - La capture rapide n'affiche plus de champ date : la date du jour est appliquee automatiquement.
+  - Les ajouts/modifications de clients et captures rapides sont maintenant optimistes dans l'interface, puis synchronisent Apps Script en arriere-plan.
 
 ## Regles de donnees actives
 
@@ -64,10 +67,12 @@ Derniere mise a jour : 2026-05-25
   - un module `En test` ou `Module lie` reste accessible par bouton, mais ne doit pas etre presente comme une integration complete;
   - chaque module devra avoir un contrat de donnees stable avant d'alimenter automatiquement Mission ou Performance.
 - Envoi questionnaire :
-  - le bouton demande maintenant une confirmation avant tout envoi reel;
-  - il bloque l'envoi si le client n'a pas de telephone;
+  - l'envoi reel est en pause pour le pilote tant que le questionnaire client et le workflow GHL ne sont pas stabilises;
+  - en mode reel, les boutons affichent `Questionnaire en pause` et ne doivent envoyer aucun SMS;
+  - quand le module sera reactive, le bouton devra demander une confirmation avant tout envoi reel;
+  - il devra bloquer l'envoi si le client n'a pas de telephone;
   - l'onglet Questionnaires contient une vue `Clients` pour envoyer le questionnaire a n'importe quel client du dashboard;
-  - l'envoi live passe par le backend `sendQuestionnaire`, qui doit ajouter le tag GHL `programme` au contact trouve par telephone.
+  - l'envoi live passera par le backend `sendQuestionnaire`, qui devra ajouter le tag GHL `programme` au contact trouve par telephone.
   - en mode demo, le bouton affiche `Simuler questionnaire` et n'envoie jamais de SMS.
 
 ## Priorites immediates avant meeting / test equipe
