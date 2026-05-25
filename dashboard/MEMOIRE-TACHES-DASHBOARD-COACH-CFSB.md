@@ -9,6 +9,7 @@ Derniere mise a jour : 2026-05-25
 - Le mode demo a maintenant une sortie explicite `Quitter demo / mode reel`, qui efface le coach test local et recharge le backend prive.
 - Le chargement du dashboard utilise maintenant JSONP en premier pour eviter de doubler les appels Apps Script par un fetch CORS, et affiche un message d'attente avec timeout clair.
 - Un watchdog independant du reseau sort maintenant l'interface du chargement apres 30 secondes, meme si la requete Apps Script reste pendue.
+- Le JS ne plante plus si `live.html` manque un bouton systeme; les evenements de boutons sont maintenant attaches de facon defensive.
 - Le mode demo a maintenant des boutons contextuels par type de tache : Programme = Fait/Masquer, Rebooking = Envoyer rappel/Masquer, Questionnaire = Envoyer questionnaire/Masquer, Validation = Valider/Masquer.
 - Les actions demo affichent un bouton Annuler dans la confirmation pour revenir en arriere apres un clic accidentel.
 - Les clients demo peuvent etre modifies ou retires du dashboard depuis la fiche client.
