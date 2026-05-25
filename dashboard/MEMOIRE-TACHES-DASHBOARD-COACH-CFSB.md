@@ -56,8 +56,9 @@ Derniere mise a jour : 2026-05-25
   - chaque module devra avoir un contrat de donnees stable avant d'alimenter automatiquement Mission ou Performance.
 - Envoi questionnaire :
   - le bouton demande maintenant une confirmation avant tout envoi reel;
-  - il bloque l'envoi si le client n'a ni telephone ni courriel;
-  - l'envoi live passe par le backend `sendQuestionnaire`, qui doit ajouter le tag GHL `programme` au contact trouve par telephone/courriel.
+  - il bloque l'envoi si le client n'a pas de telephone;
+  - l'onglet Questionnaires contient une vue `Clients` pour envoyer le questionnaire a n'importe quel client du dashboard;
+  - l'envoi live passe par le backend `sendQuestionnaire`, qui doit ajouter le tag GHL `programme` au contact trouve par telephone.
 
 ## Priorites immediates avant meeting / test equipe
 
