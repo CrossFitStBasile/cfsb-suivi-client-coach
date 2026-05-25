@@ -59,6 +59,7 @@ Derniere mise a jour : 2026-05-25
   - il bloque l'envoi si le client n'a pas de telephone;
   - l'onglet Questionnaires contient une vue `Clients` pour envoyer le questionnaire a n'importe quel client du dashboard;
   - l'envoi live passe par le backend `sendQuestionnaire`, qui doit ajouter le tag GHL `programme` au contact trouve par telephone.
+  - en mode demo, le bouton affiche `Simuler questionnaire` et n'envoie jamais de SMS.
 
 ## Priorites immediates avant meeting / test equipe
 
