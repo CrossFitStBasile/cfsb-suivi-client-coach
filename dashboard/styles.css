@@ -651,6 +651,15 @@ button.primary {
   color: #fff;
 }
 
+.row-actions button:disabled,
+.row-actions .pending-action {
+  cursor: not-allowed;
+  opacity: 0.72;
+  background: #24272d;
+  border-color: #4a4f59;
+  color: var(--muted);
+}
+
 .client-focus {
   position: sticky;
   top: 96px;
@@ -1013,6 +1022,16 @@ button.primary,
 .row-actions .done {
   background: var(--red);
   border-color: var(--red);
+}
+
+.row-actions button:disabled,
+.row-actions .pending-action,
+.row-actions .pending-action:hover {
+  cursor: not-allowed;
+  opacity: 0.72;
+  background: #24272d;
+  border-color: #4a4f59;
+  color: #aeb4bd;
 }
 
 .command-hero {

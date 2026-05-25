@@ -36,6 +36,11 @@ Derniere mise a jour : 2026-05-25
 - L'extension CoachRx permet de pousser les donnees CoachRx vers le backend.
 - Les reponses questionnaire client-coach sont prevues dans une inbox privee et doivent matcher principalement par telephone normalise.
 - Les donnees client ne doivent pas etre publiees dans des snapshots JSON publics sur GitHub Pages.
+- Correctif UX 2026-05-25 :
+  - `Fait` et `Masquer` en mode reel agissent maintenant immediatement dans l'interface, puis synchronisent le backend en arriere-plan.
+  - Les compteurs visibles tiennent compte des taches masquees localement, pour que le coach sente que son action a ete prise en compte.
+  - Le bouton de rappel rebooking n'est plus presente comme actif en mode reel; il affiche `Rappel a brancher` tant que le workflow GHL correspondant n'est pas confirme.
+  - Prochaine optimisation backend : les petits clics doivent retourner un accusé de reception leger au lieu de reconstruire tout le dashboard.
 
 ## Regles de donnees actives
 
