@@ -1,6 +1,6 @@
 # Memoire - Dashboard Coach CFSB
 
-Derniere mise a jour : 2026-05-22
+Derniere mise a jour : 2026-05-25
 
 ## Etat actuel
 
@@ -15,7 +15,7 @@ Derniere mise a jour : 2026-05-22
 - Le bouton Systeme ne doit apparaitre qu'en haut a droite pres du choix du coach. Il ne doit pas doubler la navigation principale.
 - Alumni est maintenant une section visible dans la navigation principale, separee de Performance.
 - Les boutons d'action dans Mission doivent rester alignes et lisibles, meme pour `Envoyer questionnaire`.
-- La section `Scenarios` sert de banc d'essai demo : elle permet de provoquer 9 cas importants sans toucher aux vraies donnees.
+- La section `Guide & modules` sert de hub stable : elle explique les modules externes, leur statut et les liens utiles, tout en gardant les scenarios demo.
 - Le mode demo affiche maintenant un journal des dernieres actions pour confirmer ce qui vient d'etre fait meme apres la disparition du toast.
 - Performance clarifie maintenant les impacts : definition, ajout, statut, confirmation, annulation et suppression en mode demo.
 - Alumni permet maintenant de creer une mission, marquer reactive, classer a ne pas recontacter ou supprimer en mode demo.
@@ -25,6 +25,8 @@ Derniere mise a jour : 2026-05-22
 - Les alumni exclus peuvent maintenant etre remis dans `Alumni a travailler` si le coach a clique par erreur.
 - Les holds peuvent maintenant etre ajoutes ou retires directement depuis la fiche client.
 - La capture rapide met la date du jour par defaut.
+- Decision produit : tant qu'un projet connexe change souvent, il reste un module lie par bouton/lien au lieu d'etre integre trop profondement dans le dashboard.
+- Les modules actuellement lies sont : Questionnaire client, Rebooking semi-prive, Rendement hebdo, CoachRx, CSM / memberships et Kilo.
 - Le backend Apps Script actif est le deployment `AKfycbz1qODx2pCWQ2yHhkse6FBxdyn741cYObW_qGsuox4RmVs7m6WYy3YqFTSti8YcRiGQ`.
 - Les coachs peuvent choisir un coach dans le menu deroulant quand les donnees sont chargees.
 - L'extension CoachRx permet de pousser les donnees CoachRx vers le backend.
@@ -48,6 +50,10 @@ Derniere mise a jour : 2026-05-22
 - Questionnaire :
   - `Marquer traite` signifie que le coach a lu la reponse et fait le suivi necessaire;
   - quand un client est identifiable, l'action `Envoyer questionnaire` doit rester disponible.
+- Modules externes :
+  - un module `Actif` peut etre utilise tel quel;
+  - un module `En test` ou `Module lie` reste accessible par bouton, mais ne doit pas etre presente comme une integration complete;
+  - chaque module devra avoir un contrat de donnees stable avant d'alimenter automatiquement Mission ou Performance.
 
 ## Priorites immediates avant meeting / test equipe
 
@@ -60,7 +66,8 @@ Derniere mise a jour : 2026-05-22
    - Modifier un client fictif.
    - Retirer/classer un client fictif du dashboard vers Alumni, Hold, Retire ou Erreur.
    - Ouvrir la section Alumni et creer une mission depuis un alumni.
-   - Ouvrir `Scenarios` et lancer les 9 cas : Programme, Rebooking, Questionnaire du, Reponse rouge, Fin membership, Fin prevue coach, Hold, Alumni, Impact.
+   - Ouvrir `Guide & modules` et valider que les liens externes sont clairs.
+   - Dans `Guide & modules`, lancer les 9 cas demo : Programme, Rebooking, Questionnaire du, Reponse rouge, Fin membership, Fin prevue coach, Hold, Alumni, Impact.
    - Entrer une date Kilo.
    - Marquer un risque.
    - Declarer un impact, le confirmer, l'annuler et le supprimer.
