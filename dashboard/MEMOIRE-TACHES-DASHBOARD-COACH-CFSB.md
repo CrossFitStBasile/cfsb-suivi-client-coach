@@ -6,6 +6,7 @@ Derniere mise a jour : 2026-05-25
 
 - Le dashboard coach est maintenant servi par GitHub Pages, avec donnees privees recues du backend Apps Script via PIN.
 - Un mode demo/sandbox local est ajoute pour tester les workflows sans toucher aux vraies donnees, GHL, CoachRx ou CSM.
+- Le mode demo a maintenant une sortie explicite `Quitter demo / mode reel`, qui efface le coach test local et recharge le backend prive.
 - Le mode demo a maintenant des boutons contextuels par type de tache : Programme = Fait/Masquer, Rebooking = Envoyer rappel/Masquer, Questionnaire = Envoyer questionnaire/Masquer, Validation = Valider/Masquer.
 - Les actions demo affichent un bouton Annuler dans la confirmation pour revenir en arriere apres un clic accidentel.
 - Les clients demo peuvent etre modifies ou retires du dashboard depuis la fiche client.
