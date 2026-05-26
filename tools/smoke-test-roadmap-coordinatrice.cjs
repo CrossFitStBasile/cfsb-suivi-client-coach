@@ -3,7 +3,7 @@ const fs = require("fs");
 const http = require("http");
 const path = require("path");
 
-const rootDir = path.resolve(__dirname, "..");
+const rootDir = path.resolve(__dirname, "../roadmap");
 
 async function ensureLocalServer() {
   try {

@@ -3,7 +3,7 @@ const fs = require("fs");
 const http = require("http");
 const path = require("path");
 
-const rootDir = path.resolve(__dirname, "..");
+const rootDir = path.resolve(__dirname, "../roadmap");
 
 async function ensureLocalServer() {
   try {
@@ -50,6 +50,7 @@ async function run() {
     await page.getByText("Relation membre et retention").waitFor({ timeout: 5000 });
     await page.getByText("Systemes, suivis et communication").waitFor({ timeout: 5000 });
     await page.getByText("Cours de groupe - excellence Coach Professionnel").waitFor({ timeout: 5000 });
+    await page.getByText("Trajectoire coach - argent, competences et relations").waitFor({ timeout: 5000 });
     await page.locator("label", { hasText: "J'identifie rapidement les problemes prioritaires" }).waitFor({ timeout: 5000 });
 
     await page.locator('[data-question-id="employee_name"]').fill("Coach Pro Test");
@@ -103,6 +104,8 @@ async function run() {
     await page.locator('[data-question-id="lever_priority"]').selectOption("Mentorat");
     await page.locator('[data-question-id="lever_improvement"]').fill("Clarifier les indicateurs hebdomadaires.");
     await page.locator('[data-question-id="next_objectives"]').fill("Structurer mon portefeuille et mes suivis clients.");
+    await page.locator('[data-question-id="coach_income_target_12_24"]').fill("Objectif a discuter en rencontre.");
+    await page.locator('[name="coach_target_services"][value="Semi-prive"]').check();
     await page.locator('[name="coach_aspiration_select"][value="path_professionnel_to_superstar"]').check();
     await page.locator('[data-question-id="coach_aspiration_why"]').fill("Explorer une niche de specialite.");
 

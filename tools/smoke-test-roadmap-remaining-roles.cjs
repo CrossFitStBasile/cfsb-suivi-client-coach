@@ -3,7 +3,7 @@ const fs = require("fs");
 const http = require("http");
 const path = require("path");
 
-const rootDir = path.resolve(__dirname, "..");
+const rootDir = path.resolve(__dirname, "../roadmap");
 
 async function ensureLocalServer() {
   try {
@@ -36,8 +36,8 @@ const roles = [
     button: /Head Coach/i,
     name: "Head Coach Test",
     email: "headcoach@example.com",
-    title: "Valeurs CFSB - comportements Head Coach",
-    checks: ["Programmation, standards et intention technique", "Observation, feedback et developpement des coachs"],
+    title: "Valeurs CFSB - comportements Assistant Head Coach",
+    checks: ["Cadre du role Assistant Head Coach", "Programmation, standards et intention technique", "Observation, feedback et developpement des coachs"],
     scores: [
       "head_programming_logic_score",
       "head_stimulus_clarity_score",
@@ -89,7 +89,7 @@ const roles = [
     name: "Engagement Test",
     email: "engagement@example.com",
     title: "Valeurs CFSB - comportements Engagement communautaire et evenements",
-    checks: ["Planification et execution des evenements", "Mise en valeur, contenu et histoires membres"],
+    checks: ["Planification et execution des evenements", "Mise en valeur, contenu et histoires membres", "Developpement professionnel et mesure d impact"],
     scores: [
       "event_planning_structure_score",
       "event_communication_score",
@@ -106,7 +106,9 @@ const roles = [
       "event_team_coordination_score",
       "event_direction_alignment_score",
       "event_initiative_ownership_score",
-      "event_impact_judgment_score"
+      "event_impact_judgment_score",
+      "event_external_inspiration_score",
+      "event_impact_metrics_score"
     ],
     full: true
   },

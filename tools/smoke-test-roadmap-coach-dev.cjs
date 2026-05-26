@@ -3,7 +3,7 @@ const fs = require("fs");
 const http = require("http");
 const path = require("path");
 
-const rootDir = path.resolve(__dirname, "..");
+const rootDir = path.resolve(__dirname, "../roadmap");
 
 async function ensureLocalServer() {
   try {
@@ -48,6 +48,7 @@ async function run() {
     await page.getByText("Valeurs CFSB - comportements Coach Developpement").waitFor({ timeout: 5000 });
     await page.getByText("Cours de groupe - standards de base").waitFor({ timeout: 5000 });
     await page.getByText("Documentation, communication et relais").waitFor({ timeout: 5000 });
+    await page.getByText("Trajectoire coach - argent, competences et relations").waitFor({ timeout: 5000 });
     await page.locator("label", { hasText: "Je guide le membre dans Kilo, CHIP, documents" }).waitFor({ timeout: 5000 });
     await page.locator("label", { hasText: "Je communique avec Caroline" }).waitFor({ timeout: 5000 });
 
@@ -92,6 +93,8 @@ async function run() {
     await page.locator('[data-question-id="lever_priority"]').selectOption("Systemes");
     await page.locator('[data-question-id="lever_improvement"]').fill("Clarifier le relais avec Caroline.");
     await page.locator('[data-question-id="next_objectives"]').fill("Ameliorer la qualite des notes de Fondations.");
+    await page.locator('[data-question-id="coach_income_target_12_24"]').fill("A clarifier selon les opportunites.");
+    await page.locator('[name="coach_target_services"][value="Fondations"]').check();
     await page.locator('[name="coach_aspiration_select"][value="path_developpement_to_professionnel"]').check();
     await page.locator('[data-question-id="coach_aspiration_why"]').fill("Explorer la suite vers Coach Professionnel.");
 
