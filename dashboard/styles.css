@@ -2246,3 +2246,252 @@ button.primary,
     min-height: 42px;
   }
 }
+
+/* V2.3: finition pilote - clair comme Kilo, accent CFSB plus utile. */
+:root {
+  --bg: #eef2f6;
+  --panel: #ffffff;
+  --ink: #0b1220;
+  --muted: #344256;
+  --line: #b9c4d2;
+  --line-strong: #8fa0b5;
+  --red: #d62828;
+  --red-dark: #a4161a;
+  --blue: #12a8e8;
+  --soft-red: #fff1f1;
+  --soft-blue: #e8f7fe;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.app-header {
+  border-right-color: #b7c3d1;
+  box-shadow: 2px 0 8px rgba(15, 23, 42, 0.05);
+}
+
+.brand-kicker,
+.eyebrow {
+  color: #334155;
+}
+
+.views button {
+  color: #111827;
+}
+
+.views button:hover,
+.views button:focus-visible {
+  background: var(--soft-blue);
+  color: #087fb0;
+}
+
+.views button.active,
+.views button.active:hover,
+.views button.active:focus-visible {
+  background: var(--soft-red);
+  border-left-color: var(--red);
+  color: var(--red-dark);
+}
+
+.metrics div,
+.mission-panel,
+.panel,
+.compact-row,
+.module-card,
+.scenario-card,
+.directory-row,
+.task-row {
+  border-color: var(--line);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.metrics div {
+  border-top-color: #cbd5e1;
+}
+
+.metrics span,
+.priority-tile span,
+.task-row p,
+.why,
+.compact-row p,
+.focus-note p,
+.module-card p,
+.scenario-card p,
+.scenario-card li,
+.client-trigger small,
+.command-hero p {
+  color: var(--muted);
+}
+
+.mission-panel {
+  background: #fff;
+}
+
+.task-row {
+  grid-template-columns: minmax(240px, 1fr) minmax(240px, 1fr) minmax(132px, auto);
+  background: #fff;
+  border-color: #bfcada;
+}
+
+.task-row:hover,
+.directory-row:hover,
+.directory-row:focus-within,
+.compact-row:hover,
+.compact-row:focus-within {
+  border-color: var(--blue);
+  background: #f8fcff;
+  box-shadow: 0 0 0 2px rgba(18, 168, 232, 0.15), 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
+.client-trigger,
+.inline-client-trigger {
+  cursor: pointer;
+}
+
+.client-trigger:hover strong,
+.client-trigger:focus-visible strong,
+.directory-row:hover .client-trigger strong,
+.task-row:hover .client-trigger strong,
+.compact-row:hover .client-trigger strong {
+  color: #087fb0;
+}
+
+.client-trigger small {
+  font-size: 12px;
+}
+
+.row-actions button,
+.compact-actions button,
+.button-link,
+.toolbar button,
+.system-actions button {
+  border-color: #aebccc;
+  background: #fff;
+  color: #162033;
+}
+
+.row-actions button:hover,
+.compact-actions button:hover,
+.button-link:hover,
+.toolbar button:hover,
+.system-actions button:hover {
+  border-color: var(--blue);
+  background: var(--soft-blue);
+  color: #087fb0;
+}
+
+button.primary,
+.system-actions button.primary {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+
+button.primary:hover,
+.system-actions button.primary:hover {
+  background: var(--red-dark);
+  border-color: var(--red-dark);
+  color: #fff;
+}
+
+.row-actions .done,
+.compact-actions .done,
+button.done {
+  background: #198754;
+  border-color: #198754;
+  color: #fff;
+}
+
+.row-actions .done:hover,
+.compact-actions .done:hover,
+button.done:hover {
+  background: #146c43;
+  border-color: #146c43;
+  color: #fff;
+}
+
+.row-actions .pending-action,
+.compact-actions .pending-action,
+.row-actions .pending-action:hover,
+.compact-actions .pending-action:hover {
+  background: #eef2f7;
+  border-color: #cbd5e1;
+  color: #64748b;
+}
+
+.mission-filters button,
+.range-select select {
+  border-color: #aebccc;
+}
+
+.mission-filters button.active {
+  background: var(--soft-blue);
+  border-color: var(--blue);
+  color: #075985;
+}
+
+.range-select {
+  display: grid;
+  gap: 4px;
+  min-width: 180px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.range-select select {
+  min-height: 38px;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.quick-capture,
+.focus-facts div,
+.empty,
+.auto-date {
+  background: #f7f9fc;
+  border-color: #c6d1df;
+}
+
+.focus-note {
+  border-top-color: #d5dde8;
+}
+
+.tag,
+.fact,
+.freshness {
+  background: #e9eef5;
+  color: #243041;
+}
+
+.tag.warn {
+  background: #fff1c7;
+  color: #6f4700;
+}
+
+.tag.bad {
+  background: #ffe0e0;
+  color: #9f1d20;
+}
+
+.tag.good {
+  background: #dff5e8;
+  color: #146c43;
+}
+
+.questionnaire-row,
+.rebooking-row {
+  box-shadow: inset 4px 0 0 #9fb1c7, 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.modal-card {
+  border-color: #96a7bb;
+}
+
+@media (max-width: 900px) {
+  .task-row {
+    grid-template-columns: 1fr;
+  }
+}
