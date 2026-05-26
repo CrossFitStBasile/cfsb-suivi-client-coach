@@ -35,10 +35,12 @@ Derniere mise a jour : 2026-05-26
 - Les coachs peuvent choisir un coach dans le menu deroulant quand les donnees sont chargees.
 - L'extension CoachRx permet de pousser les donnees CoachRx vers le backend.
 - Les reponses questionnaire client-coach sont prevues dans une inbox privee et doivent matcher principalement par telephone normalise.
+- Integration questionnaire V2 : le backend doit lire `Test_Responses` pour les tests equipe et `Responses` pour les vraies reponses dans le Sheet `Reponses - Suivi client-coach Web App`.
 - Les donnees client ne doivent pas etre publiees dans des snapshots JSON publics sur GitHub Pages.
 - Clarification 2026-05-26 : la fin de membership ne doit pas etre calculee automatiquement. Elle doit etre entree ou corrigee manuellement, comme la recurrence prevue dans Kilo.
 - Les IDs CoachRx pilotes connus sont maintenant documentes dans le module CoachRx : Marc-Andre 15935, Camille 17242, David 15902, Gabriel 15893, Hugo 15937, Raphael 15936.
 - Les check-ups de performance doivent provenir du CSM, onglet cache `Formulaire Checkup`, colonnes `Nom`, `Date`, `Telephone`, `Note`, `coach`.
+- Les liens rebooking coachs connus sont maintenant servis par le backend prive apres PIN, pas par le JavaScript public GitHub Pages : Marc-Andre, Raphael, Hugo, Iheb, Camille et David.
 - Correctif UX 2026-05-25 :
   - `Fait` et `Masquer` en mode reel agissent maintenant immediatement dans l'interface, puis synchronisent le backend en arriere-plan.
   - Les compteurs visibles tiennent compte des taches masquees localement, pour que le coach sente que son action a ete prise en compte.
@@ -64,6 +66,12 @@ Derniere mise a jour : 2026-05-26
 - Questionnaire :
   - `Marquer traite` signifie que le coach a lu la reponse et fait le suivi necessaire;
   - quand un client est identifiable, l'action `Envoyer questionnaire` doit rester disponible.
+  - matching prioritaire par `client_phone_normalized`;
+  - `vert` doit nourrir l'historique client sans creer de tache urgente;
+  - `jaune` cree une tache d'ajustement leger;
+  - `orange` cree une tache de discussion structuree;
+  - `rouge` cree une tache prioritaire de contact rapide;
+  - les reponses sans client ou coach reconnu doivent apparaitre dans une file a valider.
 - Modules externes :
   - un module `Actif` peut etre utilise tel quel;
   - un module `En test` ou `Module lie` reste accessible par bouton, mais ne doit pas etre presente comme une integration complete;
@@ -146,7 +154,7 @@ Derniere mise a jour : 2026-05-26
 1. Fiche client
    - Afficher membership actuel.
    - Afficher debut membership.
-   - Afficher fin membership calculee.
+   - Afficher fin membership manuelle.
    - Afficher derniere date Kilo planifiee.
    - Afficher dernier questionnaire.
    - Afficher risque coach manuel.
