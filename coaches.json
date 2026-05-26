@@ -1,12 +1,24 @@
 {
-  "source": "CFSB coach display list",
-  "synced_at": "2026-05-22T15:00:44.513Z",
+  "source": "CoachRx IDs confirmed for dashboard pilot",
+  "synced_at": "2026-05-26T20:45:00.000Z",
   "coaches": [
+    {
+      "coach_name": "Camille Proulx"
+    },
+    {
+      "coach_name": "David Olivier"
+    },
+    {
+      "coach_name": "Gabriel Mayer Bedard"
+    },
+    {
+      "coach_name": "Hugo Lelievre"
+    },
     {
       "coach_name": "Marc-Andre Menard"
     },
     {
-      "coach_name": "Iheb Yahyaoui"
+      "coach_name": "Raphael Samson"
     }
   ]
 }

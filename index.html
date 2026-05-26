@@ -119,6 +119,14 @@
       display: none !important;
     }
 
+    .conditional-field {
+      display: none;
+    }
+
+    .conditional-field.is-visible {
+      display: block;
+    }
+
     .steps {
       display: grid;
       gap: 10px;
@@ -679,8 +687,43 @@
 
             <div class="field">
               <label class="question">Quel est un succès récent dont tu es satisfait ?</label>
-              <p class="help">Ça peut être une victoire d'entraînement, une meilleure constance, une habitude, une sensation ou une décision.</p>
-              <textarea name="recentSuccess" placeholder="Exemple : je suis venu 3 fois cette semaine, j'ai mieux dormi, je me sens plus fort, j'ai gardé ma routine malgré une grosse semaine."></textarea>
+              <p class="help">Choisis le succès le plus important pour toi dernièrement.</p>
+              <div class="choice-grid">
+                <label class="choice"><input type="radio" name="recentSuccessType" value="Constance"><span><strong>J'ai été plus constant</strong></span></label>
+                <label class="choice"><input type="radio" name="recentSuccessType" value="Force performance"><span><strong>Je me sens plus fort ou plus performant</strong></span></label>
+                <label class="choice"><input type="radio" name="recentSuccessType" value="Energie confiance"><span><strong>J'ai plus d'énergie ou de confiance</strong></span></label>
+                <label class="choice"><input type="radio" name="recentSuccessType" value="Habitude de vie"><span><strong>J'ai amélioré une habitude de vie</strong></span></label>
+                <label class="choice"><input type="radio" name="recentSuccessType" value="Aucun succes clair"><span><strong>Je n'ai pas de succès clair à nommer</strong></span></label>
+                <label class="choice"><input type="radio" name="recentSuccessType" value="Autre"><span><strong>Autre</strong></span></label>
+              </div>
+            </div>
+
+            <div class="field conditional-field" data-show-if="recentSuccessType:Autre,Aucun succes clair">
+              <label class="question">Si tu veux, précise ton succès ou ce qui rend ça plus difficile à nommer.</label>
+              <textarea name="recentSuccess" placeholder="Exemple : je suis venu 3 fois cette semaine, j'ai mieux dormi, je me sens plus fort, ou je ne vois pas encore de succès clair."></textarea>
+            </div>
+
+            <div class="field">
+              <label class="question">Dans les 30 derniers jours, ton assiduité ressemble le plus à :</label>
+              <div class="choice-grid">
+                <label class="choice"><input type="radio" name="lastMonthAttendance" value="Stable ou meilleure"><span><strong>Stable ou meilleure qu'avant</strong></span></label>
+                <label class="choice"><input type="radio" name="lastMonthAttendance" value="Un peu moins bonne"><span><strong>Un peu moins bonne qu'avant</strong></span></label>
+                <label class="choice"><input type="radio" name="lastMonthAttendance" value="Beaucoup moins bonne"><span><strong>Beaucoup moins bonne qu'avant</strong></span></label>
+                <label class="choice"><input type="radio" name="lastMonthAttendance" value="Retour apres absence"><span><strong>Je reviens après une absence</strong></span></label>
+                <label class="choice"><input type="radio" name="lastMonthAttendance" value="Pas certain"><span><strong>Je ne suis pas certain</strong></span></label>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="question">Sur 5, à quel point es-tu satisfait de tes résultats récents ?</label>
+              <p class="help">1 = pas satisfait, 5 = très satisfait</p>
+              <div class="scale">
+                <label class="choice"><input type="radio" name="resultsSatisfaction" value="1"><span><strong>1</strong></span></label>
+                <label class="choice"><input type="radio" name="resultsSatisfaction" value="2"><span><strong>2</strong></span></label>
+                <label class="choice"><input type="radio" name="resultsSatisfaction" value="3"><span><strong>3</strong></span></label>
+                <label class="choice"><input type="radio" name="resultsSatisfaction" value="4"><span><strong>4</strong></span></label>
+                <label class="choice"><input type="radio" name="resultsSatisfaction" value="5"><span><strong>5</strong></span></label>
+              </div>
             </div>
 
             <div class="field">
@@ -745,6 +788,29 @@
                 <label class="choice"><input type="radio" name="clarity" value="5"><span><strong>5</strong></span></label>
               </div>
             </div>
+
+            <div class="field conditional-field" data-show-if="goal:Il a évolué,Non,Pas certain">
+              <label class="question">Qu'est-ce qui décrit le mieux le changement d'objectif ?</label>
+              <div class="choice-grid">
+                <label class="choice"><input type="radio" name="goalChangeDetail" value="Performance"><span><strong>Je veux viser davantage la performance</strong></span></label>
+                <label class="choice"><input type="radio" name="goalChangeDetail" value="Sante energie"><span><strong>Je veux prioriser santé, énergie ou bien-être</strong></span></label>
+                <label class="choice"><input type="radio" name="goalChangeDetail" value="Composition corporelle"><span><strong>Je veux revoir un objectif de composition corporelle</strong></span></label>
+                <label class="choice"><input type="radio" name="goalChangeDetail" value="Constance"><span><strong>Je veux surtout redevenir constant</strong></span></label>
+                <label class="choice"><input type="radio" name="goalChangeDetail" value="Pas clair"><span><strong>Je ne sais pas encore, j'ai besoin d'en parler</strong></span></label>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="question">Sur 5, à quel point tu sens que ton coach comprend ton objectif actuel ?</label>
+              <p class="help">1 = pas vraiment, 5 = très clairement</p>
+              <div class="scale">
+                <label class="choice"><input type="radio" name="coachAlignment" value="1"><span><strong>1</strong></span></label>
+                <label class="choice"><input type="radio" name="coachAlignment" value="2"><span><strong>2</strong></span></label>
+                <label class="choice"><input type="radio" name="coachAlignment" value="3"><span><strong>3</strong></span></label>
+                <label class="choice"><input type="radio" name="coachAlignment" value="4"><span><strong>4</strong></span></label>
+                <label class="choice"><input type="radio" name="coachAlignment" value="5"><span><strong>5</strong></span></label>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -778,6 +844,17 @@
                 <label class="choice"><input type="checkbox" name="improve" value="Rien pour le moment"><span><strong>Rien pour le moment</strong></span></label>
               </div>
             </div>
+
+            <div class="field conditional-field" data-show-if="program:Adapté avec ajustements,Pas parfaitement aligné,Trop difficile,Trop facile,Pas assez motivant">
+              <label class="question">Quel ajustement serait le plus utile en premier ?</label>
+              <div class="choice-grid">
+                <label class="choice"><input type="radio" name="programAdjustmentDetail" value="Intensite difficulte"><span><strong>Ajuster l'intensité ou le niveau de difficulté</strong></span></label>
+                <label class="choice"><input type="radio" name="programAdjustmentDetail" value="Variete exercices"><span><strong>Ajouter de la variété ou changer certains exercices</strong></span></label>
+                <label class="choice"><input type="radio" name="programAdjustmentDetail" value="Clarte plan"><span><strong>Mieux comprendre la logique du plan</strong></span></label>
+                <label class="choice"><input type="radio" name="programAdjustmentDetail" value="Horaire volume"><span><strong>Adapter le volume à mon horaire</strong></span></label>
+                <label class="choice"><input type="radio" name="programAdjustmentDetail" value="Motivation plaisir"><span><strong>Rendre le programme plus motivant</strong></span></label>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -803,6 +880,17 @@
             <div class="field">
               <label class="question">Est-ce qu'il y a quelque chose d'important que tu veux que ton coach sache ?</label>
               <textarea name="note" placeholder="Tu peux écrire une phrase ou deux."></textarea>
+            </div>
+
+            <div class="field conditional-field" data-show-if="pain:À considérer,Affecte motivation,Pas certain">
+              <label class="question">Qu'est-ce que ton coach devrait faire avec cette information ?</label>
+              <div class="choice-grid">
+                <label class="choice"><input type="radio" name="painDetail" value="Modifier exercices"><span><strong>Modifier certains exercices</strong></span></label>
+                <label class="choice"><input type="radio" name="painDetail" value="Reduire charge volume"><span><strong>Réduire certaines charges ou le volume</strong></span></label>
+                <label class="choice"><input type="radio" name="painDetail" value="Clarifier limites"><span><strong>Clarifier ce que je peux faire ou éviter</strong></span></label>
+                <label class="choice"><input type="radio" name="painDetail" value="Discussion coach"><span><strong>En parler à la prochaine séance</strong></span></label>
+                <label class="choice"><input type="radio" name="painDetail" value="Contact prioritaire"><span><strong>Me contacter avant ma prochaine séance</strong></span></label>
+              </div>
             </div>
           </div>
         </section>
@@ -834,6 +922,18 @@
                 <label class="choice"><input type="radio" name="contact" value="Prochaine séance"><span><strong>Oui, lors de ma prochaine séance</strong></span></label>
                 <label class="choice"><input type="radio" name="contact" value="Si nécessaire"><span><strong>Seulement si le coach juge que c'est nécessaire</strong></span></label>
                 <label class="choice"><input type="radio" name="contact" value="Non"><span><strong>Non, je voulais simplement faire une mise à jour</strong></span></label>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="question">Quel type de support serait le plus utile maintenant ?</label>
+              <div class="choice-grid">
+                <label class="choice"><input type="radio" name="supportNeed" value="Aucun"><span><strong>Aucun support particulier</strong><small>Je voulais surtout faire une mise à jour.</small></span></label>
+                <label class="choice"><input type="radio" name="supportNeed" value="Technique"><span><strong>Feedback technique</strong><small>Mouvements, exécution, corrections.</small></span></label>
+                <label class="choice"><input type="radio" name="supportNeed" value="Programme"><span><strong>Ajustement de programme</strong><small>Exercices, volume, intensité, variété.</small></span></label>
+                <label class="choice"><input type="radio" name="supportNeed" value="Objectif"><span><strong>Clarification d'objectif</strong><small>Revoir la direction ou la priorité.</small></span></label>
+                <label class="choice"><input type="radio" name="supportNeed" value="Habitudes"><span><strong>Habitudes de vie</strong><small>Sommeil, alimentation, stress, constance.</small></span></label>
+                <label class="choice"><input type="radio" name="supportNeed" value="Motivation"><span><strong>Motivation ou relance</strong><small>J'ai besoin d'aide pour repartir.</small></span></label>
               </div>
             </div>
           </div>
@@ -948,12 +1048,16 @@
     ));
     const DEFAULT_ENDPOINT_URL = "https://script.google.com/macros/s/AKfycbxnhlehsj_NQU73k3csMQPj0NAm3QSQrpjk0Ar6VYOjXYZO-m9_GSxtmEqYw9y_9DSQEA/exec";
     const ENDPOINT_URL = params.get("endpoint") || DEFAULT_ENDPOINT_URL;
-    const APP_VERSION = "github-pages-v6-test-sandbox";
+    const APP_VERSION = "github-pages-v7-conditional-triage";
     const SCHEMA_VERSION = "1.0";
     const PAYLOAD_SOURCE = "cfsb-client-coach-questionnaire";
     const FALLBACK_COACHES = [
+      "Camille Proulx",
+      "David Olivier",
+      "Gabriel Mayer Bedard",
+      "Hugo Lelièvre",
       "Marc-Andre Menard",
-      "Iheb Yahyaoui"
+      "Raphael Samson"
     ];
     let current = 0;
 
@@ -1028,6 +1132,24 @@
       return field ? field.value.trim() : "";
     }
 
+    function clearFieldGroup(container) {
+      container.querySelectorAll("input, textarea, select").forEach((field) => {
+        if (field.type === "radio" || field.type === "checkbox") field.checked = false;
+        else field.value = "";
+      });
+    }
+
+    function updateConditionalFields() {
+      document.querySelectorAll("[data-show-if]").forEach((container) => {
+        const [fieldName, rawValues] = container.dataset.showIf.split(":");
+        const allowedValues = (rawValues || "").split(",").map((item) => item.trim());
+        const currentValue = valueOf(fieldName);
+        const shouldShow = allowedValues.includes(currentValue);
+        container.classList.toggle("is-visible", shouldShow);
+        if (!shouldShow) clearFieldGroup(container);
+      });
+    }
+
     function normalizedPhone() {
       const digits = fieldValue("phone").replace(/\D/g, "");
       return digits.length === 11 && digits.charAt(0) === "1" ? digits.slice(1) : digits;
@@ -1064,43 +1186,52 @@
       const contact = valueOf("contact");
       const challenges = valuesOf("challenges");
       const upcomingChanges = valueOf("upcomingChanges");
+      const attendance = valueOf("lastMonthAttendance");
+      const resultsScore = Number(valueOf("resultsSatisfaction") || 0);
+      const coachAlignment = Number(valueOf("coachAlignment") || 0);
+      const supportNeed = valueOf("supportNeed");
+      const painDetail = valueOf("painDetail");
 
       if (
-        motivation === "Très bas" ||
-        state === "Perdu ou démotivé" ||
-        pain === "Affecte motivation" ||
         contact === "Dès que possible" ||
-        finalChoice === "Retrouver motivation"
+        motivation === "Très bas" ||
+        painDetail === "Contact prioritaire" ||
+        pain === "Affecte motivation" ||
+        (state === "Perdu ou démotivé" && motivation === "Bas") ||
+        (finalChoice === "Retrouver motivation" && supportNeed === "Motivation")
       ) {
         return "rouge";
       }
 
-      if (
-        motivation === "Bas" ||
-        goal === "Non" ||
-        goal === "Pas certain" ||
-        progress === "Non pas vraiment" ||
-        progress === "Objectif change" ||
-        program === "Pas parfaitement aligné" ||
-        program === "Pas assez motivant" ||
-        challenges.includes("Douleur inconfort") ||
-        finalChoice === "Revoir objectif" ||
-        finalChoice === "Modifier programme" ||
-        finalChoice === "Discussion"
-      ) {
+      let concernScore = 0;
+      if (motivation === "Bas") concernScore += 2;
+      if (motivation === "Moyen") concernScore += 1;
+      if (state === "Perdu ou démotivé") concernScore += 2;
+      if (state === "Moins bien") concernScore += 1;
+      if (goal === "Non" || goal === "Pas certain") concernScore += 2;
+      if (goal === "Il a évolué") concernScore += 1;
+      if (progress === "Non pas vraiment" || progress === "Objectif change") concernScore += 2;
+      if (progress === "Pas certain" || progress === "Oui mais lentement") concernScore += 1;
+      if (program === "Pas assez motivant" || program === "Trop difficile") concernScore += 2;
+      if (program === "Pas parfaitement aligné" || program === "Adapté avec ajustements" || program === "Trop facile") concernScore += 1;
+      if (pain === "À considérer" || challenges.includes("Douleur inconfort")) concernScore += 1;
+      if (attendance === "Beaucoup moins bonne" || attendance === "Retour apres absence") concernScore += 2;
+      if (attendance === "Un peu moins bonne" || attendance === "Pas certain") concernScore += 1;
+      if (resultsScore && resultsScore <= 2) concernScore += 2;
+      if (resultsScore === 3) concernScore += 1;
+      if (coachAlignment && coachAlignment <= 2) concernScore += 2;
+      if (coachAlignment === 3) concernScore += 1;
+      if (finalChoice === "Discussion" || finalChoice === "Revoir objectif") concernScore += 2;
+      if (finalChoice === "Modifier programme" || finalChoice === "Petits ajustements") concernScore += 1;
+      if (supportNeed === "Motivation" || supportNeed === "Objectif") concernScore += 1;
+      if (supportNeed === "Programme" || supportNeed === "Habitudes") concernScore += 1;
+      if (upcomingChanges && upcomingChanges !== "Non") concernScore += 1;
+
+      if (concernScore >= 4) {
         return "orange";
       }
 
-      if (
-        motivation === "Moyen" ||
-        goal === "Il a évolué" ||
-        progress === "Oui mais lentement" ||
-        progress === "Pas certain" ||
-        program === "Adapté avec ajustements" ||
-        finalChoice === "Petits ajustements" ||
-        pain === "À considérer" ||
-        (upcomingChanges && upcomingChanges !== "Non")
-      ) {
+      if (concernScore >= 1) {
         return "jaune";
       }
 
@@ -1159,17 +1290,25 @@
           motivation_level: valueOf("motivation"),
           goal_status: valueOf("goal"),
           goal_clarity_score: valueOf("clarity"),
+          goal_change_detail: valueOf("goalChangeDetail"),
+          coach_alignment_score: valueOf("coachAlignment"),
           progress_toward_goal: valueOf("progress"),
+          recent_success_type: valueOf("recentSuccessType"),
           recent_success: fieldValue("recentSuccess"),
+          last_30_days_attendance: valueOf("lastMonthAttendance"),
+          results_satisfaction_score: valueOf("resultsSatisfaction"),
           current_challenges: valuesOf("challenges"),
           upcoming_changes: valueOf("upcomingChanges"),
           upcoming_changes_details: fieldValue("upcomingChangesDetails"),
           program_fit: valueOf("program"),
+          program_adjustment_detail: valueOf("programAdjustmentDetail"),
           improvements_requested: valuesOf("improve"),
           pain_status: valueOf("pain"),
+          pain_detail: valueOf("painDetail"),
           open_note: fieldValue("note"),
           final_position: valueOf("final"),
-          contact_request: valueOf("contact")
+          contact_request: valueOf("contact"),
+          support_needed: valueOf("supportNeed")
         },
         triage: {
           status,
@@ -1251,15 +1390,23 @@
         ["Raison du suivi", valueOf("reason") || "Non indiqué"],
         ["Motivation", valueOf("motivation") || "Non indiqué"],
         ["Objectif", valueOf("goal") || "Non indiqué"],
+        ["Détail objectif", valueOf("goalChangeDetail") || "Non indiqué"],
+        ["Alignement coach-objectif", valueOf("coachAlignment") || "Non indiqué"],
         ["Progression vers l'objectif", valueOf("progress") || "Non indiqué"],
+        ["Satisfaction résultats", valueOf("resultsSatisfaction") || "Non indiqué"],
+        ["Assiduité 30 jours", valueOf("lastMonthAttendance") || "Non indiqué"],
+        ["Type de succès récent", valueOf("recentSuccessType") || "Non indiqué"],
         ["Succès récent", fieldValue("recentSuccess") || "Aucun succès indiqué"],
         ["Challenges actuels", challenges],
         ["Changements à venir", valueOf("upcomingChanges") || "Non indiqué"],
         ["Détails changements", fieldValue("upcomingChangesDetails") || "Aucun détail indiqué"],
         ["Programme", valueOf("program") || "Non indiqué"],
+        ["Ajustement programme prioritaire", valueOf("programAdjustmentDetail") || "Non indiqué"],
         ["Améliorations souhaitées", improve],
         ["Confort / limitation", valueOf("pain") || "Non indiqué"],
+        ["Action douleur / limitation", valueOf("painDetail") || "Non indiqué"],
         ["Contact souhaité", valueOf("contact") || "Non indiqué"],
+        ["Support souhaité", valueOf("supportNeed") || "Non indiqué"],
         ["Note au coach", fieldValue("note") || "Aucune note"]
       ];
 
@@ -1296,6 +1443,7 @@
     }
 
     function update() {
+      updateConditionalFields();
       sections.forEach((section, index) => {
         section.classList.toggle("active", index === current);
       });
@@ -1320,6 +1468,8 @@
       current = Math.max(0, current - 1);
       update();
     });
+
+    document.getElementById("followupForm").addEventListener("change", updateConditionalFields);
 
     nextBtn.addEventListener("click", () => {
       if (current === sections.length - 1) {

@@ -26,33 +26,43 @@
     <section class="metrics" aria-label="Resume">
       <div><strong id="metricTasks">-</strong><span>actions ouvertes</span></div>
       <div><strong id="metricUrgent">-</strong><span>urgent</span></div>
-      <div><strong id="metricRisk">-</strong><span>a risque</span></div>
+      <div><strong id="metricRisk">-</strong><span>risques coach</span></div>
       <div><strong id="metricImpacts">-</strong><span>impacts semaine</span></div>
     </section>
 
     <nav class="views" aria-label="Sections">
-      <button class="active" data-view="mission">Mission</button>
+      <button data-view="mission">To-do</button>
       <button data-view="clients">Clients</button>
       <button data-view="questionnaires">Questionnaires</button>
-      <button data-view="performance">Performance</button>
-      <button data-view="admin">Systeme</button>
+      <button class="active" data-view="performance">Performance</button>
+      <button data-view="alumni">Alumni</button>
+      <button data-view="scenarios">Guide & modules</button>
     </nav>
 
     <section id="systemPanel" class="panel system-drawer hidden">
-      <div>
-        <p class="eyebrow">Outils pilote</p>
-        <h2>Systeme</h2>
-        <p class="muted">Les actions techniques sont regroupees ici pour garder le dashboard quotidien leger.</p>
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Outils pilote</p>
+          <h2>Systeme</h2>
+          <p class="muted">Les actions techniques sont regroupees ici pour garder le dashboard quotidien leger.</p>
+        </div>
+        <button id="closeSystemBtn" class="close-panel" type="button" aria-label="Fermer le panneau Systeme">X</button>
       </div>
       <div class="system-actions">
         <button id="refreshBtn" class="primary">Mettre a jour</button>
+        <button id="demoModeBtn">Mode demo</button>
+        <button id="exitDemoBtn">Quitter demo / mode reel</button>
+        <button id="resetDemoBtn">Reset demo</button>
         <button id="addTaskBtn">Ajouter un rappel</button>
         <button id="settingsBtn">Configuration</button>
       </div>
     </section>
 
     <section id="settingsPanel" class="panel hidden">
-      <h2>Configuration</h2>
+      <div class="panel-header">
+        <h2>Configuration</h2>
+        <button id="closeSettingsBtn" class="close-panel" type="button" aria-label="Fermer la configuration">X</button>
+      </div>
       <div class="form-grid">
         <label>Endpoint Apps Script
           <input id="apiUrlInput" placeholder="https://script.google.com/macros/s/.../exec">
@@ -68,7 +78,10 @@
     </section>
 
     <section id="manualPanel" class="panel hidden">
-      <h2>Nouveau rappel</h2>
+      <div class="panel-header">
+        <h2>Nouveau rappel</h2>
+        <button id="closeManualPanelBtn" class="close-panel" type="button" aria-label="Fermer le rappel">X</button>
+      </div>
       <div class="form-grid">
         <input id="manualClient" placeholder="Client optionnel">
         <input id="manualDue" type="date">
@@ -92,6 +105,8 @@
   </main>
 
   <div id="toast" class="toast" role="status"></div>
-  <script src="./app-3689590.js"></script>
+  <div id="clientModal" class="client-modal hidden" role="dialog" aria-modal="true" aria-label="Fiche client"></div>
+  <script src="./app-52229.js"></script>
 </body>
 </html>
+
