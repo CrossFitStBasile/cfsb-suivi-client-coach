@@ -1,7 +1,7 @@
 {
   "meta": {
     "project": "roadmap-trimestrielle-cfsb",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "updated": "2026-05-26",
     "language": "fr-CA"
   },
@@ -3534,23 +3534,23 @@
     {
       "id": "engagement_responsibilities",
       "title": "Valeurs CFSB - comportements Engagement communautaire et evenements",
-      "intro": "Audit trimestriel des attentes observables du role. Le niveau 3 represente le standard CFSB attendu; le niveau 4 represente une contribution qui renforce la communaute, l attachement au centre et l impact mesurable des initiatives.",
+      "intro": "Audit trimestriel du role responsable engagement communautaire et evenements. Cette version reprend les 8 attentes fournies par Gabriel: organisation, presence en ligne, innovation, inclusion, mise en valeur, implication des coachs, veille et mesure d'impact.",
       "groups": [
         {
-          "title": "Planification et execution des evenements",
-          "intro": "Ces standards couvrent la preparation, la communication, la logistique et la qualite d'execution.",
+          "title": "Professionnalisme",
+          "intro": "Valeur associee: planification, execution, suivi.",
           "questions": [
             {
               "id": "event_planning_structure_score",
-              "label": "Professionnalisme - Je planifie les evenements avec objectifs, echeancier, responsabilites et besoins clairs.",
+              "label": "Professionnalisme - J'organise les evenements avec calendrier, plan d'execution, logistique, budget, communication et suivi.",
               "type": "scale",
               "scaleId": "agreement4",
               "required": true,
               "rubric": {
-                "1": "Les evenements sont improvises ou manquent de structure.",
-                "2": "La planification existe, mais certains details arrivent tard.",
-                "3": "Objectif, dates, taches, responsables et besoins sont clairs avant l'evenement.",
-                "4": "La planification donne confiance a l'equipe et rend l'execution fluide."
+                "1": "Evenements improvises, mal prepares ou annules a la derniere minute; pas de calendrier evenementiel etabli.",
+                "2": "Evenements livres, mais avec des accrocs reguliers en logistique ou communication.",
+                "3": "Calendrier evenementiel trimestriel etabli et communique; chaque evenement a un plan d'execution clair et un suivi post-evenement avec lecons apprises.",
+                "4": "Cree des evenements signatures attendus par les membres et atteint ou depasse des objectifs mesurables: participation, satisfaction, conversion."
               }
             },
             {
@@ -3564,91 +3564,74 @@
               }
             },
             {
-              "id": "event_communication_score",
-              "label": "Professionnalisme - Je communique les evenements clairement aux membres et a l'equipe.",
+              "id": "event_online_presence_score",
+              "label": "Professionnalisme - J'anime regulierement Chalk-It Pro et les espaces de communaute en ligne.",
               "type": "scale",
               "scaleId": "agreement4",
               "required": true,
               "rubric": {
-                "1": "Les communications sont tardives, incompletes ou peu visibles.",
-                "2": "Les infos sortent, mais manquent parfois de repetition ou de clarte.",
-                "3": "Les membres et l'equipe savent quoi, quand, ou, pour qui et comment participer.",
-                "4": "La communication cree de l'energie et facilite l'inscription ou la participation."
+                "1": "Aucune presence reguliere sur Chalk-It Pro ou le groupe communaute; communaute en ligne inactive.",
+                "2": "Presence sporadique, sans rythme etabli.",
+                "3": "Publications regulieres selon le rythme defini avec la direction; animation des conversations et celebration des succes membres.",
+                "4": "Genere un engagement mesurable et croissant sur les plateformes et cree un sentiment de communaute qui se ressent jusque sur le plancher."
               }
             },
             {
-              "id": "event_communication_example",
+              "id": "event_online_presence_example",
               "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.",
               "type": "long_text",
               "required": true,
               "showIfMax": {
-                "questionId": "event_communication_score",
-                "max": 2
-              }
-            },
-            {
-              "id": "event_execution_reliability_score",
-              "label": "Professionnalisme - J'execute les evenements avec fiabilite, presence et attention aux details.",
-              "type": "scale",
-              "scaleId": "agreement4",
-              "required": true,
-              "rubric": {
-                "1": "L'execution depend trop de l'improvisation ou des autres.",
-                "2": "L'evenement fonctionne, mais des details importants echappent.",
-                "3": "Je suis present, organise et attentif aux details importants le jour meme.",
-                "4": "L'evenement se vit comme une experience fluide, chaleureuse et bien portee."
-              }
-            },
-            {
-              "id": "event_execution_reliability_example",
-              "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.",
-              "type": "long_text",
-              "required": true,
-              "showIfMax": {
-                "questionId": "event_execution_reliability_score",
-                "max": 2
-              }
-            },
-            {
-              "id": "event_followup_learning_score",
-              "label": "Courage - Je fais un retour apres les evenements pour apprendre et ameliorer la prochaine fois.",
-              "type": "scale",
-              "scaleId": "agreement4",
-              "required": true,
-              "rubric": {
-                "1": "On passe au prochain projet sans tirer d'apprentissage.",
-                "2": "Je note certains apprentissages, mais de facon informelle.",
-                "3": "Je retiens ce qui a marche, ce qui a bloque et les ajustements a faire.",
-                "4": "Chaque evenement rend le suivant plus simple, plus fort et mieux aligne."
-              }
-            },
-            {
-              "id": "event_followup_learning_example",
-              "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.",
-              "type": "long_text",
-              "required": true,
-              "showIfMax": {
-                "questionId": "event_followup_learning_score",
+                "questionId": "event_online_presence_score",
                 "max": 2
               }
             }
           ]
         },
         {
-          "title": "Inclusion, chaleur et culture CFSB",
-          "intro": "Ces standards mesurent la capacite a faire sentir aux membres qu ils sont vus, reconnus, valorises et inclus, surtout les nouveaux ou les plus discrets.",
+          "title": "Courage",
+          "intro": "Valeur associee: creativite, propositions audacieuses, prise de risque mesuree.",
           "questions": [
             {
-              "id": "community_inclusion_score",
-              "label": "Bienveillance - Je cree des moments ou les membres se sentent vus, reconnus, valorises et inclus.",
+              "id": "event_innovation_score",
+              "label": "Courage - Je propose et teste des nouveautes evenementielles avec une prise de risque mesuree.",
               "type": "scale",
               "scaleId": "agreement4",
               "required": true,
               "rubric": {
-                "1": "Les initiatives rejoignent surtout les membres deja impliques; certains membres restent invisibles ou isoles.",
-                "2": "J inclus plusieurs membres, mais sans systeme clair pour rejoindre les nouveaux ou les plus discrets.",
-                "3": "Je pense activement aux nouveaux, aux membres plus discrets et aux differents groupes pour les integrer.",
-                "4": "Les membres se sentent vus et attendus; les personnes isolees trouvent plus facilement leur place dans la communaute."
+                "1": "Reproduit les memes evenements sans renouvellement.",
+                "2": "Propose des idees occasionnelles, peu originales.",
+                "3": "Propose chaque trimestre au moins une nouveaute evenementielle et teste des formats inspires d'autres centres ou industries.",
+                "4": "Cree des concepts originaux qui pourraient etre partages ou modelises a l'externe; prend des risques calcules et apprend de chaque tentative."
+              }
+            },
+            {
+              "id": "event_innovation_example",
+              "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.",
+              "type": "long_text",
+              "required": true,
+              "showIfMax": {
+                "questionId": "event_innovation_score",
+                "max": 2
+              }
+            }
+          ]
+        },
+        {
+          "title": "Bienveillance",
+          "intro": "Valeur associee: creation d experience, inclusion, chaleur humaine.",
+          "questions": [
+            {
+              "id": "community_inclusion_score",
+              "label": "Bienveillance - J'anime avec chaleur et j'inclus les differents profils de membres dans les evenements.",
+              "type": "scale",
+              "scaleId": "agreement4",
+              "required": true,
+              "rubric": {
+                "1": "Evenements qui excluent certains profils de membres; ambiance froide ou impersonnelle.",
+                "2": "Bonne ambiance generale, mais sans attention a l'inclusion des nouveaux ou des plus discrets.",
+                "3": "Veille a inclure tous les profils de membres: parents, professionnels, nouveaux, anciens; anime avec energie et accueille personnellement les participants.",
+                "4": "Cree des moments ou les membres se sentent vus, reconnus, valorises; identifie les membres isoles et les integre activement a la communaute."
               }
             },
             {
@@ -3662,91 +3645,16 @@
               }
             },
             {
-              "id": "community_energy_score",
-              "label": "Bienveillance - J'amene une energie positive qui renforce le sentiment d'appartenance.",
-              "type": "scale",
-              "scaleId": "agreement4",
-              "required": true,
-              "rubric": {
-                "1": "L'energie communautaire est peu visible ou depend des autres.",
-                "2": "Je contribue, mais de facon ponctuelle.",
-                "3": "Je cree de l'elan, de la chaleur et de la reconnaissance autour des moments communautaires.",
-                "4": "Mon energie aide les membres a se sentir fiers d'appartenir au CFSB."
-              }
-            },
-            {
-              "id": "community_energy_example",
-              "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.",
-              "type": "long_text",
-              "required": true,
-              "showIfMax": {
-                "questionId": "community_energy_score",
-                "max": 2
-              }
-            },
-            {
-              "id": "community_member_connection_score",
-              "label": "Esprit d'equipe - Je facilite les liens entre les membres, pas seulement entre le centre et les membres.",
-              "type": "scale",
-              "scaleId": "agreement4",
-              "required": true,
-              "rubric": {
-                "1": "Les membres sont surtout connectes au staff, peu entre eux.",
-                "2": "Je cree certains liens, mais sans intention claire.",
-                "3": "Je facilite les introductions, conversations et moments qui rapprochent les membres.",
-                "4": "Les membres developpent des liens qui augmentent leur attachement au centre."
-              }
-            },
-            {
-              "id": "community_member_connection_example",
-              "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.",
-              "type": "long_text",
-              "required": true,
-              "showIfMax": {
-                "questionId": "community_member_connection_score",
-                "max": 2
-              }
-            },
-            {
-              "id": "community_values_fit_score",
-              "label": "Professionnalisme - Je garde les initiatives communautaires alignees avec la mission et les valeurs CFSB.",
-              "type": "scale",
-              "scaleId": "agreement4",
-              "required": true,
-              "rubric": {
-                "1": "Les initiatives peuvent sembler deconnectees du projet CFSB.",
-                "2": "L'alignement est present, mais pas toujours explicite.",
-                "3": "Les initiatives soutiennent la sante, le lien humain, la progression et la culture du centre.",
-                "4": "Chaque initiative renforce l'identite CFSB et donne du sens a la communaute."
-              }
-            },
-            {
-              "id": "community_values_fit_example",
-              "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.",
-              "type": "long_text",
-              "required": true,
-              "showIfMax": {
-                "questionId": "community_values_fit_score",
-                "max": 2
-              }
-            }
-          ]
-        },
-        {
-          "title": "Mise en valeur, contenu et histoires membres",
-          "intro": "Ces standards couvrent la mise en valeur reguliere des progres, temoignages, parcours et moments qui rendent la communaute vivante.",
-          "questions": [
-            {
               "id": "community_story_capture_score",
               "label": "Bienveillance - Je mets regulierement en valeur les progres, temoignages et parcours des membres.",
               "type": "scale",
               "scaleId": "agreement4",
               "required": true,
               "rubric": {
-                "1": "Les progres et histoires membres ne sont presque jamais mis en valeur.",
-                "2": "Je souligne certains membres, mais sans regularite ou profondeur.",
-                "3": "Je mets regulierement en valeur les progres, temoignages et parcours avec du contenu authentique.",
-                "4": "Je construis une banque d histoires membres utile pour inspirer la communaute, la retention et le marketing."
+                "1": "Aucune mise en valeur publique des membres.",
+                "2": "Met en valeur quelques membres, mais sans regularite ni profondeur.",
+                "3": "Met regulierement en valeur les progres, temoignages et parcours; cree du contenu authentique: photos, videos, citations.",
+                "4": "Batit une bibliotheque de temoignages exploitable en marketing et en retention; transforme les histoires de membres en moteurs d'inspiration pour toute la communaute."
               }
             },
             {
@@ -3758,93 +3666,24 @@
                 "questionId": "community_story_capture_score",
                 "max": 2
               }
-            },
-            {
-              "id": "community_authentic_content_score",
-              "label": "Professionnalisme - Je contribue a du contenu authentique qui represente bien la vie du centre.",
-              "type": "scale",
-              "scaleId": "agreement4",
-              "required": true,
-              "rubric": {
-                "1": "Le contenu est rare, force ou peu representatif.",
-                "2": "Je contribue parfois, mais sans rythme ou intention claire.",
-                "3": "Je capte du contenu simple, vrai et utile pour montrer l'ambiance CFSB.",
-                "4": "Le contenu aide les membres et prospects a ressentir ce qui se vit au centre."
-              }
-            },
-            {
-              "id": "community_authentic_content_example",
-              "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.",
-              "type": "long_text",
-              "required": true,
-              "showIfMax": {
-                "questionId": "community_authentic_content_score",
-                "max": 2
-              }
-            },
-            {
-              "id": "community_privacy_respect_score",
-              "label": "Courage - Je respecte le consentement, la sensibilite et la dignite des membres dans ce qui est partage.",
-              "type": "scale",
-              "scaleId": "agreement4",
-              "required": true,
-              "rubric": {
-                "1": "Le cadre de partage ou consentement peut etre flou.",
-                "2": "Je fais attention, mais certaines situations demandent plus de jugement.",
-                "3": "Je valide ce qui doit l'etre et je partage avec respect.",
-                "4": "Les membres peuvent faire confiance au centre pour les mettre en valeur avec dignite."
-              }
-            },
-            {
-              "id": "community_privacy_respect_example",
-              "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.",
-              "type": "long_text",
-              "required": true,
-              "showIfMax": {
-                "questionId": "community_privacy_respect_score",
-                "max": 2
-              }
-            },
-            {
-              "id": "community_recognition_consistency_score",
-              "label": "Esprit d'equipe - Je rends la reconnaissance des membres plus constante et partagee par l'equipe.",
-              "type": "scale",
-              "scaleId": "agreement4",
-              "required": true,
-              "rubric": {
-                "1": "La reconnaissance depend surtout de moments spontanes.",
-                "2": "Il y a des efforts, mais ils restent inconstants.",
-                "3": "Je soutiens des habitudes simples de reconnaissance et de mise en valeur.",
-                "4": "La reconnaissance devient une partie visible et naturelle de la culture CFSB."
-              }
-            },
-            {
-              "id": "community_recognition_consistency_example",
-              "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.",
-              "type": "long_text",
-              "required": true,
-              "showIfMax": {
-                "questionId": "community_recognition_consistency_score",
-                "max": 2
-              }
             }
           ]
         },
         {
-          "title": "Collaboration equipe, coachs et ownership",
-          "intro": "Ces standards verifient que les projets communautaires sont portes avec les coachs, la direction et les operations, avec des roles clairs.",
+          "title": "Joueur d'equipe",
+          "intro": "Valeur associee: implication des coachs, coordination, soutien.",
           "questions": [
             {
               "id": "event_team_coordination_score",
-              "label": "Esprit d equipe - J implique les coachs dans les evenements avec des roles clairs.",
+              "label": "Esprit d'equipe - J'implique les coachs et l'equipe dans les evenements avec des roles definis.",
               "type": "scale",
               "scaleId": "agreement4",
               "required": true,
               "rubric": {
-                "1": "J organise surtout seul ou l equipe est mise au courant trop tard.",
-                "2": "J implique l equipe ponctuellement, mais sans systeme ou roles assez clairs.",
-                "3": "J implique les coachs avec des roles definis et une communication en amont.",
-                "4": "Les coachs proposent eux-memes des idees et les evenements renforcent leur sentiment d appartenance."
+                "1": "Organise seul(e), sans impliquer les coachs.",
+                "2": "Implique l'equipe ponctuellement, sans systeme clair.",
+                "3": "Implique systematiquement les coachs dans les evenements avec roles definis; communique en avance pour permettre la coordination.",
+                "4": "Cree une dynamique ou les coachs proposent eux-memes des idees d'evenements et eleve le sens d'appartenance de l'equipe a travers les evenements."
               }
             },
             {
@@ -3856,98 +3695,29 @@
                 "questionId": "event_team_coordination_score",
                 "max": 2
               }
-            },
-            {
-              "id": "event_direction_alignment_score",
-              "label": "Professionnalisme - Je reste aligne avec la direction sur les priorites, budgets et objectifs des initiatives.",
-              "type": "scale",
-              "scaleId": "agreement4",
-              "required": true,
-              "rubric": {
-                "1": "Les initiatives peuvent avancer sans assez de cadrage.",
-                "2": "L'alignement existe, mais certaines decisions restent floues.",
-                "3": "Je valide objectifs, limites, budget et priorites avant d'avancer.",
-                "4": "La direction peut faire confiance au cadre et a l'impact des initiatives."
-              }
-            },
-            {
-              "id": "event_direction_alignment_example",
-              "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.",
-              "type": "long_text",
-              "required": true,
-              "showIfMax": {
-                "questionId": "event_direction_alignment_score",
-                "max": 2
-              }
-            },
-            {
-              "id": "event_initiative_ownership_score",
-              "label": "Courage - Je prends ownership des initiatives que je porte, de l'idee jusqu'au suivi.",
-              "type": "scale",
-              "scaleId": "agreement4",
-              "required": true,
-              "rubric": {
-                "1": "Les initiatives ont besoin de beaucoup de relances.",
-                "2": "Je porte les projets, mais certains suivis echappent.",
-                "3": "Je clarifie la prochaine action et je mene les projets jusqu'a fermeture.",
-                "4": "Je transforme les idees en experiences reelles, suivies et apprenantes."
-              }
-            },
-            {
-              "id": "event_initiative_ownership_example",
-              "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.",
-              "type": "long_text",
-              "required": true,
-              "showIfMax": {
-                "questionId": "event_initiative_ownership_score",
-                "max": 2
-              }
-            },
-            {
-              "id": "event_impact_judgment_score",
-              "label": "Courage - Je juge l impact reel des initiatives et je propose d arreter, ajuster ou continuer.",
-              "type": "scale",
-              "scaleId": "agreement4",
-              "required": true,
-              "rubric": {
-                "1": "On continue des initiatives sans regarder leur impact.",
-                "2": "Je vois certains signaux, mais ils sont peu formalises.",
-                "3": "Je regarde participation, satisfaction, energie, effort requis et apprentissages pour decider la suite.",
-                "4": "Je demontre l impact sur retention, acquisition ou appartenance et j optimise les efforts selon les donnees."
-              }
-            },
-            {
-              "id": "event_impact_judgment_example",
-              "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.",
-              "type": "long_text",
-              "required": true,
-              "showIfMax": {
-                "questionId": "event_impact_judgment_score",
-                "max": 2
-              }
             }
           ]
         },
         {
-          "title": "Developpement professionnel et mesure d impact",
-          "intro": "Ces standards ajoutent la veille externe et la mesure d impact des initiatives communautaires.",
+          "title": "Developpement professionnel",
+          "intro": "Valeur associee: veille, mesure d'impact, croissance.",
           "questions": [
             {
               "id": "event_external_inspiration_score",
-              "label": "Developpement professionnel - Je fais une veille externe pour inspirer les initiatives communautaires.",
+              "label": "Developpement professionnel - Je fais une veille externe en marketing communautaire et evenementiel.",
               "type": "scale",
               "scaleId": "agreement4",
               "required": true,
               "rubric": {
-                "1": "Je ne suis pas vraiment de references externes en communautaire, marketing ou evenements.",
-                "2": "Je fais une veille passive, mais elle se transforme peu en actions concretes.",
-                "3": "Je suis des references pertinentes et j applique au moins une idee externe par trimestre.",
-                "4": "Je construis un vrai benchmarking et des collaborations qui positionnent CFSB dans son ecosysteme local."
+                "1": "Ne suit aucune reference externe en marketing communautaire ou evenementiel.",
+                "2": "Veille passive, peu d'application concrete.",
+                "3": "Suit activement des references: autres centres, marques inspirantes, contenus pertinents; applique au moins une idee externe par trimestre.",
+                "4": "Construit un reseau d'inspiration et de benchmarking actif; represente CFSB a l'externe: collaborations, partenariats locaux."
               }
             },
             {
               "id": "event_external_inspiration_example",
-              "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s ameliorer.",
+              "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.",
               "type": "long_text",
               "required": true,
               "showIfMax": {
@@ -3957,20 +3727,20 @@
             },
             {
               "id": "event_impact_metrics_score",
-              "label": "Professionnalisme - Je mesure l impact des evenements et moments communautaires.",
+              "label": "Professionnalisme - Je mesure l'impact des evenements et de la communaute.",
               "type": "scale",
               "scaleId": "agreement4",
               "required": true,
               "rubric": {
-                "1": "L impact n est pas mesure.",
-                "2": "Quelques indicateurs sont regardes, mais sans rigueur ou suivi trimestriel.",
-                "3": "Je suis des indicateurs simples: participation, satisfaction, apprentissages, energie et prochaines actions.",
-                "4": "Les donnees montrent le ROI communautaire sur retention, acquisition ou appartenance et guident les prochaines decisions."
+                "1": "Aucune mesure de l'impact des evenements et de la communaute.",
+                "2": "Quelques indicateurs suivis, mais sans rigueur.",
+                "3": "Indicateurs trimestriels suivis: taux de participation, satisfaction; bilan post-evenement systematique.",
+                "4": "Demontre le ROI de la communaute sur la retention et l'acquisition; optimise les efforts en fonction des donnees."
               }
             },
             {
               "id": "event_impact_metrics_example",
-              "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s ameliorer.",
+              "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.",
               "type": "long_text",
               "required": true,
               "showIfMax": {
