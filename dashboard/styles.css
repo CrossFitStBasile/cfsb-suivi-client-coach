@@ -2185,6 +2185,55 @@ button.primary,
   border-color: #aebccc;
 }
 
+.command-hero p,
+.mission-panel > p,
+.manual-client-form p,
+.client-toolbar label,
+.focus-note p,
+.compact-row p,
+.module-card p,
+.scenario-card p {
+  color: #334155;
+}
+
+.directory-row {
+  border: 1px solid #c5cfdd;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.directory-row:hover,
+.directory-row:focus-within {
+  background: #e9f6fd;
+  border-color: #12a8e8;
+  box-shadow: 0 0 0 2px rgba(18, 168, 232, 0.16), 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
+.directory-row:hover .client-trigger strong,
+.directory-row:focus-within .client-trigger strong,
+.task-row:hover .client-trigger strong,
+.task-row:focus-within .client-trigger strong,
+.compact-row:hover > strong,
+.compact-row:focus-within > strong {
+  color: #087fb0;
+}
+
+.directory-row:hover .client-trigger small,
+.directory-row:focus-within .client-trigger small,
+.task-row:hover .client-trigger small,
+.task-row:focus-within .client-trigger small {
+  color: #155e75;
+}
+
+.directory-row .client-trigger {
+  width: 100%;
+}
+
+.client-trigger {
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
 @media (max-width: 900px) {
   .views {
     top: auto;
