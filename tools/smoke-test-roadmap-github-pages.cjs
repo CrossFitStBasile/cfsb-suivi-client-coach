@@ -53,7 +53,7 @@ async function run() {
     await page.getByText("Qualite, hygiene et details visibles").waitFor({ timeout: 15000 });
     await page.getByRole("button", { name: /Engagement communautaire et evenements/i }).click();
     await page.getByText("Valeurs CFSB - comportements Engagement communautaire et evenements").waitFor({ timeout: 15000 });
-    await page.getByText("Mise en valeur, contenu et histoires membres").waitFor({ timeout: 15000 });
+    await page.getByText("J'organise les evenements avec calendrier").waitFor({ timeout: 15000 });
     await page.getByRole("button", { name: /Administration \/ autre role/i }).click();
     await page.getByText("Valeurs CFSB - comportements Administration / autre role").waitFor({ timeout: 15000 });
     await page.getByText("Fiabilite, exactitude et confidentialite").waitFor({ timeout: 15000 });
