@@ -241,6 +241,19 @@ function renderInput(question, role) {
     `;
   }
 
+  if (question.type === "multi_choice") {
+    return `
+      <div class="choice-row">
+        ${(question.options || []).map((option) => `
+          <label class="choice-option">
+            <input type="checkbox" name="${escapeHtml(question.id)}" value="${escapeHtml(option)}" data-question-id="${escapeHtml(question.id)}">
+            <span>${escapeHtml(option)}</span>
+          </label>
+        `).join("")}
+      </div>
+    `;
+  }
+
   if (question.type === "scale") {
     const scale = scaleById(question.scaleId);
     const values = [];
@@ -293,6 +306,10 @@ function handleFieldChange(event) {
   if (input.type === "radio") {
     if (!input.checked) return;
     state.answers[questionId] = input.value;
+  } else if (input.type === "checkbox") {
+    state.answers[questionId] = $$(`input[type="checkbox"][name="${CSS.escape(input.name)}"]:checked`)
+      .map((checkbox) => checkbox.value)
+      .join(", ");
   } else {
     state.answers[questionId] = input.value;
   }
@@ -377,6 +394,12 @@ function readCurrentFormValues() {
     const questionId = input.dataset.questionId;
     if (input.type === "radio") {
       if (input.checked) state.answers[questionId] = input.value;
+      return;
+    }
+    if (input.type === "checkbox") {
+      state.answers[questionId] = $$(`input[type="checkbox"][name="${CSS.escape(input.name)}"]:checked`)
+        .map((checkbox) => checkbox.value)
+        .join(", ");
       return;
     }
     state.answers[questionId] = input.value;
