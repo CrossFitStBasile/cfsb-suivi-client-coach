@@ -1,6 +1,6 @@
 # Memoire - Dashboard Coach CFSB
 
-Derniere mise a jour : 2026-05-25
+Derniere mise a jour : 2026-05-26
 
 ## Etat actuel
 
@@ -36,6 +36,9 @@ Derniere mise a jour : 2026-05-25
 - L'extension CoachRx permet de pousser les donnees CoachRx vers le backend.
 - Les reponses questionnaire client-coach sont prevues dans une inbox privee et doivent matcher principalement par telephone normalise.
 - Les donnees client ne doivent pas etre publiees dans des snapshots JSON publics sur GitHub Pages.
+- Clarification 2026-05-26 : la fin de membership ne doit pas etre calculee automatiquement. Elle doit etre entree ou corrigee manuellement, comme la recurrence prevue dans Kilo.
+- Les IDs CoachRx pilotes connus sont maintenant documentes dans le module CoachRx : Marc-Andre 15935, Camille 17242, David 15902, Gabriel 15893, Hugo 15937, Raphael 15936.
+- Les check-ups de performance doivent provenir du CSM, onglet cache `Formulaire Checkup`, colonnes `Nom`, `Date`, `Telephone`, `Note`, `coach`.
 - Correctif UX 2026-05-25 :
   - `Fait` et `Masquer` en mode reel agissent maintenant immediatement dans l'interface, puis synchronisent le backend en arriere-plan.
   - Les compteurs visibles tiennent compte des taches masquees localement, pour que le coach sente que son action a ete prise en compte.
@@ -48,10 +51,9 @@ Derniere mise a jour : 2026-05-25
 ## Regles de donnees actives
 
 - Fin membership :
-  - utiliser une date de fin explicite si elle existe;
-  - sinon, si le membership contient `fondation` ou `foundation`, calculer `Member Since + 12 semaines`;
-  - sinon calculer `Member Since + 12 mois`;
-  - sinon afficher `Non trouvee`.
+  - ne pas deduire automatiquement la fin a partir du debut d'abonnement;
+  - utiliser seulement une date entree explicitement ou corrigee manuellement;
+  - sinon afficher `A entrer`.
 - Fin des seances Kilo :
   - le coach peut entrer manuellement la derniere date deja planifiee;
   - une tache de rebooking doit apparaitre 30 jours avant cette date.
