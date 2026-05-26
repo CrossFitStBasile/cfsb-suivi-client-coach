@@ -1747,3 +1747,156 @@ button.done:hover {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* V2.1: calmer l'ancienne couche rouge/noire et garder le rouge pour les vraies alertes. */
+.views button.active,
+.views button.active:hover,
+.views button.active:focus-visible {
+  background: #dff2fc;
+  border-left-color: var(--blue);
+  color: #087fb0;
+}
+
+.mission-filters {
+  gap: 8px;
+}
+
+.mission-filters button,
+.range-buttons button {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: #243041;
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 7px 12px;
+}
+
+.mission-filters button:hover,
+.range-buttons button:hover {
+  background: #e9f6fd;
+  border-color: var(--blue);
+  color: #087fb0;
+}
+
+.mission-filters button.active,
+.range-buttons button.active {
+  background: #dff2fc;
+  border-color: var(--blue);
+  color: #087fb0;
+}
+
+.mission-filters span {
+  background: #edf2f7;
+  color: #526173;
+}
+
+.mission-filters button.active span {
+  background: rgba(19, 168, 232, 0.16);
+  color: #087fb0;
+}
+
+.row-actions button,
+.compact-actions button,
+.card button,
+.toolbar button,
+.system-actions button {
+  background: #fff;
+  color: #182230;
+  border-color: var(--line);
+  box-shadow: none;
+}
+
+.row-actions button:hover,
+.compact-actions button:hover,
+.card button:hover,
+.toolbar button:hover,
+.system-actions button:hover {
+  background: #e9f6fd;
+  color: #087fb0;
+  border-color: var(--blue);
+}
+
+.row-actions .done,
+.compact-actions .done,
+button.done {
+  background: #198754;
+  border-color: #198754;
+  color: #fff;
+}
+
+.row-actions .done:hover,
+.compact-actions .done:hover,
+button.done:hover {
+  background: #146c43;
+  border-color: #146c43;
+  color: #fff;
+}
+
+button.primary,
+.system-actions button.primary {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+
+button.primary:hover,
+.system-actions button.primary:hover {
+  background: var(--red-dark);
+  border-color: var(--red-dark);
+  color: #fff;
+}
+
+.row-actions button:disabled,
+.row-actions .pending-action,
+.row-actions .pending-action:hover,
+.compact-actions .pending-action,
+.compact-actions .pending-action:hover {
+  background: #edf2f7;
+  border-color: #d8e0ea;
+  color: #748094;
+}
+
+.questionnaire-row .compact-actions {
+  grid-template-columns: minmax(160px, 1fr) minmax(96px, 180px);
+}
+
+.questionnaire-row .pending-action {
+  color: #748094;
+}
+
+.task-row {
+  background: #fff;
+}
+
+.task-row.p1 {
+  border-left-color: #d62828;
+}
+
+.task-row.p2 {
+  border-left-color: #f0a51f;
+}
+
+.task-row.p3,
+.task-row.p4 {
+  border-left-color: #93a4b8;
+}
+
+.quick-capture {
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.quick-capture textarea {
+  background: #fff;
+  color: var(--ink);
+}
+
+.auto-date {
+  background: #eef2f7;
+  color: #526173;
+  border-color: var(--line);
+}
