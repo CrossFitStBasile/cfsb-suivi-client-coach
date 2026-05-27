@@ -38,7 +38,7 @@ Derniere mise a jour : 2026-05-26
 - Integration questionnaire V2 : le backend doit lire `Test_Responses` pour les tests equipe et `Responses` pour les vraies reponses dans le Sheet `Reponses - Suivi client-coach Web App`.
 - Les donnees client ne doivent pas etre publiees dans des snapshots JSON publics sur GitHub Pages.
 - Clarification 2026-05-26 : la fin de membership ne doit pas etre calculee automatiquement. Elle doit etre entree ou corrigee manuellement, comme la recurrence prevue dans Kilo.
-- Les IDs CoachRx pilotes connus sont maintenant documentes dans le module CoachRx : Marc-Andre 15935, Camille 17242, David 15902, Gabriel 15893, Hugo 15937, Raphael 15936.
+- Les IDs CoachRx pilotes connus sont maintenant documentes dans le module CoachRx : Marc-Andre 15935, Camille 17242, David 15902, Gabriel 15893, Hugo 15937, Raphael 15936, Iheb 15928.
 - Les check-ups de performance doivent provenir du CSM, onglet cache `Formulaire Checkup`, colonnes `Nom`, `Date`, `Telephone`, `Note`, `coach`.
 - Les liens rebooking coachs connus sont maintenant servis par le backend prive apres PIN, pas par le JavaScript public GitHub Pages : Marc-Andre, Raphael, Hugo, Iheb, Camille et David.
 - Correctif UX 2026-05-25 :
@@ -49,6 +49,13 @@ Derniere mise a jour : 2026-05-26
   - L'envoi questionnaire est mis en pause dans le dashboard reel; il reste disponible seulement en simulation demo.
   - La capture rapide n'affiche plus de champ date : la date du jour est appliquee automatiquement.
   - Les ajouts/modifications de clients et captures rapides sont maintenant optimistes dans l'interface, puis synchronisent Apps Script en arriere-plan.
+- Mise a jour integration 2026-05-26 soir :
+  - Frontend GitHub Pages `app-52604` publie sur `main` et `gh-pages`.
+  - Backend Apps Script redeploye en version 59 sur le meme endpoint officiel.
+  - L'extension CoachRx Sync est simplifiee en version 0.6.0 : choix du coach, bouton unique `Mettre a jour CoachRx`, ouverture directe de la page CoachRx du coach, configuration repliee.
+  - La liste des coachs pilotes est seedee cote backend pour Marc-Andre, Camille, David, Gabriel, Hugo, Iheb et Raphael.
+  - Le bouton questionnaire est reactive cote dashboard pour ajouter le tag GHL `dashboardcoach` via le backend prive.
+  - Le rebooking est maintenant actionnable dans le dashboard : `Marquer gere` / `Reouvrir`, avec synchronisation locale et tentative de mise a jour de la source semi-prive.
 
 ## Regles de donnees actives
 
@@ -77,7 +84,8 @@ Derniere mise a jour : 2026-05-26
   - un module `En test` ou `Module lie` reste accessible par bouton, mais ne doit pas etre presente comme une integration complete;
   - chaque module devra avoir un contrat de donnees stable avant d'alimenter automatiquement Mission ou Performance.
 - Envoi questionnaire :
-  - l'envoi reel est en pause pour le pilote tant que le questionnaire client et le workflow GHL ne sont pas stabilises;
+  - l'envoi reel utilise le tag GHL `dashboardcoach`;
+  - il doit etre teste avec un client interne avant de le laisser aux coachs;
   - en mode reel, les boutons affichent `Questionnaire en pause` et ne doivent envoyer aucun SMS;
   - quand le module sera reactive, le bouton devra demander une confirmation avant tout envoi reel;
   - il devra bloquer l'envoi si le client n'a pas de telephone;
@@ -236,3 +244,11 @@ Derniere mise a jour : 2026-05-26
 - 2026-05-25, version 52218: les delais frontend passent a 90-100 secondes pour eviter de couper
   Apps Script pendant une reconstruction lente. Les diagnostics separent maintenant le test `api=status`
   et le diagnostic complet avec PIN.
+- 2026-05-26, version 52229 / backend v53: le guide ne pointe plus vers le Google Sheet rebooking;
+  il ouvre l'app rebooking privee retournee par le backend selon le coach. Les coachs visibles sont
+  limites aux CoachRx IDs pilotes confirmes: Marc-Andre, Camille, David, Gabriel, Hugo, Raphael.
+  Les reponses questionnaire restent dans l'inbox Questionnaire et ne creent plus de fausses To-do.
+- 2026-05-26, version 52230 / backend v54: Iheb Yahyaoui (CoachRx 15928) est reintegre dans
+  les listes coachs du dashboard, dans les liens CoachRx, dans le filtre backend et dans la liste
+  du questionnaire public. Correction faite apres validation que Iheb a bien un ID CoachRx.
+  La seule To-do formulaire prevue est une relance apres questionnaire envoye sans reponse.
