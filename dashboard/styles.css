@@ -2400,6 +2400,36 @@ body {
   color: #087fb0;
 }
 
+button.is-busy,
+button.is-busy:hover,
+.row-actions button.is-busy,
+.compact-actions button.is-busy {
+  cursor: wait;
+  opacity: 0.72;
+  border-color: #8fa0b5;
+  background: #eef2f7;
+  color: #334155;
+}
+
+button.is-busy::after {
+  content: "";
+  display: inline-block;
+  width: 0.85em;
+  height: 0.85em;
+  margin-left: 8px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 999px;
+  vertical-align: -0.12em;
+  animation: cfsb-spin 0.8s linear infinite;
+}
+
+@keyframes cfsb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 button.primary,
 .system-actions button.primary {
   background: var(--red);
