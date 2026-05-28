@@ -40,6 +40,10 @@ Derniere mise a jour : 2026-05-28
   - L'inbox Questionnaires affiche maintenant les reponses non matchees dans la vue principale `Reponses a traiter`, avec un badge `A valider`, pour eviter qu'une reponse soit invisible au coach.
   - Le backend tente de creer une note GHL avec le resume du questionnaire pour chaque nouvelle reponse matchable par telephone. Le statut est journalise dans les colonnes `ghl_note_status`, `ghl_note_at`, `ghl_contact_id`, `ghl_note_id`, `ghl_note_error`.
   - Compatibilite ajoutee pour les reponses deja soumises avec les anciens champs `client_phone_entered`, `client_email_entered`, `coach_name_entered` et `coach_id_entered`.
+  - Correctif urgence meeting 2026-05-28, app-52905 / backend v68 :
+    - Les telephones clients sont maintenant enrichis depuis CoachRx CSV, CSM, MATCH, Actions, Formulaires_Fin_Programme, Validations et clients manuels. Le bouton `Envoyer questionnaire` ne doit plus afficher `Telephone manquant` quand le numero existe dans une source interne.
+    - L'onglet Questionnaires recharge automatiquement le backend quand le coach l'ouvre et contient un bouton `Actualiser les reponses`.
+    - Le frontend accepte aussi les champs legacy `client_phone_entered`, `client_email_entered` et `coach_name_entered` si une reponse arrive avant le nouveau schema.
 - Les coachs peuvent choisir un coach dans le menu deroulant quand les donnees sont chargees.
 - L'extension CoachRx permet de pousser les donnees CoachRx vers le backend.
 - Les reponses questionnaire client-coach sont prevues dans une inbox privee et doivent matcher principalement par telephone normalise.
