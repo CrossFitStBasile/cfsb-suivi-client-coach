@@ -58,12 +58,6 @@ Derniere mise a jour : 2026-05-27
   - Les reponses non matchees sont separees dans `A valider`; elles ne se melangent plus a la lecture normale.
   - La page ajoute un message explicite `Envoi GHL actif` pour que le coach sache que le clic peut envoyer un vrai SMS.
   - Le contraste et les survols cliquables ont ete renforces avec une direction visuelle plus proche de Kilo, en gardant le rouge CFSB pour les actions importantes.
-- Suite produit 2026-05-27 :
-  - Frontend prepare en version `app-52709`.
-  - La vue `Envoyer` affiche maintenant la derniere tentative connue pour chaque client : aucune tentative, envoi confirme, relance due ou erreur GHL.
-  - La confirmation d'envoi questionnaire affiche le client, le telephone et le coach avant d'ajouter le tag GHL `dashboardcoach`.
-  - Les erreurs d'envoi sont traduites en messages coach plus utiles : telephone manquant, contact introuvable ou erreur GHL detaillee.
-  - Les reponses questionnaire sont plus robustes face aux changements du formulaire : les champs connus sont affiches proprement et les champs inconnus sont regroupes dans `Autres reponses` au lieu de casser l'inbox.
 - Mise a jour integration 2026-05-26 soir :
   - Frontend GitHub Pages `app-52604` publie sur `main` et `gh-pages`.
   - Backend Apps Script redeploye en version 59 sur le meme endpoint officiel.
@@ -335,3 +329,33 @@ Derniere mise a jour : 2026-05-27
   l'app externe seulement comme vue de detail/filet de securite. Le Guide masque les scenarios de
   test en mode reel et garde les modules actifs orientes usage coach. Les libelles client confus ont
   ete remplaces par `Modifier la fiche` et `Classer / retirer`. Endpoint Apps Script redeploye en v64.
+- 2026-05-28, version app-52801 / backend v65: passe sans point 12.
+  Le journal d'envoi questionnaire ne derive plus de fausses relances depuis les taches `Formulaire`;
+  il provient seulement de `Formulaires_Fin_Programme` avec vrai dernier envoi, statut `Envoye`,
+  `Repondu` ou `Erreur`. L'envoi questionnaire retourne maintenant au frontend le resultat direct GHL
+  (`statut`, `erreur`, `date`), utilise le telephone et le courriel client pour retrouver le contact,
+  et affiche une erreur sans casser l'app. L'inbox garde les cinq vues coach: `Reponses a lire`,
+  `Envoyer a un client`, `Relances dues`, `A valider`, `Archives`; les couleurs restent des signaux
+  dans les cartes et non des filtres principaux. La fiche client clarifie le classement du client et
+  conserve la fin membership et la recurrence Kilo comme champs manuels. `dashboard/live.html` a ete
+  repointe vers `app-52801.js` pour que l'URL live charge bien la derniere passe. Backend Apps Script
+  redeploye en v65 et frontend GitHub Pages pousse sur le commit `9e1ae96`, puis repousse avec le
+  correctif `live.html`.
+- 2026-05-28, version app-52901 / backend v65: audit et passe To-do.
+  Les tuiles To-do deviennent les filtres principaux (`Tout`, `Urgent`, `Programmes`, `Rebookings`,
+  `Questionnaires`, `Notes coach`) et le filtre secondaire garde seulement `A valider`, ce qui retire
+  la duplication visuelle entre tuiles et filtres. Les boutons de retrait de tache parlent maintenant
+  d'`Ignorer` plutot que `Masquer` dans la To-do. La capture rapide garde les notes dans une file
+  locale persistante `cfsbCoachPendingQuickTasks` si Apps Script est lent ou indisponible; ces notes
+  restent visibles avec le tag `A synchroniser` et peuvent etre resynchronisees via la To-do ou le
+  bouton `Mettre a jour`. Le bouton `Annuler` est clarifie comme une remise visible locale, sans
+  promettre un vrai rollback backend. Aucun changement backend requis; frontend publie sur `main`
+  et `gh-pages`.
+- 2026-05-28, version app-52902 / backend v65: audit et passe fiche client focus.
+  Le pop-up client affiche maintenant la source de chaque donnee importante. Les champs manuels cles
+  (`Fin membership manuel`, `Recurrence prevue dans Kilo`, `Risque coach`, `Objectif / note coach`)
+  s'editent directement dans leur carte au lieu d'etre dupliques dans des formulaires plus bas.
+  Les blocs techniques bas de fiche sont regroupes en `Gestion avancee`, avec les libelles terrain
+  `Modifier la fiche complete` et `Classer / retirer`. Aucun changement backend requis: les actions
+  existantes `saveManualClient`, `saveServiceEnd` et `saveClientRisk` sont reutilisees, avec feedback
+  local immediat et synchronisation en arriere-plan.
