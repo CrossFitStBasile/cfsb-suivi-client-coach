@@ -1,0 +1,51 @@
+[
+  {
+    "id": "15935",
+    "coachRxId": "15935",
+    "name": "Marc-Andre Menard",
+    "active": true,
+    "rebookingUrl": ""
+  },
+  {
+    "id": "15928",
+    "coachRxId": "15928",
+    "name": "Iheb Yahyaoui",
+    "active": true,
+    "rebookingUrl": ""
+  },
+  {
+    "id": "17242",
+    "coachRxId": "17242",
+    "name": "Camille Proulx",
+    "active": true,
+    "rebookingUrl": ""
+  },
+  {
+    "id": "15902",
+    "coachRxId": "15902",
+    "name": "David Olivier",
+    "active": true,
+    "rebookingUrl": ""
+  },
+  {
+    "id": "15893",
+    "coachRxId": "15893",
+    "name": "Gabriel Mayer Bedard",
+    "active": true,
+    "rebookingUrl": ""
+  },
+  {
+    "id": "15937",
+    "coachRxId": "15937",
+    "name": "Hugo Lelievre",
+    "active": true,
+    "rebookingUrl": ""
+  },
+  {
+    "id": "15936",
+    "coachRxId": "15936",
+    "name": "Raphael Samson",
+    "active": true,
+    "rebookingUrl": ""
+  }
+]

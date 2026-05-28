@@ -1,0 +1,103 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function profile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function activeUser() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && profile().data.active == true;
+    }
+
+    function isAdmin() {
+      return activeUser() && profile().data.role == 'admin';
+    }
+
+    function coachId() {
+      return profile().data.coachId;
+    }
+
+    function ownsCoach(coachField) {
+      return activeUser() && coachField == coachId();
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /coaches/{coachDocId} {
+      allow read: if activeUser();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /clients/{clientId} {
+      allow read: if isAdmin() || ownsCoach(resource.data.coachId);
+      allow create: if isAdmin() || ownsCoach(request.resource.data.coachId);
+      allow update: if isAdmin() || ownsCoach(resource.data.coachId);
+      allow delete: if isAdmin();
+    }
+
+    match /tasks/{taskId} {
+      allow read: if isAdmin() || ownsCoach(resource.data.coachId);
+      allow create: if isAdmin() || ownsCoach(request.resource.data.coachId);
+      allow update: if isAdmin() || ownsCoach(resource.data.coachId);
+      allow delete: if isAdmin();
+    }
+
+    match /questionnaireResponses/{responseId} {
+      allow read: if isAdmin() || ownsCoach(resource.data.coachId);
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /questionnaireSends/{sendId} {
+      allow read: if isAdmin() || ownsCoach(resource.data.coachId);
+      allow create: if isAdmin() || ownsCoach(request.resource.data.coachId);
+      allow update: if isAdmin() || ownsCoach(resource.data.coachId);
+      allow delete: if isAdmin();
+    }
+
+    match /rebookings/{rebookingId} {
+      allow read: if isAdmin() || ownsCoach(resource.data.coachId);
+      allow create: if isAdmin() || ownsCoach(request.resource.data.coachId);
+      allow update: if isAdmin() || ownsCoach(resource.data.coachId);
+      allow delete: if isAdmin();
+    }
+
+    match /alumni/{alumniId} {
+      allow read: if isAdmin() || ownsCoach(resource.data.coachId);
+      allow create: if isAdmin() || ownsCoach(request.resource.data.coachId);
+      allow update: if isAdmin() || ownsCoach(resource.data.coachId);
+      allow delete: if isAdmin();
+    }
+
+    match /impacts/{impactId} {
+      allow read: if isAdmin() || ownsCoach(resource.data.coachId);
+      allow create: if isAdmin() || ownsCoach(request.resource.data.coachId);
+      allow update: if isAdmin() || ownsCoach(resource.data.coachId);
+      allow delete: if isAdmin();
+    }
+
+    match /actionLogs/{logId} {
+      allow read: if isAdmin() || ownsCoach(resource.data.coachId);
+      allow create: if activeUser();
+      allow update, delete: if false;
+    }
+
+    match /system/{docId} {
+      allow read: if activeUser();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
