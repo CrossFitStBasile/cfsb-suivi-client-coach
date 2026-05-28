@@ -58,6 +58,12 @@ Derniere mise a jour : 2026-05-27
   - Les reponses non matchees sont separees dans `A valider`; elles ne se melangent plus a la lecture normale.
   - La page ajoute un message explicite `Envoi GHL actif` pour que le coach sache que le clic peut envoyer un vrai SMS.
   - Le contraste et les survols cliquables ont ete renforces avec une direction visuelle plus proche de Kilo, en gardant le rouge CFSB pour les actions importantes.
+- Suite produit 2026-05-27 :
+  - Frontend prepare en version `app-52709`.
+  - La vue `Envoyer` affiche maintenant la derniere tentative connue pour chaque client : aucune tentative, envoi confirme, relance due ou erreur GHL.
+  - La confirmation d'envoi questionnaire affiche le client, le telephone et le coach avant d'ajouter le tag GHL `dashboardcoach`.
+  - Les erreurs d'envoi sont traduites en messages coach plus utiles : telephone manquant, contact introuvable ou erreur GHL detaillee.
+  - Les reponses questionnaire sont plus robustes face aux changements du formulaire : les champs connus sont affiches proprement et les champs inconnus sont regroupes dans `Autres reponses` au lieu de casser l'inbox.
 - Mise a jour integration 2026-05-26 soir :
   - Frontend GitHub Pages `app-52604` publie sur `main` et `gh-pages`.
   - Backend Apps Script redeploye en version 59 sur le meme endpoint officiel.

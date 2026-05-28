@@ -2737,6 +2737,30 @@ textarea,
   background: #fff1f1;
 }
 
+.answer-details {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid #d8e1ec;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.answer-details summary {
+  cursor: pointer;
+  color: #087fb0;
+  font-weight: 700;
+}
+
+.answer-details summary:hover,
+.answer-details summary:focus-visible {
+  color: var(--red-dark);
+}
+
+.answer-details p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
 button.primary,
 .system-actions button.primary {
   background: var(--red);
