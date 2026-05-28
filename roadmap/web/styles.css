@@ -445,6 +445,16 @@ button {
   font-size: 15px;
 }
 
+.question-count {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 8px;
+  width: fit-content;
+}
+
 .question-group summary span {
   color: var(--muted);
   font-size: 13px;

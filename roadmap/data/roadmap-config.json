@@ -1,8 +1,8 @@
 {
   "meta": {
     "project": "roadmap-trimestrielle-cfsb",
-    "version": "0.1.2",
-    "updated": "2026-05-26",
+    "version": "0.1.3",
+    "updated": "2026-05-27",
     "language": "fr-CA"
   },
   "scales": {
@@ -124,8 +124,8 @@
       ],
       "resources": [
         {
-          "label": "Relire les attentes Assistant Head Coach",
-          "url": "https://docs.google.com/document/d/1LmyZRHwzDmixqdSltRo1qXDNNbehSNWOjLOTYLKRwRs/edit?pli=1&tab=t.0#heading=h.kh9f6lxk20gb"
+          "label": "Relire la fiche de poste Head Coach",
+          "url": "https://drive.google.com/file/d/1uFM0KRxZUunGmqEzx1tnF139XxwgOvV_"
         }
       ]
     },
@@ -144,6 +144,12 @@
         "common_gwc",
         "common_leadership",
         "common_commitments"
+      ],
+      "resources": [
+        {
+          "label": "Relire la fiche de poste",
+          "url": "https://drive.google.com/file/d/1OCnkGT83DAqdD7EWJmIBO6NT09Rl3-ps"
+        }
       ]
     },
     {
@@ -161,6 +167,12 @@
         "common_gwc_light",
         "common_leadership_light",
         "common_commitments_light"
+      ],
+      "resources": [
+        {
+          "label": "Relire la fiche / offre de poste",
+          "url": "https://docs.google.com/document/d/1-3q9jnkEKoiIXAk0rVOfPRCi9RAySbNbqz7G6GhYO_g"
+        }
       ]
     },
     {
@@ -178,6 +190,12 @@
         "common_gwc",
         "common_leadership",
         "common_commitments"
+      ],
+      "resources": [
+        {
+          "label": "Relire la fiche de poste",
+          "url": "https://drive.google.com/file/d/19l2e7ZBRHW7ZeBl_3NBypRImDDqkiWBc"
+        }
       ]
     },
     {
@@ -3537,7 +3555,7 @@
       "intro": "Audit trimestriel du role responsable engagement communautaire et evenements. Cette version reprend les 8 attentes fournies par Gabriel: organisation, presence en ligne, innovation, inclusion, mise en valeur, implication des coachs, veille et mesure d'impact.",
       "groups": [
         {
-          "title": "Professionnalisme",
+          "title": "Planification, execution et suivi",
           "intro": "Valeur associee: planification, execution, suivi.",
           "questions": [
             {
@@ -3589,7 +3607,7 @@
           ]
         },
         {
-          "title": "Courage",
+          "title": "Creativite et innovation evenementielle",
           "intro": "Valeur associee: creativite, propositions audacieuses, prise de risque mesuree.",
           "questions": [
             {
@@ -3618,7 +3636,7 @@
           ]
         },
         {
-          "title": "Bienveillance",
+          "title": "Inclusion, chaleur et mise en valeur",
           "intro": "Valeur associee: creation d experience, inclusion, chaleur humaine.",
           "questions": [
             {
@@ -3670,7 +3688,7 @@
           ]
         },
         {
-          "title": "Joueur d'equipe",
+          "title": "Implication des coachs et coordination equipe",
           "intro": "Valeur associee: implication des coachs, coordination, soutien.",
           "questions": [
             {
@@ -3699,7 +3717,7 @@
           ]
         },
         {
-          "title": "Developpement professionnel",
+          "title": "Veille externe et mesure d'impact",
           "intro": "Valeur associee: veille, mesure d'impact, croissance.",
           "questions": [
             {
