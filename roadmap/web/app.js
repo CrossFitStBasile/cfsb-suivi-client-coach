@@ -164,28 +164,46 @@ function renderModule(module, role) {
 
 function renderModuleBody(module, role) {
   if (module.groups?.length) {
-    return module.groups.map((group) => `
-      <details class="question-group" open>
-        <summary>
-          <strong>${escapeHtml(group.title)}</strong>
-          ${group.intro ? `<span>${escapeHtml(group.intro)}</span>` : ""}
-        </summary>
-        <div class="question-group-body">
-          ${(group.questions || []).map((question) => renderQuestion(question, role)).join("")}
-        </div>
-      </details>
-    `).join("");
+    let questionNumber = 0;
+    return module.groups.map((group) => {
+      const questions = group.questions || [];
+      const numberedCount = questions.filter(isNumberedQuestion).length;
+      return `
+        <details class="question-group" open>
+          <summary>
+            <strong>${escapeHtml(group.title)}</strong>
+            ${numberedCount ? `<small class="question-count">${numberedCount} question${numberedCount > 1 ? "s" : ""}</small>` : ""}
+            ${group.intro ? `<span>${escapeHtml(group.intro)}</span>` : ""}
+          </summary>
+          <div class="question-group-body">
+            ${questions.map((question) => {
+              const number = isNumberedQuestion(question) ? ++questionNumber : null;
+              return renderQuestion(question, role, number);
+            }).join("")}
+          </div>
+        </details>
+      `;
+    }).join("");
   }
 
-  return (module.questions || []).map((question) => renderQuestion(question, role)).join("");
+  let questionNumber = 0;
+  return (module.questions || []).map((question) => {
+    const number = isNumberedQuestion(question) ? ++questionNumber : null;
+    return renderQuestion(question, role, number);
+  }).join("");
 }
 
-function renderQuestion(question, role) {
+function isNumberedQuestion(question) {
+  return question.type === "scale";
+}
+
+function renderQuestion(question, role, questionNumber = null) {
   if (question.type === "info") {
     return renderInfoBlock(question);
   }
 
   const required = question.required ? '<span class="required">*</span>' : "";
+  const label = questionNumber ? `Q${questionNumber}. ${question.label}` : question.label;
   const conditional = JSON.stringify({
     showIf: question.showIf || null,
     showIfMax: question.showIfMax || null,
@@ -195,7 +213,7 @@ function renderQuestion(question, role) {
 
   return `
     <div class="field" data-field-id="${escapeHtml(question.id)}" data-conditional="${conditional}">
-      <label>${escapeHtml(question.label)} ${required}</label>
+      <label>${escapeHtml(label)} ${required}</label>
       ${renderInput(question, role)}
     </div>
   `;
