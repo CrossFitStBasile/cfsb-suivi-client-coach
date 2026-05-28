@@ -380,3 +380,12 @@ Derniere mise a jour : 2026-05-28
   n'envoie plus le courriel au backend pour cette action afin de forcer le test par telephone. Les
   erreurs d'envoi sont reformulees pour distinguer contact GHL introuvable, token GHL et telephone
   invalide. Aucun changement backend requis.
+- 2026-05-28, endpoint questionnaire v10 / backend dashboard v70: miroir questionnaire vers dashboard.
+  Le test terrain a confirme que l'envoi SMS GHL fonctionnait mais que les reponses recentes ne
+  remontaient pas dans l'inbox coach, parce que le dashboard n'arrivait pas toujours a lire le Sheet
+  externe `Reponses - Suivi client-coach Web App`. Le endpoint du questionnaire miroir maintenant
+  chaque nouvelle reponse directement dans `SRC_ClientCoach_Responses` du dashboard, avec upsert par
+  `response_id` et conservation des statuts deja traites. Un backfill Google Sheets a pousse 19
+  reponses existantes dans le dashboard (17 ajoutees, 2 mises a jour). Retest live: Iheb affiche
+  maintenant `2` reponses a traiter, et les deux reponses Michael Grondin du 2026-05-28 apparaissent
+  avec telephone `8192771825`, statut `jaune` et action `discussion_rapide`.
