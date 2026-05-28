@@ -2548,3 +2548,233 @@ button.done:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* Final UX pass: light Kilo-inspired surface with CFSB red reserved for real actions. */
+:root {
+  --bg: #f3f6f9;
+  --panel: #ffffff;
+  --panel-2: #f8fafc;
+  --ink: #111827;
+  --muted: #465568;
+  --line: #cbd5e1;
+  --navy: #111827;
+  --green: #218756;
+  --amber: #d89a21;
+  --red: #d62828;
+  --red-dark: #9f1d20;
+  --blue: #0ea5e9;
+  --soft-red: #fff1f1;
+  --soft-blue: #e8f7fe;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.app-header,
+.mission-panel,
+.panel,
+.compact-row,
+.module-card,
+.scenario-card,
+.metrics div,
+.task-row,
+.directory-row,
+.modal-card {
+  background: #fff;
+  color: var(--ink);
+  border-color: var(--line);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.app-header {
+  border-bottom-color: #d7dee8;
+}
+
+.brand-kicker,
+.eyebrow {
+  color: #334155;
+}
+
+.app-header p,
+.muted,
+.metrics span,
+.priority-tile span,
+.task-row p,
+.why,
+.compact-row p,
+.focus-note p,
+.module-card p,
+.scenario-card p,
+.scenario-card li,
+.client-trigger small,
+.command-hero p,
+.filter-help {
+  color: var(--muted);
+}
+
+input,
+select,
+textarea,
+.coach-picker select {
+  background: #fff;
+  color: var(--ink);
+  border-color: #aebccc;
+}
+
+.views button,
+.mission-filters button,
+.range-select select,
+.row-actions button,
+.compact-actions button,
+.button-link,
+.toolbar button,
+.system-actions button,
+.actions-row button,
+.icon-button {
+  border-color: #aebccc;
+  background: #fff;
+  color: var(--ink);
+}
+
+.views button:hover,
+.views button:focus-visible,
+.mission-filters button:hover,
+.mission-filters button:focus-visible,
+.button-link:hover,
+.button-link:focus-visible,
+.row-actions button:hover,
+.row-actions button:focus-visible,
+.compact-actions button:hover,
+.compact-actions button:focus-visible,
+.toolbar button:hover,
+.system-actions button:hover,
+.actions-row button:hover,
+.icon-button:hover,
+.client-trigger:hover strong,
+.client-trigger:focus-visible strong,
+.directory-row:hover .client-trigger strong,
+.compact-row:hover > strong,
+.compact-row:hover .client-trigger strong {
+  color: #087fb0;
+}
+
+.views button:hover,
+.views button:focus-visible,
+.mission-filters button:hover,
+.mission-filters button:focus-visible,
+.button-link:hover,
+.button-link:focus-visible,
+.row-actions button:hover,
+.row-actions button:focus-visible,
+.compact-actions button:hover,
+.compact-actions button:focus-visible,
+.toolbar button:hover,
+.system-actions button:hover,
+.actions-row button:hover,
+.icon-button:hover {
+  background: var(--soft-blue);
+  border-color: var(--blue);
+}
+
+.views button.active,
+.views button.active:hover,
+.views button.active:focus-visible {
+  background: var(--soft-red);
+  border-left-color: var(--red);
+  color: var(--red-dark);
+}
+
+.mission-filters.primary-filters {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.mission-filters button.active {
+  background: var(--soft-blue);
+  border-color: var(--blue);
+  color: #075985;
+}
+
+.filter-help {
+  margin-top: -4px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.status-note {
+  display: grid;
+  gap: 3px;
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.status-note strong {
+  font-size: 13px;
+}
+
+.status-note span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.status-note.good {
+  border-color: #a7d7ba;
+  background: #f0fbf4;
+}
+
+.status-note.warn {
+  border-color: #efd092;
+  background: #fff8e6;
+}
+
+.status-note.bad {
+  border-color: #efb5ae;
+  background: #fff1f1;
+}
+
+button.primary,
+.system-actions button.primary {
+  background: var(--red);
+  border-color: var(--red);
+  color: #fff;
+}
+
+button.primary:hover,
+.system-actions button.primary:hover {
+  background: var(--red-dark);
+  border-color: var(--red-dark);
+  color: #fff;
+}
+
+.row-actions .done,
+.compact-actions .done,
+button.done {
+  background: #218756;
+  border-color: #218756;
+  color: #fff;
+}
+
+.row-actions .done:hover,
+.compact-actions .done:hover,
+button.done:hover {
+  background: #166a43;
+  border-color: #166a43;
+  color: #fff;
+}
+
+.task-row:hover,
+.directory-row:hover,
+.directory-row:focus-within,
+.compact-row:hover,
+.compact-row:focus-within,
+.questionnaire-row:hover,
+.rebooking-row:hover {
+  border-color: var(--blue);
+  background: #f8fcff;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.14), 0 2px 8px rgba(15, 23, 42, 0.08);
+}
