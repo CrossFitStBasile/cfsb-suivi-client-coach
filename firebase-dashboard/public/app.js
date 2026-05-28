@@ -75,9 +75,18 @@ onAuthStateChanged(auth, async (user) => {
   }
 
   const profileRef = doc(db, "users", user.uid);
-  const profileSnap = await getDoc(profileRef);
+  let profileSnap;
+  try {
+    profileSnap = await getDoc(profileRef);
+  } catch (error) {
+    renderPendingAccess(
+      user,
+      `Impossible de lire le profil Firestore. Code: ${error.code || "erreur inconnue"}. Message: ${error.message || ""}`
+    );
+    return;
+  }
   if (!profileSnap.exists()) {
-    renderPendingAccess(user);
+    renderPendingAccess(user, `Aucun document trouve dans Firestore a users/${user.uid}.`);
     return;
   }
 
@@ -115,8 +124,10 @@ function renderPendingAccess(user, message = "Ton compte Google est reconnu, mai
       <div class="notice">
         Envoie cette information a Michael pour activer ton acces:<br>
         <strong>Email:</strong> ${escapeHtml(user.email || "")}<br>
-        <strong>UID:</strong> ${escapeHtml(user.uid)}
+        <strong>UID:</strong> ${escapeHtml(user.uid)}<br>
+        <strong>Document attendu:</strong> users/${escapeHtml(user.uid)}
       </div>
+      <button class="primary" data-action="reload">Verifier a nouveau</button>
       <button class="secondary" data-action="logout">Changer de compte</button>
     </main>
   `;
@@ -382,6 +393,7 @@ document.addEventListener("click", async (event) => {
   const action = actionEl.dataset.action;
   if (action === "login") await signInWithPopup(auth, provider);
   if (action === "logout") await signOut(auth);
+  if (action === "reload") window.location.reload();
   if (action === "completeTask") await updateDoc(doc(db, "tasks", actionEl.dataset.id), { status: "done", updatedAt: serverTimestamp() });
   if (action === "markResponseRead") await updateDoc(doc(db, "questionnaireResponses", actionEl.dataset.id), { processingStatus: "read", updatedAt: serverTimestamp() });
   if (action === "manageRebooking") await updateDoc(doc(db, "rebookings", actionEl.dataset.id), { status: "managed", managedAt: serverTimestamp(), updatedAt: serverTimestamp() });
