@@ -1,6 +1,6 @@
 # Memoire - Dashboard Coach CFSB
 
-Derniere mise a jour : 2026-05-26
+Derniere mise a jour : 2026-05-27
 
 ## Etat actuel
 
@@ -49,6 +49,15 @@ Derniere mise a jour : 2026-05-26
   - L'envoi questionnaire est mis en pause dans le dashboard reel; il reste disponible seulement en simulation demo.
   - La capture rapide n'affiche plus de champ date : la date du jour est appliquee automatiquement.
   - Les ajouts/modifications de clients et captures rapides sont maintenant optimistes dans l'interface, puis synchronisent Apps Script en arriere-plan.
+- Mise a jour produit 2026-05-27 :
+  - Frontend prepare en version `app-52708`.
+  - L'envoi questionnaire est reactive cote interface : le bouton `Envoyer questionnaire` appelle le backend prive apres confirmation coach/client/telephone.
+  - L'onglet Questionnaires est simplifie en 5 vues coach : `A lire`, `Envoyer`, `A relancer`, `A valider`, `Archives`.
+  - Les statuts rouge/orange/jaune/vert restent des signaux visuels dans les cartes, mais ne sont plus des filtres principaux.
+  - Les erreurs GHL apparaissent comme alerte claire et sont rattachees a la vue `A relancer`.
+  - Les reponses non matchees sont separees dans `A valider`; elles ne se melangent plus a la lecture normale.
+  - La page ajoute un message explicite `Envoi GHL actif` pour que le coach sache que le clic peut envoyer un vrai SMS.
+  - Le contraste et les survols cliquables ont ete renforces avec une direction visuelle plus proche de Kilo, en gardant le rouge CFSB pour les actions importantes.
 - Mise a jour integration 2026-05-26 soir :
   - Frontend GitHub Pages `app-52604` publie sur `main` et `gh-pages`.
   - Backend Apps Script redeploye en version 59 sur le meme endpoint officiel.
@@ -86,11 +95,10 @@ Derniere mise a jour : 2026-05-26
 - Envoi questionnaire :
   - l'envoi reel utilise le tag GHL `dashboardcoach`;
   - il doit etre teste avec un client interne avant de le laisser aux coachs;
-  - en mode reel, les boutons affichent `Questionnaire en pause` et ne doivent envoyer aucun SMS;
-  - quand le module sera reactive, le bouton devra demander une confirmation avant tout envoi reel;
+  - en mode reel, les boutons affichent `Envoyer questionnaire` et demandent une confirmation avant l'envoi;
   - il devra bloquer l'envoi si le client n'a pas de telephone;
-  - l'onglet Questionnaires contient une vue `Clients` pour envoyer le questionnaire a n'importe quel client du dashboard;
-  - l'envoi live passera par le backend `sendQuestionnaire`, qui devra ajouter le tag GHL `programme` au contact trouve par telephone.
+  - l'onglet Questionnaires contient une vue `Envoyer` pour envoyer le questionnaire a n'importe quel client du dashboard;
+  - l'envoi live passe par le backend `sendQuestionnaire`, qui doit ajouter le tag GHL `dashboardcoach` au contact trouve par telephone.
   - en mode demo, le bouton affiche `Simuler questionnaire` et n'envoie jamais de SMS.
 
 ## Priorites immediates avant meeting / test equipe
@@ -252,3 +260,61 @@ Derniere mise a jour : 2026-05-26
   les listes coachs du dashboard, dans les liens CoachRx, dans le filtre backend et dans la liste
   du questionnaire public. Correction faite apres validation que Iheb a bien un ID CoachRx.
   La seule To-do formulaire prevue est une relance apres questionnaire envoye sans reponse.
+- 2026-05-26, version app-52605 / backend v60: correctif Iheb + rebooking.
+  Audit source: `SRC_CoachRx_Browser_All` contient des lignes CoachRx pour Iheb, mais
+  `CORE_Clients` et `TASKS_Current` etaient vides pour ce coach. Le backend reconstruit maintenant
+  automatiquement le portefeuille d'un coach quand une source CoachRx existe mais que `CORE_Clients`
+  n'a encore aucune ligne pour lui. Les faux noms CoachRx de type `Not set` ou initiales seules
+  sont filtres avant creation client. Le module Rebooking affiche maintenant les dossiers ouverts,
+  un historique recent des dossiers geres/rebookes/absence coach, et des liens vers l'app rebooking
+  existante pour `Historique` et `Vacances`, afin de conserver le workflow absence/vacances deja
+  bati sur la meme banque de donnees.
+- 2026-05-26, version app-52701 / backend v61: clarification Questionnaire et Rebooking.
+  Le frontend separe maintenant les vues Questionnaire: reponses actives, clients, a envoyer 3 mois+,
+  envoyes sans reponse, relance 7j+ et erreurs GHL. Les lignes `Non envoye` ne sont plus traitees
+  comme relance. Une erreur GHL, comme contact introuvable, reste visible dans l'inbox au lieu de
+  donner une fausse confirmation. Le backend filtre aussi le journal d'envoi pour ne retourner que
+  les vrais envois/reponses/erreurs. Rebooking affiche des statuts lisibles: Ouvert, Gere, Rebooke,
+  Absence coach et Ferme test; les dossiers `REBOOKE` apparaissent dans l'historique sans etre
+  confondus avec `GERE`. Smoke test public: `live.html` charge `app-52701.js` et l'ecran prive
+  apparait correctement sans snapshot client public.
+- 2026-05-26, version app-52702 / backend v62: durcissement usage reel coach.
+  Les boutons d'action passent maintenant en etat occupe immediatement (`Envoi`, `Mise a jour`,
+  `Enregistrement`) pour eviter les clics repetes et donner un feedback clair. L'envoi questionnaire
+  ne fait plus un deuxieme appel frontend pour fermer la tache: le backend marque la tache `Fait`
+  seulement si GHL retourne bien un statut `Envoye`; une erreur GHL reste visible et ne donne pas une
+  fausse completion. Le rappel rebooking n'annonce plus un faux succes si le backend retourne
+  `not_configured`. Le compteur Rebooking ouvert utilise maintenant les statuts normalises, donc
+  `Rebooke`, `Gere`, `Absence coach` et `Ferme test` restent dans l'historique plutot que dans les
+  dossiers a suivre. Smoke test public: `live.html` charge `app-52702.js` et l'ecran prive apparait.
+- 2026-05-26, version app-52703 / backend v62: actions optimistes cote interface.
+  La liste Rebooking affiche maintenant seulement les dossiers ouverts dans la section `Seances a
+  rebooker`; les dossiers fermes ne restent plus dans la liste principale. Les changements de statut
+  Rebooking sont appliques localement avant la reponse backend, puis synchronises. La recurrence
+  Kilo manuelle et la fin membership/risque coach gardent le meme principe: la fiche client se met a
+  jour localement tout de suite, puis Apps Script synchronise en arriere-plan. Smoke test public:
+  `live.html` charge `app-52703.js`.
+- 2026-05-26, version app-52704 / backend v63: clarification finale questionnaire/rebooking.
+  Les filtres Questionnaire utilisent maintenant les libelles terrain `Reponses recues`, `Envoyer`,
+  `Envoyes sans reponse`, `Relance 7j+`, `Erreurs GHL` et `Archives` pour eviter de confondre une
+  liste de clients avec une vraie relance. Le module Rebooking transmet maintenant explicitement les
+  statuts `REBOOKE`, `ABSENCE_COACH`, `GERE` et `OUVERT` au backend; Apps Script les conserve dans
+  la banque rebooking au lieu de tout convertir en `GERE`. Endpoint Apps Script redeploye en v63.
+- 2026-05-26, version app-52705 / backend v63: verrou anti-fausse relance.
+  Le frontend exclut maintenant explicitement `Non envoye`, `not sent` et `pas envoye` avant de
+  calculer `Envoyes sans reponse` ou `Relance 7j+`. Cela evite le faux positif ou `Non envoye`
+  etait detecte comme un envoi parce que le libelle contient le mot `envoye`.
+- 2026-05-27, version app-52706 / backend v63: statuts rebooking coherents dans l'interface.
+  L'optimisme local du frontend conserve maintenant `REBOOKE`, `ABSENCE_COACH`, `GERE` ou `OUVERT`
+  au lieu de transformer visuellement toutes les actions fermees en `GERE`. Les confirmations et
+  raisons envoyees au backend suivent aussi le statut choisi. Audit donnees: Iheb est materialise
+  dans `CORE_Clients` et `TASKS_Current`; Marc-Andre a des sources CoachRx/Rebooking presentes mais
+  `CORE_Clients` est vide tant qu'une reconstruction privee n'est pas declenchee via selection PIN.
+- 2026-05-27, version app-52707 / backend v63: passe pilote reel.
+  L'envoi questionnaire live est remis en pause cote dashboard pour eviter des SMS pendant que la V2
+  questionnaire bouge encore; l'inbox Questionnaire sert a lire, trier et marquer les reponses comme
+  lues sans proposer un nouvel envoi sur une reponse recue. Les actions Rebooking sont maintenant
+  directement disponibles dans la To-do (`Rebooke`, `Absence coach`, `Gere`) et retirent localement
+  la tache pendant la synchronisation, avec le lien vers l'app rebooking seulement comme secours.
+  Les libelles de fiche client restent orientes terrain: fin membership manuelle, recurrence Kilo
+  manuelle, risque coach manuel, actions client, sans calcul automatique de fin de membership.
