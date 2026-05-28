@@ -1048,18 +1048,22 @@
     ));
     const DEFAULT_ENDPOINT_URL = "https://script.google.com/macros/s/AKfycbxnhlehsj_NQU73k3csMQPj0NAm3QSQrpjk0Ar6VYOjXYZO-m9_GSxtmEqYw9y_9DSQEA/exec";
     const ENDPOINT_URL = params.get("endpoint") || DEFAULT_ENDPOINT_URL;
-    const APP_VERSION = "github-pages-v7-conditional-triage";
+    const APP_VERSION = "github-pages-v8-phone-first";
     const SCHEMA_VERSION = "1.0";
     const PAYLOAD_SOURCE = "cfsb-client-coach-questionnaire";
     const FALLBACK_COACHES = [
-      "Camille Proulx",
-      "David Olivier",
-      "Gabriel Mayer Bedard",
-      "Hugo Lelièvre",
-      "Iheb Yahyaoui",
-      "Marc-Andre Menard",
-      "Raphael Samson"
+      { coach_name: "Camille Proulx", coach_rx_id: "17242" },
+      { coach_name: "David Olivier", coach_rx_id: "15902" },
+      { coach_name: "Gabriel Mayer Bedard", coach_rx_id: "15893" },
+      { coach_name: "Hugo Lelievre", coach_rx_id: "15937" },
+      { coach_name: "Iheb Yahyaoui", coach_rx_id: "15928" },
+      { coach_name: "Marc-Andre Menard", coach_rx_id: "15935" },
+      { coach_name: "Raphael Samson", coach_rx_id: "15936" }
     ];
+    const COACH_IDS_BY_NAME = FALLBACK_COACHES.reduce((acc, coach) => {
+      acc[coach.coach_name] = coach.coach_rx_id;
+      return acc;
+    }, {});
     let current = 0;
 
     function paramValue(...names) {
@@ -1076,16 +1080,24 @@
       if (field) field.value = value;
     }
 
-    function addCoachOption(coachName) {
+    function addCoachOption(coachInput) {
       const select = document.getElementById("coach");
+      const coachName = typeof coachInput === "string" ? coachInput : (coachInput?.coach_name || coachInput?.name || "");
+      const coachId = typeof coachInput === "string"
+        ? (COACH_IDS_BY_NAME[coachInput] || "")
+        : (coachInput?.coach_rx_id || coachInput?.coach_id || COACH_IDS_BY_NAME[coachName] || "");
       if (!select || !coachName) return;
       const exists = Array.from(select.options).some((option) => option.value === coachName || option.textContent === coachName);
       if (!exists) {
         const option = document.createElement("option");
         option.value = coachName;
         option.textContent = coachName;
+        option.dataset.coachId = coachId;
         const unsure = Array.from(select.options).find((item) => item.textContent === "Je ne suis pas certain");
         select.insertBefore(option, unsure || null);
+      } else if (coachId) {
+        const option = Array.from(select.options).find((item) => item.value === coachName || item.textContent === coachName);
+        if (option) option.dataset.coachId = option.dataset.coachId || coachId;
       }
     }
 
@@ -1095,7 +1107,7 @@
         const response = await fetch("coaches.json", { cache: "no-store" });
         if (!response.ok) return;
         const payload = await response.json();
-        (payload.coaches || []).forEach((coach) => addCoachOption(coach.coach_name || coach.name || ""));
+        (payload.coaches || []).forEach(addCoachOption);
       } catch (error) {
         console.warn("Coach list could not be loaded.", error);
       }
@@ -1107,8 +1119,9 @@
       setFieldValue("phone", paramValue("phone", "client_phone"));
 
       const coachName = paramValue("coach_name", "coach");
+      const coachId = paramValue("coach_id", "coach_rx_id");
       if (coachName) {
-        addCoachOption(coachName);
+        addCoachOption({ coach_name: coachName, coach_rx_id: coachId || COACH_IDS_BY_NAME[coachName] || "" });
         setFieldValue("coach", coachName);
       }
 
@@ -1131,6 +1144,13 @@
     function fieldValue(name) {
       const field = document.querySelector(`[name="${name}"]`);
       return field ? field.value.trim() : "";
+    }
+
+    function selectedCoachId() {
+      const field = document.getElementById("coach");
+      const selectedOption = field?.selectedOptions?.[0];
+      const selectedName = fieldValue("coach");
+      return selectedOption?.dataset?.coachId || paramValue("coach_id", "coach_rx_id") || COACH_IDS_BY_NAME[selectedName] || "";
     }
 
     function clearFieldGroup(container) {
@@ -1275,17 +1295,31 @@
       const status = computeStatus();
       const submittedAt = new Date().toISOString();
       const token = params.get("submission_token") || params.get("token") || "";
+      const phoneNormalized = normalizedPhone();
+      const coachName = fieldValue("coach");
+      const coachId = selectedCoachId();
       return {
         source: PAYLOAD_SOURCE,
         schema_version: SCHEMA_VERSION,
         submission_token: token,
         response_id: responseId(),
         submitted_at: submittedAt,
+        client_name: fieldValue("name"),
+        client_email: fieldValue("email"),
+        client_phone: fieldValue("phone"),
+        client_phone_normalized: phoneNormalized,
+        coach_name: coachName,
+        coach_id: coachId,
+        followup_type: valueOf("reason"),
+        triage_status: status,
+        coach_action_type: actionCodeFor(status),
         answers: {
           client_name_entered: fieldValue("name"),
           client_email_entered: fieldValue("email"),
           client_phone_entered: fieldValue("phone"),
-          coach_name_entered: fieldValue("coach"),
+          client_phone_normalized: phoneNormalized,
+          coach_name_entered: coachName,
+          coach_id_entered: coachId,
           followup_type: valueOf("reason"),
           general_state: valueOf("state"),
           motivation_level: valueOf("motivation"),
@@ -1334,6 +1368,9 @@
           source_version: APP_VERSION,
           source_url: sourceUrl(),
           client_phone: fieldValue("phone"),
+          client_phone_normalized: phoneNormalized,
+          coach_name: coachName,
+          coach_id: coachId,
           endpoint_configured: Boolean(ENDPOINT_URL),
           test_mode: IS_TEST_MODE,
           test_scenario_label: fieldValue("testScenario"),
