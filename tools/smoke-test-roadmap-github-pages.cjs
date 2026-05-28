@@ -45,8 +45,8 @@ async function run() {
     await page.getByText("Valeurs CFSB - comportements Coordinatrice du centre").waitFor({ timeout: 15000 });
     await page.getByText("Parcours membre, Fondations et CSM").waitFor({ timeout: 15000 });
     await page.locator("label", { hasText: "Je garde une vue claire des nouveaux membres" }).waitFor({ timeout: 15000 });
-    await page.getByRole("button", { name: /Assistant Head Coach/i }).click();
-    await page.getByText("Valeurs CFSB - comportements Assistant Head Coach").waitFor({ timeout: 15000 });
+    await page.getByRole("button", { name: /Head Coach/i }).click();
+    await page.getByText("Valeurs CFSB - comportements Head Coach").waitFor({ timeout: 15000 });
     await page.getByText("Observation, feedback et developpement des coachs").waitFor({ timeout: 15000 });
     await page.getByRole("button", { name: /Entretien menager/i }).click();
     await page.getByText("Valeurs CFSB - comportements Entretien menager").waitFor({ timeout: 15000 });

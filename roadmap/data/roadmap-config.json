@@ -1,7 +1,7 @@
 {
   "meta": {
     "project": "roadmap-trimestrielle-cfsb",
-    "version": "0.1.4",
+    "version": "0.1.5",
     "updated": "2026-05-27",
     "language": "fr-CA"
   },
@@ -108,10 +108,10 @@
     },
     {
       "id": "head_coach",
-      "label": "Assistant Head Coach",
+      "label": "Head Coach",
       "family": "coordination",
       "level": "N5",
-      "description": "Programmation, formation des nouveaux coachs, evaluations techniques et relais avec le Head Coach principal.",
+      "description": "Programmation du centre, formation des nouveaux coachs, evaluation technique et standards de coaching.",
       "moduleIds": [
         "common_identity",
         "common_why",
@@ -2229,21 +2229,21 @@
     },
     {
       "id": "head_coach_responsibilities",
-      "title": "Valeurs CFSB - comportements Assistant Head Coach",
-      "intro": "Audit trimestriel du role Assistant Head Coach: programmation, formation des nouveaux employes, evaluation technique des coachs et relais avec Gabriel, qui demeure Head Coach principal pour la performance globale et l adhesion culturelle.",
+      "title": "Valeurs CFSB - comportements Head Coach",
+      "intro": "Audit trimestriel du role Head Coach: programmation du centre, formation des nouveaux coachs, evaluation technique des coachs et maintien des standards de coaching CFSB.",
       "groups": [
         {
-          "title": "Cadre du role Assistant Head Coach",
+          "title": "Cadre du role Head Coach",
           "intro": "Cette section remet le role dans son bon contexte avant l audit technique.",
           "questions": [
             {
-              "id": "assistant_head_scope_context",
+              "id": "head_scope_context",
               "type": "info",
-              "title": "Role complementaire au Head Coach principal",
+              "title": "Role Head Coach",
               "body": [
-                "L Assistant Head Coach soutient la programmation du centre, la formation des nouveaux coachs et l evaluation technique des coachs.",
-                "Le role est complementaire a celui de Gabriel: Gabriel garde le suivi de performance global et l adhesion culturelle, tandis que l Assistant Head Coach transforme les standards techniques en systemes applicables.",
-                "Les attentes ci-dessous evaluent donc la rigueur, la clarte, la qualite de feedback et la capacite a recommander des solutions concretes."
+                "Le Head Coach soutient la programmation du centre, la formation des nouveaux coachs et l evaluation technique des coachs.",
+                "Le role transforme les standards techniques en reperes applicables sur le plancher et aide l equipe a maintenir une qualite de coaching coherente.",
+                "Les attentes ci-dessous evaluent la rigueur, la clarte, la qualite de feedback et la capacite a recommander des solutions concretes."
               ]
             }
           ]
@@ -2295,29 +2295,6 @@
               "required": true,
               "showIfMax": {
                 "questionId": "head_stimulus_clarity_score",
-                "max": 2
-              }
-            },
-            {
-              "id": "head_standards_documentation_score",
-              "label": "Professionnalisme - Je rends les reperes techniques clairs, accessibles et faciles a utiliser par les coachs.",
-              "type": "scale",
-              "scaleId": "agreement4",
-              "required": true,
-              "rubric": {
-                "1": "Les coachs doivent souvent deviner les standards ou demander des clarifications de base.",
-                "2": "Certains reperes existent, mais ils restent flous, disperses ou difficiles a appliquer en coaching reel.",
-                "3": "Les standards importants sont clairs, accessibles et utiles pour preparer, coacher et donner du feedback.",
-                "4": "Les reperes techniques reduisent les zones grises, accelerent l'onboarding et rendent l'equipe plus autonome."
-              }
-            },
-            {
-              "id": "head_standards_documentation_example",
-              "label": "Si tu as mis 1 ou 2, donne un exemple recent ou les reperes techniques n'etaient pas assez clairs ou utilisables.",
-              "type": "long_text",
-              "required": true,
-              "showIfMax": {
-                "questionId": "head_standards_documentation_score",
                 "max": 2
               }
             },
@@ -2686,7 +2663,7 @@
             },
             {
               "id": "head_ownership_development_score",
-              "label": "Professionnalisme - Je developpe moi-meme mes competences d Assistant Head Coach avec intention.",
+              "label": "Professionnalisme - Je developpe moi-meme mes competences de Head Coach avec intention.",
               "type": "scale",
               "scaleId": "agreement4",
               "required": true,
