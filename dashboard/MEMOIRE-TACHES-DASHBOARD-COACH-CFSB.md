@@ -324,3 +324,14 @@ Derniere mise a jour : 2026-05-27
   la tache pendant la synchronisation, avec le lien vers l'app rebooking seulement comme secours.
   Les libelles de fiche client restent orientes terrain: fin membership manuelle, recurrence Kilo
   manuelle, risque coach manuel, actions client, sans calcul automatique de fin de membership.
+- 2026-05-27, version app-52710 / backend v64: passe produit questionnaire/rebooking/guide.
+  Les actions de formulaire dans la To-do utilisent maintenant un libelle contextuel (`Envoyer
+  questionnaire` ou `Relancer`) au lieu d'un bouton generique. L'inbox Questionnaire conserve les
+  cinq vues simples et ajoute un bouton `Reessayer` ou `Relancer` directement sur les envois en
+  erreur ou dus apres 7 jours. Les reponses restent robustes aux nouveaux champs via le regroupement
+  `Autres reponses`. Le backend Apps Script cherche maintenant les contacts GHL avec plusieurs
+  formats de telephone (`10 chiffres`, `1 + 10 chiffres`, `+1 + 10 chiffres`) pour reduire les
+  echecs comme le test Michael. Le module Rebooking est presente comme integre au dashboard, avec
+  l'app externe seulement comme vue de detail/filet de securite. Le Guide masque les scenarios de
+  test en mode reel et garde les modules actifs orientes usage coach. Les libelles client confus ont
+  ete remplaces par `Modifier la fiche` et `Classer / retirer`. Endpoint Apps Script redeploye en v64.
