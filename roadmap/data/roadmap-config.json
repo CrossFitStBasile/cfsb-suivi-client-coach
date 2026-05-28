@@ -1,7 +1,7 @@
 {
   "meta": {
     "project": "roadmap-trimestrielle-cfsb",
-    "version": "0.1.3",
+    "version": "0.1.4",
     "updated": "2026-05-27",
     "language": "fr-CA"
   },
@@ -1471,29 +1471,6 @@
               }
             },
             {
-              "id": "coach_pro_pipeline_availability_score",
-              "label": "Professionnalisme - Je garde mes disponibilites, opportunites et suivis de pipeline clairs.",
-              "type": "scale",
-              "scaleId": "agreement4",
-              "required": true,
-              "rubric": {
-                "1": "Mes disponibilites ou opportunites ne sont pas claires.",
-                "2": "Je les communique, mais souvent tard ou de facon incomplete.",
-                "3": "Je tiens l'equipe informee de mes disponibilites et suivis importants.",
-                "4": "Mes informations aident l'equipe a convertir les bonnes opportunites au bon moment."
-              }
-            },
-            {
-              "id": "coach_pro_pipeline_availability_example",
-              "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.",
-              "type": "long_text",
-              "required": true,
-              "showIfMax": {
-                "questionId": "coach_pro_pipeline_availability_score",
-                "max": 2
-              }
-            },
-            {
               "id": "coach_pro_service_knowledge_score",
               "label": "Professionnalisme - Je comprends les services, forfaits, prix et parcours CFSB.",
               "type": "scale",
@@ -2323,20 +2300,20 @@
             },
             {
               "id": "head_standards_documentation_score",
-              "label": "Professionnalisme - Je documente les standards techniques et outils de coaching pour qu'ils soient faciles a appliquer.",
+              "label": "Professionnalisme - Je rends les reperes techniques clairs, accessibles et faciles a utiliser par les coachs.",
               "type": "scale",
               "scaleId": "agreement4",
               "required": true,
               "rubric": {
-                "1": "Les standards restent surtout verbaux ou implicites.",
-                "2": "Certains standards existent, mais sont incomplets ou difficiles a retrouver.",
-                "3": "Les standards importants sont documentes, accessibles et suffisamment clairs.",
-                "4": "Les outils reduisent les zones grises et accelerent l'onboarding des coachs."
+                "1": "Les coachs doivent souvent deviner les standards ou demander des clarifications de base.",
+                "2": "Certains reperes existent, mais ils restent flous, disperses ou difficiles a appliquer en coaching reel.",
+                "3": "Les standards importants sont clairs, accessibles et utiles pour preparer, coacher et donner du feedback.",
+                "4": "Les reperes techniques reduisent les zones grises, accelerent l'onboarding et rendent l'equipe plus autonome."
               }
             },
             {
               "id": "head_standards_documentation_example",
-              "label": "Si tu as mis 1 ou 2, donne un exemple recent ou ce comportement doit s'ameliorer.",
+              "label": "Si tu as mis 1 ou 2, donne un exemple recent ou les reperes techniques n'etaient pas assez clairs ou utilisables.",
               "type": "long_text",
               "required": true,
               "showIfMax": {

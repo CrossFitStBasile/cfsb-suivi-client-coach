@@ -73,7 +73,6 @@ async function run() {
       "coach_pro_coaching_feedback_score",
       "coach_pro_progress_review_score",
       "coach_pro_portfolio_ownership_score",
-      "coach_pro_pipeline_availability_score",
       "coach_pro_service_knowledge_score",
       "coach_pro_ethical_recommendation_score",
       "coach_pro_upgrade_signal_score",
