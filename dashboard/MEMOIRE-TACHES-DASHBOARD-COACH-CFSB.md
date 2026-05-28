@@ -359,3 +359,11 @@ Derniere mise a jour : 2026-05-27
   `Modifier la fiche complete` et `Classer / retirer`. Aucun changement backend requis: les actions
   existantes `saveManualClient`, `saveServiceEnd` et `saveClientRisk` sont reutilisees, avec feedback
   local immediat et synchronisation en arriere-plan.
+- 2026-05-28, version app-52903 / backend v65: passe Questionnaire pour test equipe.
+  L'onglet Questionnaire ouvre maintenant par defaut sur `Envoyer`. Le telephone devient l'identifiant
+  visuel principal de l'envoi (`ID telephone GHL`) et le bouton bloque l'envoi si aucun numero
+  normalisable n'est present. La confirmation d'envoi affiche client, coach, telephone affiche et
+  telephone normalise, puis rappelle que GHL sera cherche par telephone. L'appel `sendQuestionnaire`
+  n'envoie plus le courriel au backend pour cette action afin de forcer le test par telephone. Les
+  erreurs d'envoi sont reformulees pour distinguer contact GHL introuvable, token GHL et telephone
+  invalide. Aucun changement backend requis.
