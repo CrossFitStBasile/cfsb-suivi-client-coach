@@ -141,3 +141,32 @@ open_note
 final_position
 contact_request
 ```
+
+## Tests dashboard
+
+Le dashboard coach a maintenant un smoke test Playwright qui valide le parcours minimal sans toucher aux donnees reelles.
+
+Le test lance un serveur local sur le dossier `dashboard`, ouvre `dashboard/live.html`, active le mode demo, puis verifie:
+
+- chargement du dashboard;
+- activation du mode demo;
+- ouverture de l'onglet Clients;
+- ouverture d'une fiche client;
+- edition de la fin membership manuelle;
+- retour dans la To-do;
+- creation d'une capture rapide.
+
+Installation locale:
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m playwright install chromium
+```
+
+Execution:
+
+```bash
+python tests/dashboard_smoke.py
+```
+
+Le meme test roule aussi dans GitHub Actions sur `main`, `gh-pages` et les pull requests vers `main`.
