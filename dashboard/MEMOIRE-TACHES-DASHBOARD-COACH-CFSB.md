@@ -1,6 +1,6 @@
 # Memoire - Dashboard Coach CFSB
 
-Derniere mise a jour : 2026-05-27
+Derniere mise a jour : 2026-05-28
 
 ## Etat actuel
 
@@ -32,6 +32,13 @@ Derniere mise a jour : 2026-05-27
 - Decision produit : tant qu'un projet connexe change souvent, il reste un module lie par bouton/lien au lieu d'etre integre trop profondement dans le dashboard.
 - Les modules actuellement lies sont : Questionnaire client, Rebooking semi-prive, Rendement hebdo, CoachRx, CSM / memberships et Kilo.
 - Le backend Apps Script actif est le deployment `AKfycbz1qODx2pCWQ2yHhkse6FBxdyn741cYObW_qGsuox4RmVs7m6WYy3YqFTSti8YcRiGQ`.
+- Correctif questionnaire 2026-05-28 :
+  - Frontend GitHub Pages publie en `app-52904` sur `main` et `gh-pages`.
+  - Backend Apps Script redeploye en version 66 sur le meme endpoint officiel.
+  - Le questionnaire GitHub Pages envoie maintenant explicitement `client_phone_normalized`, `coach_name`, `coach_id`, `triage_status` et `coach_action_type` au niveau racine du payload, en plus des reponses detaillees.
+  - La liste des coachs du questionnaire inclut les IDs CoachRx pilotes pour Marc-Andre, Iheb, Camille, David, Gabriel, Hugo et Raphael.
+  - L'inbox Questionnaires affiche maintenant les reponses non matchees dans la vue principale `Reponses a traiter`, avec un badge `A valider`, pour eviter qu'une reponse soit invisible au coach.
+  - Le backend tente de creer une note GHL avec le resume du questionnaire pour chaque nouvelle reponse matchable par telephone. Le statut est journalise dans les colonnes `ghl_note_status`, `ghl_note_at`, `ghl_contact_id`, `ghl_note_id`, `ghl_note_error`.
 - Les coachs peuvent choisir un coach dans le menu deroulant quand les donnees sont chargees.
 - L'extension CoachRx permet de pousser les donnees CoachRx vers le backend.
 - Les reponses questionnaire client-coach sont prevues dans une inbox privee et doivent matcher principalement par telephone normalise.
