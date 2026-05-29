@@ -12,9 +12,7 @@ import {
   getDoc,
   getDocs,
   getFirestore,
-  limit,
   onSnapshot,
-  orderBy,
   query,
   serverTimestamp,
   setDoc,
@@ -169,8 +167,10 @@ function renderPendingAccess(user, message = "Ton compte Google est reconnu, mai
 
 async function loadCoaches() {
   try {
-    const snap = await getDocs(query(collection(db, "coaches"), where("active", "==", true), orderBy("name")));
-    state.coaches = snap.docs.map((coachDoc) => ({ id: coachDoc.id, ...coachDoc.data() }));
+    const snap = await getDocs(query(collection(db, "coaches"), where("active", "==", true)));
+    state.coaches = snap.docs
+      .map((coachDoc) => ({ id: coachDoc.id, ...coachDoc.data() }))
+      .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
   } catch (error) {
     state.errors.push(`Coachs non charges: ${error.code || ""} ${error.message || ""}`.trim());
     state.coaches = [];
@@ -186,36 +186,52 @@ function subscribeCoachData() {
   }
 
   state.unsubscribers.push(onSnapshot(
-    query(collection(db, "tasks"), where("coachId", "==", coachId), where("status", "==", "open"), orderBy("priorityRank"), orderBy("dueAt"), limit(80)),
+    query(collection(db, "tasks"), where("coachId", "==", coachId)),
     (snap) => {
-      state.data.tasks = snap.docs.map(fromDoc);
+      state.data.tasks = snap.docs
+        .map(fromDoc)
+        .filter((task) => task.status === "open")
+        .sort((a, b) => (a.priorityRank || 9) - (b.priorityRank || 9) || String(a.dueAt || "").localeCompare(String(b.dueAt || "")))
+        .slice(0, 80);
       render();
     },
     (error) => showDataError("To-do", error)
   ));
 
   state.unsubscribers.push(onSnapshot(
-    query(collection(db, "clients"), where("coachId", "==", coachId), where("status", "in", ["active", "manual"]), orderBy("lastNameSort"), limit(120)),
+    query(collection(db, "clients"), where("coachId", "==", coachId)),
     (snap) => {
-      state.data.clients = snap.docs.map(fromDoc);
+      state.data.clients = snap.docs
+        .map(fromDoc)
+        .filter((client) => ["active", "manual"].includes(client.status))
+        .sort((a, b) => String(a.lastNameSort || a.name || "").localeCompare(String(b.lastNameSort || b.name || "")))
+        .slice(0, 120);
       render();
     },
     (error) => showDataError("Clients", error)
   ));
 
   state.unsubscribers.push(onSnapshot(
-    query(collection(db, "questionnaireResponses"), where("coachId", "==", coachId), where("processingStatus", "in", ["to_read", "unmatched"]), orderBy("submittedAt", "desc"), limit(50)),
+    query(collection(db, "questionnaireResponses"), where("coachId", "==", coachId)),
     (snap) => {
-      state.data.questionnaireResponses = snap.docs.map(fromDoc);
+      state.data.questionnaireResponses = snap.docs
+        .map(fromDoc)
+        .filter((response) => ["to_read", "unmatched"].includes(response.processingStatus))
+        .sort((a, b) => String(b.submittedAt || "").localeCompare(String(a.submittedAt || "")))
+        .slice(0, 50);
       render();
     },
     (error) => showDataError("Questionnaires", error)
   ));
 
   state.unsubscribers.push(onSnapshot(
-    query(collection(db, "rebookings"), where("coachId", "==", coachId), where("status", "==", "open"), orderBy("detectedAt", "desc"), limit(80)),
+    query(collection(db, "rebookings"), where("coachId", "==", coachId)),
     (snap) => {
-      state.data.rebookings = snap.docs.map(fromDoc);
+      state.data.rebookings = snap.docs
+        .map(fromDoc)
+        .filter((rebooking) => rebooking.status === "open")
+        .sort((a, b) => String(b.detectedAt || "").localeCompare(String(a.detectedAt || "")))
+        .slice(0, 80);
       render();
     },
     (error) => showDataError("Rebooking", error)
