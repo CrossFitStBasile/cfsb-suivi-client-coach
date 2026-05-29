@@ -87,17 +87,25 @@ onAuthStateChanged(auth, async (user) => {
   }
   if (!profileSnap.exists()) {
     if (isBootstrapAdmin(user)) {
-      await setDoc(profileRef, {
-        active: true,
-        role: "admin",
-        coachId: "admin",
-        displayName: user.displayName || "Michael Grondin",
-        email: user.email || "",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        source: "firebase_bootstrap"
-      });
-      window.location.reload();
+      try {
+        await setDoc(profileRef, {
+          active: true,
+          role: "admin",
+          coachId: "admin",
+          displayName: user.displayName || "Michael Grondin",
+          email: user.email || "",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          source: "firebase_bootstrap"
+        });
+        renderPendingAccess(user, "Profil admin cree automatiquement. Recharge la page si le dashboard ne s'ouvre pas tout seul.");
+        window.setTimeout(() => window.location.reload(), 1200);
+      } catch (error) {
+        renderPendingAccess(
+          user,
+          `Bootstrap admin impossible. Code: ${error.code || "erreur inconnue"}. Message: ${error.message || ""}`
+        );
+      }
       return;
     }
     renderPendingAccess(user, `Aucun document trouve dans Firestore a users/${user.uid}.`);
