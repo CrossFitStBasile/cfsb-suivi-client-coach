@@ -30,6 +30,12 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if signedIn() && request.auth.uid == userId;
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && request.auth.token.email == 'info@crossfitstbasilelegrand.com'
+        && request.resource.data.active == true
+        && request.resource.data.role == 'admin'
+        && request.resource.data.coachId == 'admin';
       allow create, update, delete: if isAdmin();
     }
 

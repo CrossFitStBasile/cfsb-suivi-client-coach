@@ -86,6 +86,20 @@ onAuthStateChanged(auth, async (user) => {
     return;
   }
   if (!profileSnap.exists()) {
+    if (isBootstrapAdmin(user)) {
+      await setDoc(profileRef, {
+        active: true,
+        role: "admin",
+        coachId: "admin",
+        displayName: user.displayName || "Michael Grondin",
+        email: user.email || "",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        source: "firebase_bootstrap"
+      });
+      window.location.reload();
+      return;
+    }
     renderPendingAccess(user, `Aucun document trouve dans Firestore a users/${user.uid}.`);
     return;
   }
@@ -380,6 +394,10 @@ function tabDescription() {
 
 function fromDoc(snapshot) {
   return { id: snapshot.id, ...snapshot.data() };
+}
+
+function isBootstrapAdmin(user) {
+  return (user.email || "").toLowerCase() === "info@crossfitstbasilelegrand.com";
 }
 
 function cleanupSubscriptions() {
