@@ -89,7 +89,9 @@ IDs pilotes:
 - `coachId`
 - `clientId`
 - `clientPhoneNormalized`
-- `status`: `sent`, `answered`, `error`, `cancelled`
+- `status`: `prepared`, `sent`, `answered`, `error`, `cancelled`
+- `deliveryStatus`: `pending_backend`, `sent`, `error`
+- `preparedAt`
 - `sentAt`
 - `answeredAt`
 - `ghlContactId`
@@ -146,3 +148,9 @@ Journal append-only des actions importantes.
 - `createdAt`
 - `details`
 
+## Notes d'integration
+
+- Une relance questionnaire ne doit etre creee que si `questionnaireSends.status === "sent"` et que `sentAt` date d'au moins 7 jours sans `answeredAt`.
+- Un envoi en `prepared` ne compte pas comme relance et ne doit pas generer de fausse action coach.
+- Les champs manuels `manualMembershipEndDate` et `kiloPlannedRecurrenceEndDate` restent manuels: aucune date de fin de membership ne doit etre calculee automatiquement.
+- Les tokens GoHighLevel et les liens de rebooking tokenises ne doivent pas etre places dans GitHub Pages ou dans le code public.

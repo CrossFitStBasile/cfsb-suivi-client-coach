@@ -24,7 +24,9 @@ Cette base contient:
 - donnees de depart pour les coachs reels;
 - structure prete pour Firebase Hosting.
 
-Les Cloud Functions, GoHighLevel et les imports automatiques seront ajoutes apres activation du plan Blaze.
+La V1 Firebase remplace le prototype lent Apps Script pour l'interface quotidienne: les clics, les fiches clients, les to-do, les questionnaires, le rebooking, les impacts et les alumni vivent maintenant dans Firestore.
+
+Les actions qui exigent un secret serveur restent volontairement non exposees dans le front-end. L'envoi SMS GoHighLevel du questionnaire est donc prepare/journalise dans Firebase, puis devra etre branche par Cloud Functions pour ajouter le tag GHL `dashboardcoach` sans publier de token.
 
 ## Premiere activation
 
@@ -44,7 +46,28 @@ Les Cloud Functions, GoHighLevel et les imports automatiques seront ajoutes apre
 }
 ```
 
-6. Ajouter les documents `coaches` avec les donnees dans `seed/coaches.json`.
+6. Dans l'app, ouvrir `Guide` puis utiliser `Initialiser coachs` pour creer les coachs pilotes.
+7. Selectionner un coach puis utiliser `Creer donnees pilotes` seulement si on veut un environnement de demonstration.
+
+## Deploiement
+
+Depuis la racine du repo:
+
+```powershell
+firebase deploy --only hosting,firestore:rules,firestore:indexes
+```
+
+URL de production Firebase:
+
+```text
+https://cfsb-dashboard-coach-aa9a4.web.app
+```
+
+## Limites connues V1
+
+- L'envoi reel du questionnaire via GoHighLevel doit passer par une Cloud Function.
+- Les imports CoachRx/Kilo/CSM doivent etre convertis en synchronisations Firestore pour eliminer les delais Apps Script.
+- Les donnees historiques reelles doivent etre importees progressivement par coach apres validation du modele.
 
 ## Pourquoi ne pas utiliser `npm install firebase` tout de suite?
 
@@ -55,4 +78,3 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/12.13.0/fireba
 ```
 
 Ca evite de bloquer sur Node/npm local pendant qu'on valide l'architecture. On pourra passer a Vite/React + `npm install firebase` quand la structure de donnees sera stable.
-
