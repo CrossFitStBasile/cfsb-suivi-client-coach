@@ -306,6 +306,17 @@ textarea {
   margin-top: 14px;
 }
 
+.notice.error {
+  background: #fff1f1;
+  border-color: #ffb3b3;
+  color: #7f1d1d;
+  margin: 0 0 16px;
+}
+
+.notice.error p {
+  margin: 8px 0 0;
+}
+
 @media (max-width: 900px) {
   .shell {
     grid-template-columns: 1fr;

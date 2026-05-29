@@ -42,6 +42,7 @@ const state = {
   coaches: [],
   selectedCoachId: "",
   tab: "todo",
+  errors: [],
   data: {
     tasks: [],
     clients: [],
@@ -64,6 +65,17 @@ const tabs = [
 ];
 
 const appRoot = document.querySelector("#app");
+
+window.addEventListener("error", (event) => {
+  state.errors.push(event.message || "Erreur JavaScript inconnue");
+  renderIfReady();
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  const reason = event.reason || {};
+  state.errors.push(reason.message || reason.code || "Promesse rejetee sans message");
+  renderIfReady();
+});
 
 onAuthStateChanged(auth, async (user) => {
   cleanupSubscriptions();
@@ -156,8 +168,13 @@ function renderPendingAccess(user, message = "Ton compte Google est reconnu, mai
 }
 
 async function loadCoaches() {
-  const snap = await getDocs(query(collection(db, "coaches"), where("active", "==", true), orderBy("name")));
-  state.coaches = snap.docs.map((coachDoc) => ({ id: coachDoc.id, ...coachDoc.data() }));
+  try {
+    const snap = await getDocs(query(collection(db, "coaches"), where("active", "==", true), orderBy("name")));
+    state.coaches = snap.docs.map((coachDoc) => ({ id: coachDoc.id, ...coachDoc.data() }));
+  } catch (error) {
+    state.errors.push(`Coachs non charges: ${error.code || ""} ${error.message || ""}`.trim());
+    state.coaches = [];
+  }
 }
 
 function subscribeCoachData() {
@@ -173,7 +190,8 @@ function subscribeCoachData() {
     (snap) => {
       state.data.tasks = snap.docs.map(fromDoc);
       render();
-    }
+    },
+    (error) => showDataError("To-do", error)
   ));
 
   state.unsubscribers.push(onSnapshot(
@@ -181,7 +199,8 @@ function subscribeCoachData() {
     (snap) => {
       state.data.clients = snap.docs.map(fromDoc);
       render();
-    }
+    },
+    (error) => showDataError("Clients", error)
   ));
 
   state.unsubscribers.push(onSnapshot(
@@ -189,7 +208,8 @@ function subscribeCoachData() {
     (snap) => {
       state.data.questionnaireResponses = snap.docs.map(fromDoc);
       render();
-    }
+    },
+    (error) => showDataError("Questionnaires", error)
   ));
 
   state.unsubscribers.push(onSnapshot(
@@ -197,7 +217,8 @@ function subscribeCoachData() {
     (snap) => {
       state.data.rebookings = snap.docs.map(fromDoc);
       render();
-    }
+    },
+    (error) => showDataError("Rebooking", error)
   ));
 }
 
@@ -239,9 +260,20 @@ function render() {
           <div class="stat"><strong>${risks}</strong><span>risques coach</span></div>
           <div class="stat"><strong>${impacts}</strong><span>impacts semaine</span></div>
         </section>
+        ${renderErrors()}
         ${renderActiveTab()}
       </main>
     </div>
+  `;
+}
+
+function renderErrors() {
+  if (!state.errors.length) return "";
+  return `
+    <section class="notice error">
+      <strong>Diagnostic Firebase</strong>
+      ${state.errors.slice(-4).map((message) => `<p>${escapeHtml(message)}</p>`).join("")}
+    </section>
   `;
 }
 
@@ -411,6 +443,15 @@ function isBootstrapAdmin(user) {
 function cleanupSubscriptions() {
   state.unsubscribers.forEach((unsubscribe) => unsubscribe());
   state.unsubscribers = [];
+}
+
+function showDataError(section, error) {
+  state.errors.push(`${section}: ${error.code || "erreur"} ${error.message || ""}`.trim());
+  render();
+}
+
+function renderIfReady() {
+  if (state.user && state.profile) render();
 }
 
 document.addEventListener("click", async (event) => {
