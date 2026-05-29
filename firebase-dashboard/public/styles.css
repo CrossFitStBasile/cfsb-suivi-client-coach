@@ -44,6 +44,29 @@ button:disabled {
   opacity: 0.55;
 }
 
+button[data-working="true"] {
+  position: relative;
+  opacity: 0.7;
+}
+
+button[data-working="true"]::after {
+  content: "";
+  display: inline-block;
+  width: 0.75em;
+  height: 0.75em;
+  margin-left: 8px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .shell {
   min-height: 100vh;
   display: grid;

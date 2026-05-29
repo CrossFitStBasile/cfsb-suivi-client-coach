@@ -273,7 +273,7 @@ function subscribeCoachData() {
 
   subscribeCollection("questionnaireSends", coachId, (items) => {
     state.data.questionnaireSends = items
-      .sort((a, b) => dateValue(b.sentAt || b.createdAt) - dateValue(a.sentAt || a.createdAt));
+      .sort((a, b) => dateValue(b.sentAt || b.preparedAt || b.createdAt) - dateValue(a.sentAt || a.preparedAt || a.createdAt));
   });
 
   subscribeCollection("rebookings", coachId, (items) => {
@@ -552,11 +552,14 @@ function renderAlumni() {
 
 function renderGuide() {
   const modules = [
-    ["Base Firebase", "Firestore devient le moteur interactif rapide. Google Sheets reste source/import quand utile."],
-    ["Coachs", "Les coachs reels sont pilotes par CoachRx ID. Un bouton admin peut initialiser la liste."],
-    ["Questionnaires", "La vraie reception et le matching telephone seront branches sans publier les reponses sur GitHub Pages."],
-    ["GHL", "L'envoi SMS doit passer par un backend prive ou Cloud Function; aucun token ne va dans le frontend."],
-    ["Rebooking", "Le module est integre ici, avec statuts et historique, avant de connecter la source automatique."]
+    ["Base Firebase", "Firestore est maintenant le moteur interactif du dashboard. Google Sheets reste utile pour import/export, mais pas pour chaque clic coach."],
+    ["Coachs", "Les coachs reels sont pilotes par CoachRx ID. Initialiser coachs cree seulement la liste officielle pilote."],
+    ["To-do", "La page quotidienne doit contenir seulement des actions concretes: faire, masquer, relancer ou valider."],
+    ["Clients", "La fiche client regroupe les donnees utiles: telephone, membership, dates manuelles, recurrence Kilo, risque coach et notes."],
+    ["Questionnaires", "L'inbox lit les reponses et prepare les envois. Le vrai SMS GHL attend une Cloud Function privee."],
+    ["Rebooking", "Le module est integre avec statuts et historique. La source automatique pourra etre branchee ensuite."],
+    ["Performance", "Impacts, churn, nouveaux clients et check-ups doivent rester separes des alumni et filtres par periode."],
+    ["Securite", "Aucun token, lien secret ou donnee client ne doit etre publie dans GitHub Pages."]
   ];
   return panel("Guide & modules", "Etat de migration vers Firebase et actions admin.", `
     <div class="toolbar">
@@ -679,6 +682,7 @@ function renderQuestionnaireCard(response) {
 function renderQuestionnaireSendClientCard(client) {
   const phone = client.phoneNormalized || "";
   const lastSend = latestSendForClient(client.id);
+  const lastSendDate = lastSend?.sentAt || lastSend?.preparedAt || lastSend?.createdAt;
   return `
     <article class="card">
       <div>
@@ -686,10 +690,10 @@ function renderQuestionnaireSendClientCard(client) {
         <p class="meta">
           Telephone: ${escapeHtml(phone || "manquant")}<br>
           Dernier questionnaire: ${escapeHtml(client.lastQuestionnaireAt || "jamais trouve")}
-          ${lastSend ? `<br>Dernier envoi: ${formatDate(lastSend.sentAt || lastSend.createdAt)} (${escapeHtml(lastSend.status || "sent")})` : ""}
+          ${lastSend ? `<br>Dernier envoi: ${formatDate(lastSendDate)} (${questionnaireSendStatusLabel(lastSend.status)})` : ""}
         </p>
       </div>
-      <button class="primary" data-action="sendQuestionnaire" data-id="${escapeHtml(client.id)}" ${phone ? "" : "disabled"}>Envoyer</button>
+      <button class="primary" data-action="sendQuestionnaire" data-id="${escapeHtml(client.id)}" ${phone ? "" : "disabled"}>Preparer</button>
     </article>
   `;
 }
@@ -969,8 +973,11 @@ document.addEventListener("click", async (event) => {
   if (modalSurface && actionEl.classList.contains("modal-backdrop")) return;
   const action = actionEl.dataset.action;
   const id = actionEl.dataset.id;
+  const lockAction = shouldLockAction(action);
+  if (lockAction && actionEl.dataset.working === "true") return;
 
   try {
+    if (lockAction) beginActionFeedback(actionEl);
     if (action === "login") await signInWithPopup(auth, provider);
     if (action === "logout") await signOut(auth);
     if (action === "reload") window.location.reload();
@@ -1000,7 +1007,9 @@ document.addEventListener("click", async (event) => {
     if (action === "markAlumniContacted") await patchEntity("alumni", id, { status: "contacted", lastContactAt: todayIso() }, "Alumni marque contacte");
     if (action === "markAlumniDoNotContact") await patchEntity("alumni", id, { status: "do_not_contact" }, "Alumni classe ne pas contacter");
   } catch (error) {
-    pushError(`${action}: ${error.code || ""} ${error.message || ""}`.trim());
+    pushError(`${action}: ${humanizeFirebaseError(error)}`);
+  } finally {
+    if (lockAction) endActionFeedback(actionEl);
   }
 });
 
@@ -1009,7 +1018,9 @@ document.addEventListener("submit", async (event) => {
   if (!form) return;
   event.preventDefault();
   const data = Object.fromEntries(new FormData(form).entries());
+  const submitButton = form.querySelector("button[type='submit']");
   try {
+    beginActionFeedback(submitButton);
     if (form.dataset.form === "quickNote") await createManualTask(data);
     if (form.dataset.form === "client") await saveClient(form.dataset.id, data);
     if (form.dataset.form === "clientCreate") await createClient(data);
@@ -1018,7 +1029,9 @@ document.addEventListener("submit", async (event) => {
     if (form.dataset.form === "impactCreate") await createImpact(data);
     if (form.dataset.form === "alumniCreate") await createAlumni(data);
   } catch (error) {
-    pushError(`${form.dataset.form}: ${error.code || ""} ${error.message || ""}`.trim());
+    pushError(`${form.dataset.form}: ${humanizeFirebaseError(error)}`);
+  } finally {
+    endActionFeedback(submitButton);
   }
 });
 
@@ -1368,13 +1381,56 @@ function showToast(message) {
   }, 2600);
 }
 
+function shouldLockAction(action) {
+  return ![
+    "closeModal",
+    "reload",
+    "openQuickNote",
+    "openClientForm",
+    "openQuestionnaireSend",
+    "openRebookingForm",
+    "openImpactForm",
+    "openAlumniForm",
+    "openClient"
+  ].includes(action);
+}
+
+function beginActionFeedback(element) {
+  if (!element) return;
+  element.dataset.working = "true";
+  element.disabled = true;
+  showToast("Action en cours...");
+}
+
+function endActionFeedback(element) {
+  if (!element || !element.isConnected) return;
+  element.dataset.working = "false";
+  element.disabled = false;
+}
+
 function pushError(message, shouldRender = true) {
-  state.errors.push(message);
+  const cleanMessage = String(message || "Erreur inconnue").slice(0, 320);
+  if (!state.errors.includes(cleanMessage)) state.errors.push(cleanMessage);
   if (shouldRender) renderIfReady();
 }
 
 function showDataError(section, error) {
-  pushError(`${section}: ${error.code || "erreur"} ${error.message || ""}`.trim());
+  pushError(`${section}: ${humanizeFirebaseError(error)}`);
+}
+
+function humanizeFirebaseError(error) {
+  const code = error?.code || "erreur";
+  const message = error?.message || "";
+  if (code === "failed-precondition" && message.includes("indexes")) {
+    return "Index Firestore manquant. Publie les indexes avec firebase deploy --only firestore:indexes.";
+  }
+  if (code === "permission-denied") {
+    return "Permission refusee. Verifie ton acces Firestore ou le coach selectionne.";
+  }
+  if (code === "unavailable") {
+    return "Firebase temporairement indisponible. Reessaie dans quelques secondes.";
+  }
+  return `${code} ${message}`.trim();
 }
 
 function filterButton(group, value, label, count) {
@@ -1459,6 +1515,17 @@ function taskTypeLabel(type) {
     manual: "Manuel"
   };
   return labels[type] || "Tache";
+}
+
+function questionnaireSendStatusLabel(status) {
+  const labels = {
+    prepared: "prepare",
+    sent: "envoye",
+    answered: "repondu",
+    error: "erreur",
+    cancelled: "archive"
+  };
+  return labels[status] || "prepare";
 }
 
 function riskLabel(value) {
