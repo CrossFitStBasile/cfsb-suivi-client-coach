@@ -20,6 +20,10 @@ import {
   updateDoc,
   where
 } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js";
+import {
+  getFunctions,
+  httpsCallable
+} from "https://www.gstatic.com/firebasejs/12.13.0/firebase-functions.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAzE7ta-7plsrvVQIG1IoGpnejRfdg2F-s",
@@ -33,7 +37,9 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
+const functions = getFunctions(firebaseApp, "us-central1");
 const provider = new GoogleAuthProvider();
+const sendQuestionnaireFunction = httpsCallable(functions, "sendQuestionnaire");
 
 const PILOT_COACHES = [
   { id: "15935", coachRxId: "15935", name: "Marc-Andre Menard", active: true },
@@ -556,7 +562,7 @@ function renderGuide() {
     ["Coachs", "Les coachs reels sont pilotes par CoachRx ID. Initialiser coachs cree seulement la liste officielle pilote."],
     ["To-do", "La page quotidienne doit contenir seulement des actions concretes: faire, masquer, relancer ou valider."],
     ["Clients", "La fiche client regroupe les donnees utiles: telephone, membership, dates manuelles, recurrence Kilo, risque coach et notes."],
-    ["Questionnaires", "L'inbox lit les reponses et prepare les envois. Le vrai SMS GHL attend une Cloud Function privee."],
+    ["Questionnaires", "L'inbox lit les reponses et l'envoi passe par une Cloud Function privee qui ajoute le tag GHL dashboardcoach."],
     ["Rebooking", "Le module est integre avec statuts et historique. La source automatique pourra etre branchee ensuite."],
     ["Performance", "Impacts, churn, nouveaux clients et check-ups doivent rester separes des alumni et filtres par periode."],
     ["Securite", "Aucun token, lien secret ou donnee client ne doit etre publie dans GitHub Pages."]
@@ -693,7 +699,7 @@ function renderQuestionnaireSendClientCard(client) {
           ${lastSend ? `<br>Dernier envoi: ${formatDate(lastSendDate)} (${questionnaireSendStatusLabel(lastSend.status)})` : ""}
         </p>
       </div>
-      <button class="primary" data-action="sendQuestionnaire" data-id="${escapeHtml(client.id)}" ${phone ? "" : "disabled"}>Preparer</button>
+      <button class="primary" data-action="sendQuestionnaire" data-id="${escapeHtml(client.id)}" ${phone ? "" : "disabled"}>Envoyer</button>
     </article>
   `;
 }
@@ -1275,21 +1281,18 @@ async function journalQuestionnaireSend(clientId) {
   const client = state.data.clients.find((item) => item.id === clientId);
   if (!client) throw new Error("Client introuvable.");
   if (!client.phoneNormalized) throw new Error("Telephone manquant. Le matching et l'envoi se font par telephone.");
-  await addDoc(collection(db, "questionnaireSends"), {
-    coachId: state.selectedCoachId,
-    clientId: client.id,
-    clientName: client.name || "",
-    clientPhoneNormalized: normalizePhone(client.phoneNormalized),
-    status: "prepared",
-    deliveryStatus: "pending_backend",
-    preparedAt: new Date().toISOString(),
-    note: "Prepare dans Firebase. Envoi GHL a brancher via Cloud Function.",
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-    source: "firebase_app"
-  });
+  const confirmed = window.confirm(`Envoyer le questionnaire a ${client.name || "ce client"} (${client.phoneNormalized}) via GoHighLevel?`);
+  if (!confirmed) return;
+  const result = await sendQuestionnaireFunction({ clientId });
   closeModal();
-  showToast("Envoi questionnaire prepare. GHL reste a brancher cote serveur.");
+  const data = result?.data || {};
+  if (data.ok) {
+    showToast(data.message || "Questionnaire envoye via GoHighLevel.");
+    return;
+  }
+  const message = data.message || "Envoi non complete. Verifie la configuration GHL.";
+  pushError(`Questionnaire: ${message}`);
+  showToast("Questionnaire non envoye. Details affiches dans le diagnostic.");
 }
 
 async function createQuestionnaireFollowupTask(sendId) {
@@ -1430,6 +1433,18 @@ function humanizeFirebaseError(error) {
   if (code === "unavailable") {
     return "Firebase temporairement indisponible. Reessaie dans quelques secondes.";
   }
+  if (code === "functions/not-found") {
+    return "Cloud Function sendQuestionnaire non deployee. Deploie les Functions Firebase.";
+  }
+  if (code === "functions/permission-denied") {
+    return "Permission refusee par la Cloud Function. Verifie l'acces du coach.";
+  }
+  if (code === "functions/failed-precondition") {
+    return message || "Configuration requise avant l'envoi.";
+  }
+  if (code === "functions/unauthenticated") {
+    return "Connexion Google requise pour appeler le backend.";
+  }
   return `${code} ${message}`.trim();
 }
 
@@ -1520,6 +1535,7 @@ function taskTypeLabel(type) {
 function questionnaireSendStatusLabel(status) {
   const labels = {
     prepared: "prepare",
+    pending: "en cours",
     sent: "envoye",
     answered: "repondu",
     error: "erreur",

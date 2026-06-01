@@ -170,3 +170,50 @@ python tests/dashboard_smoke.py
 ```
 
 Le meme test roule aussi dans GitHub Actions sur `main`, `gh-pages` et les pull requests vers `main`.
+
+## Dashboard Coach Firebase
+
+Le dashboard coach prive est dans `firebase-dashboard/public` et se deploie sur Firebase Hosting.
+
+URL cible:
+
+```text
+https://cfsb-dashboard-coach-aa9a4.web.app
+```
+
+### Backend prive pour l'envoi questionnaire
+
+L'envoi du questionnaire ne doit pas etre fait directement depuis le navigateur, parce que le token GoHighLevel ne doit jamais etre publie dans GitHub Pages ou Firebase Hosting.
+
+Le bouton `Envoyer questionnaire` appelle donc la Cloud Function callable:
+
+```text
+sendQuestionnaire
+```
+
+La Function:
+
+- verifie que l'utilisateur est connecte et actif dans `users/{uid}`;
+- verifie que le client appartient au coach selectionne, sauf pour un admin;
+- utilise le telephone normalise comme source de matching;
+- cherche le contact dans GoHighLevel;
+- ajoute le tag `dashboardcoach`;
+- journalise chaque tentative dans `questionnaireSends`;
+- retourne une erreur claire si le token GHL, le location ID ou le contact sont introuvables.
+
+Secret Firebase requis:
+
+```powershell
+firebase functions:secrets:set GHL_PRIVATE_TOKEN
+```
+
+Le location ID GoHighLevel du centre est configure dans la Function, parce qu'il n'est pas un secret.
+
+Deploiement complet:
+
+```powershell
+cd "C:\Users\micha\Documents\Codex\2026-05-08\j-ai-un-gros-projet-d\generated\github-pages-repo"
+firebase deploy --only hosting,functions,firestore:rules,firestore:indexes
+```
+
+Si la Function n'est pas encore deployee ou si les secrets ne sont pas configures, le dashboard affiche une erreur au coach au lieu de laisser croire que le SMS est parti.
