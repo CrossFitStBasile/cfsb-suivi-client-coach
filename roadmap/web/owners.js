@@ -147,8 +147,16 @@ function questionIndex() {
 function renderList() {
   const list = $("#submissionList");
   const count = $("#submissionCount");
+  const select = $("#submissionSelect");
+  const countText = state.submissions.length
+    ? `${state.submissions.length} soumission(s) visible(s).`
+    : "Aucune soumission.";
+  if (!list || !count) {
+    if (select) hydrateSubmissionSelect(select);
+    return;
+  }
   count.textContent = state.submissions.length
-    ? `${state.submissions.length} soumission(s).`
+    ? countText
     : "Aucune soumission.";
 
   list.innerHTML = state.submissions.map((submission) => {
@@ -170,6 +178,48 @@ function renderList() {
       renderList();
       renderDetail();
     });
+  });
+}
+
+function submissionOptionLabel(submission) {
+  const role = roleById(submission.selectedRoleId);
+  const name = submission.answers?.employee_name || "Sans nom";
+  const roleLabel = role?.label || submission.selectedRoleLabel || "Role inconnu";
+  const date = submission.submittedAt ? new Date(submission.submittedAt).toLocaleDateString("fr-CA") : "Sans date";
+  return `${name} - ${roleLabel} - ${submission.quarter || ""} - ${date}`;
+}
+
+function renderSubmissionPicker() {
+  if (!state.submissions.length) return "";
+  return `
+    <label class="field submission-picker">
+      <span>Soumission</span>
+      <select id="submissionSelect">
+        ${state.submissions.map((submission) => `
+          <option value="${escapeHtml(submission.id)}" ${submission.id === state.selectedId ? "selected" : ""}>
+            ${escapeHtml(submissionOptionLabel(submission))}
+          </option>
+        `).join("")}
+      </select>
+      <small>${state.submissions.length} soumission(s) visible(s)</small>
+    </label>
+  `;
+}
+
+function hydrateSubmissionSelect(select) {
+  select.innerHTML = state.submissions.map((submission) => `
+    <option value="${escapeHtml(submission.id)}" ${submission.id === state.selectedId ? "selected" : ""}>
+      ${escapeHtml(submissionOptionLabel(submission))}
+    </option>
+  `).join("");
+}
+
+function bindSubmissionPicker() {
+  const select = $("#submissionSelect");
+  if (!select) return;
+  select.addEventListener("change", () => {
+    state.selectedId = select.value;
+    renderDetail();
   });
 }
 
@@ -371,7 +421,18 @@ function renderDetail() {
   const area = $("#detailArea");
   const submission = state.submissions.find((item) => item.id === state.selectedId);
   if (!submission) {
-    area.innerHTML = '<div class="notice">Selectionne une soumission a gauche.</div>';
+    area.innerHTML = `
+      <section class="section">
+        <div class="section-header owner-submission-header">
+          <div>
+            <h2>Soumission</h2>
+            <p>Selectionne le dossier a preparer.</p>
+          </div>
+          ${renderSubmissionPicker()}
+        </div>
+      </section>
+    `;
+    bindSubmissionPicker();
     return;
   }
 
@@ -383,9 +444,12 @@ function renderDetail() {
 
   area.innerHTML = `
     <section class="section">
-      <div class="section-header">
-        <h2>${escapeHtml(answers.employee_name || "Sans nom")}</h2>
-        <p>${escapeHtml(role?.label || submission.selectedRoleLabel || "Role inconnu")} - ${escapeHtml(submission.quarter || "")}</p>
+      <div class="section-header owner-submission-header">
+        <div>
+          <h2>${escapeHtml(answers.employee_name || "Sans nom")}</h2>
+          <p>${escapeHtml(role?.label || submission.selectedRoleLabel || "Role inconnu")} - ${escapeHtml(submission.quarter || "")}</p>
+        </div>
+        ${renderSubmissionPicker()}
       </div>
       <div class="section-body">
         <div class="metrics">
@@ -432,6 +496,7 @@ function renderDetail() {
   $("#exportButton").addEventListener("click", () => exportSelected(submission));
   $("#copyResumeLinkButton").addEventListener("click", () => copyResumeLink(submission));
   $("#archiveButton").addEventListener("click", () => archiveSelectedSubmission(submission));
+  bindSubmissionPicker();
 }
 
 function renderOwnerFields(notes) {
