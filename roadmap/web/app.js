@@ -1,4 +1,5 @@
 const CONFIG_URL = "../data/roadmap-config.json";
+const SUBMISSIONS_CACHE_URL = "../data/roadmap-submissions-cache.json";
 const DEFAULT_ENDPOINT_URL = "https://script.google.com/macros/s/AKfycbxnhlehsj_NQU73k3csMQPj0NAm3QSQrpjk0Ar6VYOjXYZO-m9_GSxtmEqYw9y_9DSQEA/exec";
 const IS_LOCAL_PREVIEW = ["", "localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
 const STORAGE_KEYS = {
@@ -461,17 +462,21 @@ async function restoreResumeFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const resumeSubmissionId = params.get("resume") || params.get("resumeSubmissionId");
   if (!resumeSubmissionId) return false;
-  if (!state.settings.endpointUrl) {
-    showNotice("Lien de reprise detecte, mais aucun endpoint Apps Script n'est configure.", "error");
-    return true;
-  }
-
   showNotice("Chargement de tes reponses precedentes...", "");
-  const result = await fetchJsonp(state.settings.endpointUrl, {
-    action: "get_roadmap_submission",
-    project: state.config.meta.project,
-    submissionId: resumeSubmissionId
-  });
+  let result;
+  if (state.settings.endpointUrl) {
+    try {
+      result = await fetchJsonp(state.settings.endpointUrl, {
+        action: "get_roadmap_submission",
+        project: state.config.meta.project,
+        submissionId: resumeSubmissionId
+      });
+    } catch (error) {
+      result = await fetchResumeFromSnapshot(resumeSubmissionId);
+    }
+  } else {
+    result = await fetchResumeFromSnapshot(resumeSubmissionId);
+  }
 
   if (!result.ok || !result.submission) {
     throw new Error(result.error || "Impossible de charger cette soumission.");
@@ -491,8 +496,29 @@ async function restoreResumeFromUrl() {
   refreshConditionalFields();
   $("#formDot").classList.add("done");
   saveDraft({ silent: true });
-  showNotice("Reprise chargee. Complete les champs manquants, puis soumets la version finale.", "success");
+  showNotice(result.snapshot ? "Reprise chargee depuis la copie GitHub. Complete les champs manquants, puis soumets la version finale." : "Reprise chargee. Complete les champs manquants, puis soumets la version finale.", "success");
   return true;
+}
+
+async function fetchResumeFromSnapshot(submissionId) {
+  const separator = SUBMISSIONS_CACHE_URL.includes("?") ? "&" : "?";
+  const response = await fetch(`${SUBMISSIONS_CACHE_URL}${separator}_=${Date.now()}`);
+  if (!response.ok) throw new Error(`Impossible de charger la copie GitHub (${response.status}).`);
+  const snapshot = await response.json();
+  const submission = (snapshot.submissions || []).find((item) => {
+    return item.id === submissionId || item.serverSubmissionId === submissionId;
+  });
+  if (!submission) {
+    return {
+      ok: false,
+      error: "Cette soumission n'est pas disponible dans la copie GitHub. Demande un nouveau lien de reprise."
+    };
+  }
+  return {
+    ok: true,
+    snapshot: true,
+    submission
+  };
 }
 
 function renderPathwayPreview(pathwayId) {

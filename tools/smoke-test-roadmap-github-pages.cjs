@@ -2,6 +2,7 @@ const { chromium } = require("playwright");
 
 const baseUrl = "https://crossfitstbasile.github.io/cfsb-suivi-client-coach/roadmap/";
 const endpointUrl = "https://script.google.com/macros/s/AKfycbxnhlehsj_NQU73k3csMQPj0NAm3QSQrpjk0Ar6VYOjXYZO-m9_GSxtmEqYw9y_9DSQEA/exec";
+const resumeTestId = "6ee62837-34fb-43d5-a6ff-f1f859d30bdc";
 
 async function run() {
   const browser = await chromium.launch({ channel: "msedge", headless: true });
@@ -71,6 +72,16 @@ async function run() {
       throw new Error(`Unexpected endpoint value: ${endpointValue}`);
     }
 
+    const resumePage = await browser.newPage({ viewport: { width: 1360, height: 920 } });
+    await resumePage.route("https://script.google.com/**", (route) => route.abort());
+    await resumePage.goto(`${baseUrl}web/index.html?resume=${resumeTestId}`, { waitUntil: "networkidle" });
+    await resumePage.getByText(/Reprise chargee depuis la copie GitHub/i).waitFor({ timeout: 15000 });
+    const resumedName = await resumePage.locator('[data-question-id="employee_name"]').inputValue();
+    if (!/Marc-Andr[eé] M[eé]nard/i.test(resumedName)) {
+      throw new Error(`Unexpected resumed employee name: ${resumedName}`);
+    }
+    await resumePage.close();
+
     await page.goto(`${baseUrl}owners.html`, { waitUntil: "networkidle" });
     await page.getByText("Acces reserve").waitFor({ timeout: 15000 });
     await page.locator("#ownerPinInput").fill("CFSB2026!");
@@ -79,7 +90,9 @@ async function run() {
     await page.getByRole("button", { name: /Synchroniser/i }).waitFor({ timeout: 15000 });
     await page.getByText(/soumission\(s\) (chargee|visible)\(s\) depuis (Google Sheets|le snapshot GitHub)/i).waitFor({ timeout: 30000 });
     await page.locator("strong", { hasText: /Marc-Andr[eé]/i }).first().waitFor({ timeout: 15000 });
-    await page.getByRole("button", { name: /Archiver soumission/i }).waitFor({ timeout: 15000 });
+    await page.getByText("Note de rencontre").waitFor({ timeout: 15000 });
+    await page.getByRole("button", { name: /Copier lien reprise/i }).waitFor({ timeout: 15000 });
+    await page.getByRole("button", { name: /^Archiver$/i }).waitFor({ timeout: 15000 });
     await page.getByRole("button", { name: /Parametres/i }).click();
     const ownerEndpointValue = await page.locator("#endpointInput").inputValue();
     if (ownerEndpointValue !== endpointUrl) {
