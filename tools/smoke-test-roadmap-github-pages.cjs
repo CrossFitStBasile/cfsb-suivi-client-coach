@@ -91,8 +91,11 @@ async function run() {
     await page.getByText(/soumission\(s\) (chargee|visible)\(s\) depuis (Google Sheets|le snapshot GitHub)/i).waitFor({ timeout: 30000 });
     await page.locator("#submissionSelect").waitFor({ timeout: 15000 });
     await page.locator("#submissionSelect").selectOption({ label: /Marc-Andr[eé]/i });
+    await page.getByText("Resume de rencontre").waitFor({ timeout: 15000 });
     await page.getByText("Note de rencontre").waitFor({ timeout: 15000 });
-    await page.getByRole("button", { name: /Copier lien reprise/i }).waitFor({ timeout: 15000 });
+    await page.getByText("Reponses employe").waitFor({ timeout: 15000 });
+    await page.getByRole("button", { name: /Lien reprise/i }).waitFor({ timeout: 15000 });
+    await page.getByRole("button", { name: /Message relance/i }).waitFor({ timeout: 15000 });
     await page.getByRole("button", { name: /^Archiver$/i }).waitFor({ timeout: 15000 });
     await page.getByRole("button", { name: /Parametres/i }).click();
     const ownerEndpointValue = await page.locator("#endpointInput").inputValue();
