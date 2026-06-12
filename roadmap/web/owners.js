@@ -1,4 +1,5 @@
 const CONFIG_URL = "../data/roadmap-config.json";
+const SUBMISSIONS_CACHE_URL = "../data/roadmap-submissions-cache.json";
 const DEFAULT_ENDPOINT_URL = "https://script.google.com/macros/s/AKfycbxnhlehsj_NQU73k3csMQPj0NAm3QSQrpjk0Ar6VYOjXYZO-m9_GSxtmEqYw9y_9DSQEA/exec";
 const IS_LOCAL_PREVIEW = ["", "localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
 const STORAGE_KEYS = {
@@ -205,7 +206,7 @@ function mergeServerSubmissions(serverSubmissions = []) {
   }
 }
 
-function fetchJsonp(url, timeoutMs = 15000) {
+function fetchJsonp(url, timeoutMs = 6000) {
   return new Promise((resolve, reject) => {
     const callbackName = `roadmapOwnersCallback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const script = document.createElement("script");
@@ -235,7 +236,7 @@ function fetchJsonp(url, timeoutMs = 15000) {
   });
 }
 
-function fetchIframeBridge(url, timeoutMs = 20000) {
+function fetchIframeBridge(url, timeoutMs = 8000) {
   return new Promise((resolve, reject) => {
     const iframe = document.createElement("iframe");
     let settled = false;
@@ -293,6 +294,15 @@ function fetchIframeBridge(url, timeoutMs = 20000) {
   });
 }
 
+async function fetchStaticSnapshot() {
+  const separator = SUBMISSIONS_CACHE_URL.includes("?") ? "&" : "?";
+  const response = await fetch(`${SUBMISSIONS_CACHE_URL}${separator}_=${Date.now()}`);
+  if (!response.ok) throw new Error(`Snapshot GitHub introuvable (${response.status}).`);
+  const payload = await response.json();
+  if (!payload.ok) throw new Error(payload.error || "Snapshot GitHub invalide.");
+  return payload;
+}
+
 async function syncServerSubmissions({ silent = false } = {}) {
   if (!state.settings.endpointUrl) {
     setSyncStatus("Mode local: ajoute l'URL Apps Script pour synchroniser Google Sheets.");
@@ -308,7 +318,12 @@ async function syncServerSubmissions({ silent = false } = {}) {
     try {
       result = await fetchIframeBridge(state.settings.endpointUrl);
     } catch (bridgeError) {
-      throw new Error(`${jsonpError.message} Pont iframe aussi echoue: ${bridgeError.message}`);
+      try {
+        result = await fetchStaticSnapshot();
+        result.liveSyncError = `${jsonpError.message} Pont iframe aussi echoue: ${bridgeError.message}`;
+      } catch (snapshotError) {
+        throw new Error(`${jsonpError.message} Pont iframe aussi echoue: ${bridgeError.message} Snapshot GitHub aussi echoue: ${snapshotError.message}`);
+      }
     }
   }
   if (!result.ok) {
@@ -322,6 +337,11 @@ async function syncServerSubmissions({ silent = false } = {}) {
   renderDetail();
 
   const date = new Date(state.lastSyncAt).toLocaleString("fr-CA");
+  if (result.snapshot) {
+    const snapshotDate = result.snapshotGeneratedAt ? new Date(result.snapshotGeneratedAt).toLocaleString("fr-CA") : date;
+    setSyncStatus(`${result.count || 0} soumission(s) chargee(s) depuis le snapshot GitHub du ${snapshotDate}. Sync live bloquee dans ce navigateur.`, "success");
+    return;
+  }
   setSyncStatus(`${result.count || 0} soumission(s) chargee(s) depuis Google Sheets. Derniere sync: ${date}.`, "success");
 }
 
