@@ -396,34 +396,36 @@ function renderDetail() {
       </div>
     </section>
 
-    <section class="section">
-      <div class="section-header">
-        <h2>Notes owners</h2>
-        <p>Ces notes restent dans la couche owners. Elles ne sont pas destinees a etre montrees telles quelles a l'employe.</p>
-      </div>
-      <div class="section-body">
-        ${renderOwnerFields(notes)}
-        <div class="notice" id="ownerSyncStatus">
-          ${escapeHtml(state.settings.endpointUrl ? "Les notes seront sauvegardees localement et envoyees a Apps Script." : "Mode local: les notes restent dans ce navigateur.")}
+    <div class="meeting-grid">
+      <section class="section responses-panel">
+        <div class="section-header">
+          <h2>Reponses employe</h2>
+          <p>Lecture complete pour guider la rencontre et revenir sur les points importants.</p>
         </div>
-        <div class="actions">
-          <button class="button secondary" id="exportButton" type="button">Exporter JSON</button>
-          <button class="button secondary" id="copyResumeLinkButton" type="button">Copier lien reprise</button>
-          <button class="button warn" id="archiveButton" type="button">Archiver soumission</button>
-          <button class="button" id="saveNotesButton" type="button">Sauvegarder notes</button>
+        <div class="section-body">
+          ${renderResponsesTable(submission)}
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section class="section">
-      <div class="section-header">
-        <h2>Reponses employe</h2>
-        <p>Lecture brute, groupee par question. Le dashboard web final pourra ensuite ajouter filtres et resumes.</p>
-      </div>
-      <div class="section-body">
-        ${renderResponsesTable(submission)}
-      </div>
-    </section>
+      <aside class="section sticky-owner-notes">
+        <div class="section-header">
+          <h2>Notes owners</h2>
+          <p>Notes de rencontre pour Michael et Gabriel.</p>
+        </div>
+        <div class="section-body">
+          ${renderOwnerFields(notes)}
+          <div class="notice" id="ownerSyncStatus">
+            ${escapeHtml(state.settings.endpointUrl ? "Les notes seront sauvegardees localement et envoyees a Apps Script." : "Mode local: les notes restent dans ce navigateur.")}
+          </div>
+          <div class="actions owners-actions">
+            <button class="button secondary" id="copyResumeLinkButton" type="button">Copier lien reprise</button>
+            <button class="button secondary" id="exportButton" type="button">Exporter JSON</button>
+            <button class="button warn" id="archiveButton" type="button">Archiver</button>
+            <button class="button" id="saveNotesButton" type="button">Sauvegarder</button>
+          </div>
+        </div>
+      </aside>
+    </div>
   `;
 
   $("#saveNotesButton").addEventListener("click", () => saveNotes(submission));
@@ -433,26 +435,23 @@ function renderDetail() {
 }
 
 function renderOwnerFields(notes) {
-  return state.config.ownerFields.map((field) => {
-    const value = notes[field.id] || "";
-    if (field.type === "single_choice") {
-      return `
-        <label class="field">
-          <span>${escapeHtml(field.label)}</span>
-          <select data-owner-field="${escapeHtml(field.id)}">
-            <option value="">Choisir</option>
-            ${(field.options || []).map((option) => `<option value="${escapeHtml(option)}" ${option === value ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
-          </select>
-        </label>
-      `;
-    }
-    return `
-      <label class="field">
-        <span>${escapeHtml(field.label)}</span>
-        <textarea data-owner-field="${escapeHtml(field.id)}">${escapeHtml(value)}</textarea>
-      </label>
-    `;
-  }).join("");
+  const reviewer = notes.owner_reviewer || "";
+  const mainNote = notes.owner_followup_notes || notes.owner_priority_topics || "";
+  return `
+    <label class="field">
+      <span>Owner responsable</span>
+      <select data-owner-field="owner_reviewer">
+        <option value="">Choisir</option>
+        <option value="Michael" ${reviewer === "Michael" ? "selected" : ""}>Michael</option>
+        <option value="Gabriel" ${reviewer === "Gabriel" ? "selected" : ""}>Gabriel</option>
+        <option value="Michael + Gabriel" ${reviewer === "Michael + Gabriel" ? "selected" : ""}>Michael + Gabriel</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>Note de rencontre</span>
+      <textarea class="owner-main-note" data-owner-field="owner_followup_notes" placeholder="Points a discuter, decisions, engagements, prochaine action...">${escapeHtml(mainNote)}</textarea>
+    </label>
+  `;
 }
 
 function renderResponsesTable(submission) {

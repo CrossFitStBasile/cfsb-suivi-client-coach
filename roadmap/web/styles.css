@@ -721,8 +721,16 @@ select:focus {
 
 .admin-grid {
   display: grid;
-  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(220px, 0.42fr) minmax(0, 1fr);
   gap: 16px;
+  align-items: start;
+}
+
+.admin-grid > .panel {
+  position: sticky;
+  top: 88px;
+  max-height: calc(100vh - 112px);
+  overflow: auto;
 }
 
 .submission-list {
@@ -731,7 +739,7 @@ select:focus {
 }
 
 .submission-card {
-  padding: 12px;
+  padding: 9px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
@@ -752,6 +760,34 @@ select:focus {
 .metric span {
   color: var(--muted);
   font-size: 13px;
+}
+
+.meeting-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  gap: 16px;
+  align-items: start;
+}
+
+.sticky-owner-notes {
+  position: sticky;
+  top: 88px;
+  max-height: calc(100vh - 112px);
+  overflow: auto;
+}
+
+.owner-main-note {
+  min-height: 320px;
+  resize: vertical;
+}
+
+.owners-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.owners-actions .button {
+  width: 100%;
 }
 
 .metrics {
@@ -791,6 +827,7 @@ select:focus {
   .hero,
   .layout,
   .admin-grid,
+  .meeting-grid,
   .org-grid {
     grid-template-columns: 1fr;
   }
@@ -802,6 +839,12 @@ select:focus {
 
   .sidebar {
     position: static;
+  }
+
+  .admin-grid > .panel,
+  .sticky-owner-notes {
+    position: static;
+    max-height: none;
   }
 
   .topbar {
