@@ -13,6 +13,7 @@ const state = {
   selectedRoleId: "",
   answers: {},
   clientSubmissionId: "",
+  resumeSubmissionId: "",
   autosaveTimer: null,
   isSubmitting: false,
   settings: {
@@ -99,6 +100,7 @@ function selectRole(roleId) {
   state.selectedRoleId = roleId;
   state.answers = {};
   state.clientSubmissionId = createClientSubmissionId();
+  state.resumeSubmissionId = "";
   renderRoles();
   renderForm();
   $("#formDot").classList.add("done");
@@ -420,6 +422,79 @@ function populateFormValues() {
   });
 }
 
+function fetchJsonp(url, params = {}, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    const callbackName = `roadmapFormCallback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const script = document.createElement("script");
+    const timer = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("Delai depasse pendant le chargement."));
+    }, timeoutMs);
+
+    function cleanup() {
+      window.clearTimeout(timer);
+      delete window[callbackName];
+      script.remove();
+    }
+
+    window[callbackName] = (payload) => {
+      cleanup();
+      resolve(payload);
+    };
+
+    const query = new URLSearchParams({
+      ...params,
+      callback: callbackName,
+      _: String(Date.now())
+    });
+    const separator = url.includes("?") ? "&" : "?";
+    script.src = `${url}${separator}${query.toString()}`;
+    script.onerror = () => {
+      cleanup();
+      reject(new Error("Impossible de rejoindre Apps Script."));
+    };
+    document.head.appendChild(script);
+  });
+}
+
+async function restoreResumeFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const resumeSubmissionId = params.get("resume") || params.get("resumeSubmissionId");
+  if (!resumeSubmissionId) return false;
+  if (!state.settings.endpointUrl) {
+    showNotice("Lien de reprise detecte, mais aucun endpoint Apps Script n'est configure.", "error");
+    return true;
+  }
+
+  showNotice("Chargement de tes reponses precedentes...", "");
+  const result = await fetchJsonp(state.settings.endpointUrl, {
+    action: "get_roadmap_submission",
+    project: state.config.meta.project,
+    submissionId: resumeSubmissionId
+  });
+
+  if (!result.ok || !result.submission) {
+    throw new Error(result.error || "Impossible de charger cette soumission.");
+  }
+
+  const submission = result.submission;
+  state.resumeSubmissionId = submission.serverSubmissionId || submission.id || resumeSubmissionId;
+  state.selectedRoleId = submission.selectedRoleId || "";
+  state.answers = { ...(submission.answers || {}) };
+  state.clientSubmissionId = createClientSubmissionId();
+  if (submission.quarter) state.settings.quarter = submission.quarter;
+  $("#quarterInput").value = state.settings.quarter || "2026-Q2";
+
+  renderRoles();
+  renderForm();
+  populateFormValues();
+  refreshConditionalFields();
+  $("#formDot").classList.add("done");
+  saveDraft({ silent: true });
+  showNotice("Reprise chargee. Complete les champs manquants, puis soumets la version finale.", "success");
+  return true;
+}
+
 function renderPathwayPreview(pathwayId) {
   const preview = $("#pathwayPreview");
   if (!preview) return;
@@ -479,6 +554,7 @@ function buildPayload(status = "submitted") {
   return {
     project: state.config.meta.project,
     clientSubmissionId: state.clientSubmissionId,
+    resumeSubmissionId: state.resumeSubmissionId || "",
     configVersion: state.config.meta.version,
     status,
     quarter: state.settings.quarter,
@@ -572,6 +648,7 @@ async function handleSubmit(event) {
     event.target.reset();
     state.answers = {};
     state.clientSubmissionId = createClientSubmissionId();
+    state.resumeSubmissionId = "";
     localStorage.removeItem(STORAGE_KEYS.draft);
     updateDraftStatus("");
     refreshConditionalFields();
@@ -620,7 +697,8 @@ async function init() {
   try {
     await loadConfig();
     renderRoles();
-    restoreDraftIfAvailable();
+    const resumedFromLink = await restoreResumeFromUrl();
+    if (!resumedFromLink) restoreDraftIfAvailable();
     window.addEventListener("beforeunload", () => {
       if (state.selectedRoleId && Object.keys(state.answers).length) saveDraft({ silent: true });
     });
