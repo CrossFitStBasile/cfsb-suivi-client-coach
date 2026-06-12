@@ -71,7 +71,7 @@ async function run() {
     await page.getByRole("button", { name: /Importer JSON/i }).waitFor({ timeout: 15000 });
     await page.getByRole("button", { name: /Synchroniser/i }).waitFor({ timeout: 15000 });
     await page.getByText(/soumission\(s\) chargee\(s\) depuis Google Sheets/i).waitFor({ timeout: 20000 });
-    await page.getByText(/Marc-Andr[eé]/i).waitFor({ timeout: 15000 });
+    await page.locator("strong", { hasText: /Marc-Andr[eé]/i }).first().waitFor({ timeout: 15000 });
     await page.getByRole("button", { name: /Parametres/i }).click();
     const ownerEndpointValue = await page.locator("#endpointInput").inputValue();
     if (ownerEndpointValue !== endpointUrl) {
