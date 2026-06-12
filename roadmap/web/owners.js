@@ -408,6 +408,7 @@ function renderDetail() {
         </div>
         <div class="actions">
           <button class="button secondary" id="exportButton" type="button">Exporter JSON</button>
+          <button class="button secondary" id="copyResumeLinkButton" type="button">Copier lien reprise</button>
           <button class="button warn" id="archiveButton" type="button">Archiver soumission</button>
           <button class="button" id="saveNotesButton" type="button">Sauvegarder notes</button>
         </div>
@@ -427,6 +428,7 @@ function renderDetail() {
 
   $("#saveNotesButton").addEventListener("click", () => saveNotes(submission));
   $("#exportButton").addEventListener("click", () => exportSelected(submission));
+  $("#copyResumeLinkButton").addEventListener("click", () => copyResumeLink(submission));
   $("#archiveButton").addEventListener("click", () => archiveSelectedSubmission(submission));
 }
 
@@ -610,6 +612,19 @@ function exportSelected(submission) {
   };
   navigator.clipboard?.writeText(JSON.stringify(payload, null, 2));
   alert("JSON copie dans le presse-papiers.");
+}
+
+async function copyResumeLink(submission) {
+  const submissionId = submission.serverSubmissionId || submission.id;
+  if (!submissionId) return;
+  const url = new URL("./index.html", window.location.href);
+  url.searchParams.set("resume", submissionId);
+  try {
+    await navigator.clipboard?.writeText(url.toString());
+    setSyncStatus("Lien de reprise copie. Le coach pourra rouvrir le formulaire avec ses reponses deja remplies.", "success");
+  } catch (error) {
+    window.prompt("Copie ce lien de reprise:", url.toString());
+  }
 }
 
 function openImport() {
