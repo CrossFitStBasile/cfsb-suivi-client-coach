@@ -7,6 +7,7 @@ async function run() {
   const browser = await chromium.launch({ channel: "msedge", headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1360, height: 920 } });
+    page.on("dialog", (dialog) => dialog.accept());
 
     await page.goto(baseUrl, { waitUntil: "networkidle" });
     await page.getByText("Charte organisationnelle 2026").waitFor({ timeout: 15000 });
@@ -27,6 +28,12 @@ async function run() {
     await page.getByText("Dans 1 an, qu'aimerais-tu avoir construit").waitFor({ timeout: 15000 });
     await page.getByText("tu evalues le soutien que CFSB").waitFor({ timeout: 15000 });
     await page.locator('[data-question-id="gwc_gets_it"]').waitFor({ state: "visible", timeout: 15000 });
+    await page.locator('[data-question-id="employee_name"]').fill("Smoke Test Brouillon");
+    await page.getByText(/Brouillon sauvegarde a/i).waitFor({ timeout: 5000 });
+    const storedDraft = await page.evaluate(() => JSON.parse(localStorage.getItem("cfsb-roadmap-draft") || "{}"));
+    if (storedDraft.answers?.employee_name !== "Smoke Test Brouillon" || !storedDraft.clientSubmissionId) {
+      throw new Error("Autosaved draft is missing expected employee name or clientSubmissionId.");
+    }
     await page.getByRole("button", { name: /Coach Developpement/i }).click();
     await page.getByRole("link", { name: /Relire le suivi Fondations/i }).waitFor({ timeout: 15000 });
     await page.getByText("Valeurs CFSB - comportements Coach Developpement").waitFor({ timeout: 15000 });
@@ -72,6 +79,7 @@ async function run() {
     await page.getByRole("button", { name: /Synchroniser/i }).waitFor({ timeout: 15000 });
     await page.getByText(/soumission\(s\) chargee\(s\) depuis Google Sheets/i).waitFor({ timeout: 20000 });
     await page.locator("strong", { hasText: /Marc-Andr[eé]/i }).first().waitFor({ timeout: 15000 });
+    await page.getByRole("button", { name: /Archiver soumission/i }).waitFor({ timeout: 15000 });
     await page.getByRole("button", { name: /Parametres/i }).click();
     const ownerEndpointValue = await page.locator("#endpointInput").inputValue();
     if (ownerEndpointValue !== endpointUrl) {
