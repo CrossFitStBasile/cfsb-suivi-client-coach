@@ -14,6 +14,7 @@ const state = {
   submissions: [],
   selectedId: "",
   ownerNotes: {},
+  lastSyncAt: "",
   settings: {
     endpointUrl: IS_LOCAL_PREVIEW ? "" : DEFAULT_ENDPOINT_URL
   }
@@ -106,6 +107,13 @@ function saveLocalData() {
   localStorage.setItem(STORAGE_KEYS.ownerNotes, JSON.stringify(state.ownerNotes));
 }
 
+function setSyncStatus(message, type = "") {
+  const status = $("#syncStatus");
+  if (!status) return;
+  status.textContent = message;
+  status.className = type ? `notice ${type}` : "";
+}
+
 function saveSettings() {
   state.settings.endpointUrl = $("#endpointInput").value.trim();
   const existing = JSON.parse(localStorage.getItem(STORAGE_KEYS.settings) || "{}");
@@ -135,8 +143,8 @@ function renderList() {
   const list = $("#submissionList");
   const count = $("#submissionCount");
   count.textContent = state.submissions.length
-    ? `${state.submissions.length} soumission(s) locale(s).`
-    : "Aucune soumission locale.";
+    ? `${state.submissions.length} soumission(s).`
+    : "Aucune soumission.";
 
   list.innerHTML = state.submissions.map((submission) => {
     const role = roleById(submission.selectedRoleId);
@@ -158,6 +166,95 @@ function renderList() {
       renderDetail();
     });
   });
+}
+
+function mergeServerSubmissions(serverSubmissions = []) {
+  const byId = new Map();
+
+  state.submissions.forEach((submission) => {
+    const id = submission.serverSubmissionId || submission.id;
+    if (id) byId.set(id, submission);
+  });
+
+  serverSubmissions.forEach((submission) => {
+    const id = submission.serverSubmissionId || submission.id;
+    if (!id) return;
+    const existing = byId.get(id) || {};
+    byId.set(id, {
+      ...existing,
+      ...submission,
+      id,
+      serverSubmissionId: submission.serverSubmissionId || id,
+      source: "server"
+    });
+
+    if (submission.ownerNotes && Object.keys(submission.ownerNotes).length) {
+      state.ownerNotes[id] = {
+        ...(state.ownerNotes[id] || {}),
+        ...submission.ownerNotes
+      };
+    }
+  });
+
+  state.submissions = [...byId.values()].sort((a, b) => {
+    return String(b.submittedAt || "").localeCompare(String(a.submittedAt || ""));
+  });
+
+  if (!state.selectedId || !state.submissions.some((item) => item.id === state.selectedId)) {
+    state.selectedId = state.submissions[0]?.id || "";
+  }
+}
+
+function fetchJsonp(url, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    const callbackName = `roadmapOwnersCallback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const script = document.createElement("script");
+    const timer = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("Delai depasse pendant la synchronisation."));
+    }, timeoutMs);
+
+    function cleanup() {
+      window.clearTimeout(timer);
+      delete window[callbackName];
+      script.remove();
+    }
+
+    window[callbackName] = (payload) => {
+      cleanup();
+      resolve(payload);
+    };
+
+    const separator = url.includes("?") ? "&" : "?";
+    script.src = `${url}${separator}action=list_roadmap_submissions&project=roadmap-trimestrielle-cfsb&limit=200&callback=${encodeURIComponent(callbackName)}`;
+    script.onerror = () => {
+      cleanup();
+      reject(new Error("Impossible de rejoindre Apps Script."));
+    };
+    document.head.appendChild(script);
+  });
+}
+
+async function syncServerSubmissions({ silent = false } = {}) {
+  if (!state.settings.endpointUrl) {
+    setSyncStatus("Mode local: ajoute l'URL Apps Script pour synchroniser Google Sheets.");
+    return;
+  }
+
+  if (!silent) setSyncStatus("Synchronisation avec Google Sheets en cours...");
+  const result = await fetchJsonp(state.settings.endpointUrl);
+  if (!result.ok) {
+    throw new Error(result.error || "Synchronisation refusee par Apps Script.");
+  }
+
+  mergeServerSubmissions(result.submissions || []);
+  state.lastSyncAt = result.syncedAt || new Date().toISOString();
+  saveLocalData();
+  renderList();
+  renderDetail();
+
+  const date = new Date(state.lastSyncAt).toLocaleString("fr-CA");
+  setSyncStatus(`${result.count || 0} soumission(s) chargee(s) depuis Google Sheets. Derniere sync: ${date}.`, "success");
 }
 
 function renderDetail() {
@@ -408,8 +505,20 @@ async function startDashboard() {
     $("#importButton").addEventListener("click", openImport);
     $("#closeImportButton").addEventListener("click", closeImport);
     $("#saveImportButton").addEventListener("click", importPayload);
+    $("#syncButton").addEventListener("click", async () => {
+      try {
+        await syncServerSubmissions();
+      } catch (error) {
+        setSyncStatus(`Synchronisation echouee: ${error.message}`, "error");
+      }
+    });
     $("#clearLocalButton").addEventListener("click", clearLocal);
     renderList();
+    try {
+      await syncServerSubmissions({ silent: true });
+    } catch (error) {
+      setSyncStatus(`Lecture locale seulement. Sync serveur echouee: ${error.message}`, "error");
+    }
   } catch (error) {
     $("#detailArea").innerHTML = `<div class="notice error">${escapeHtml(error.message)}</div>`;
   }

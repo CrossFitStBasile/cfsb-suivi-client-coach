@@ -31,6 +31,7 @@
           <a class="button secondary" href="./index.html">Formulaire employe</a>
           <button class="button secondary" id="settingsButton" type="button">Parametres</button>
           <button class="button secondary" id="importButton" type="button">Importer JSON</button>
+          <button class="button secondary" id="syncButton" type="button">Synchroniser</button>
           <button class="button secondary" id="lockOwnersButton" type="button">Verrouiller</button>
           <button class="button warn" id="clearLocalButton" type="button">Vider tests locaux</button>
         </div>
@@ -46,11 +47,8 @@
             </p>
           </div>
           <aside class="status-panel">
-            <h2>Vue locale MVP</h2>
-            <p>
-              Pour le prototype, les soumissions et notes sont gardees dans ce navigateur.
-              L'Apps Script utilisera les memes champs dans Google Sheets.
-            </p>
+            <h2>Base Roadmap</h2>
+            <p id="syncStatus">Les soumissions serveur seront chargees depuis Google Sheets.</p>
           </aside>
         </section>
 
