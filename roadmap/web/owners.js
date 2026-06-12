@@ -238,22 +238,41 @@ function fetchJsonp(url, timeoutMs = 15000) {
 function fetchIframeBridge(url, timeoutMs = 20000) {
   return new Promise((resolve, reject) => {
     const iframe = document.createElement("iframe");
+    let settled = false;
     const timer = window.setTimeout(() => {
       cleanup();
       reject(new Error("Delai depasse pendant la synchronisation iframe."));
     }, timeoutMs);
 
     function cleanup() {
+      settled = true;
       window.clearTimeout(timer);
       window.removeEventListener("message", handleMessage);
       iframe.remove();
     }
 
+    function resolvePayload(payload) {
+      cleanup();
+      resolve(payload || {});
+    }
+
     function handleMessage(event) {
       const data = event.data || {};
       if (data.source !== "cfsb-roadmap-owners-bridge") return;
-      cleanup();
-      resolve(data.payload || {});
+      resolvePayload(data.payload);
+    }
+
+    function tryReadWindowName() {
+      if (settled) return;
+      try {
+        const raw = iframe.contentWindow?.name || "";
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        if (data.source !== "cfsb-roadmap-owners-bridge") return;
+        resolvePayload(data.payload);
+      } catch (error) {
+        // Certains navigateurs bloquent la lecture cross-origin; postMessage reste disponible.
+      }
     }
 
     window.addEventListener("message", handleMessage);
@@ -264,6 +283,11 @@ function fetchIframeBridge(url, timeoutMs = 20000) {
     iframe.onerror = () => {
       cleanup();
       reject(new Error("Impossible de rejoindre Apps Script par iframe."));
+    };
+    iframe.onload = () => {
+      tryReadWindowName();
+      window.setTimeout(tryReadWindowName, 250);
+      window.setTimeout(tryReadWindowName, 1000);
     };
     document.body.appendChild(iframe);
   });
