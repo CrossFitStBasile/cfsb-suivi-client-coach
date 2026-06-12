@@ -226,12 +226,46 @@ function fetchJsonp(url, timeoutMs = 15000) {
     };
 
     const separator = url.includes("?") ? "&" : "?";
-    script.src = `${url}${separator}action=list_roadmap_submissions&project=roadmap-trimestrielle-cfsb&limit=200&callback=${encodeURIComponent(callbackName)}`;
+    script.src = `${url}${separator}action=list_roadmap_submissions&project=roadmap-trimestrielle-cfsb&limit=200&callback=${encodeURIComponent(callbackName)}&_=${Date.now()}`;
     script.onerror = () => {
       cleanup();
       reject(new Error("Impossible de rejoindre Apps Script."));
     };
     document.head.appendChild(script);
+  });
+}
+
+function fetchIframeBridge(url, timeoutMs = 20000) {
+  return new Promise((resolve, reject) => {
+    const iframe = document.createElement("iframe");
+    const timer = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("Delai depasse pendant la synchronisation iframe."));
+    }, timeoutMs);
+
+    function cleanup() {
+      window.clearTimeout(timer);
+      window.removeEventListener("message", handleMessage);
+      iframe.remove();
+    }
+
+    function handleMessage(event) {
+      const data = event.data || {};
+      if (data.source !== "cfsb-roadmap-owners-bridge") return;
+      cleanup();
+      resolve(data.payload || {});
+    }
+
+    window.addEventListener("message", handleMessage);
+    iframe.hidden = true;
+    iframe.referrerPolicy = "no-referrer";
+    const separator = url.includes("?") ? "&" : "?";
+    iframe.src = `${url}${separator}action=roadmap_owners_bridge&project=roadmap-trimestrielle-cfsb&limit=200&_=${Date.now()}`;
+    iframe.onerror = () => {
+      cleanup();
+      reject(new Error("Impossible de rejoindre Apps Script par iframe."));
+    };
+    document.body.appendChild(iframe);
   });
 }
 
@@ -242,7 +276,17 @@ async function syncServerSubmissions({ silent = false } = {}) {
   }
 
   if (!silent) setSyncStatus("Synchronisation avec Google Sheets en cours...");
-  const result = await fetchJsonp(state.settings.endpointUrl);
+  let result;
+  try {
+    result = await fetchJsonp(state.settings.endpointUrl);
+  } catch (jsonpError) {
+    if (!silent) setSyncStatus("Premier mode de sync bloque. Tentative par pont Apps Script...");
+    try {
+      result = await fetchIframeBridge(state.settings.endpointUrl);
+    } catch (bridgeError) {
+      throw new Error(`${jsonpError.message} Pont iframe aussi echoue: ${bridgeError.message}`);
+    }
+  }
   if (!result.ok) {
     throw new Error(result.error || "Synchronisation refusee par Apps Script.");
   }
