@@ -619,6 +619,13 @@ select:focus {
   padding: 16px 0 0;
 }
 
+.draft-status {
+  align-self: center;
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .button {
   display: inline-flex;
   min-height: 42px;
@@ -808,6 +815,10 @@ select:focus {
 
   .button {
     flex: 1;
+  }
+
+  .draft-status {
+    width: 100%;
   }
 
   .metrics {

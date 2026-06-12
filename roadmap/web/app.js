@@ -6,11 +6,15 @@ const STORAGE_KEYS = {
   submissions: "cfsb-roadmap-submissions",
   draft: "cfsb-roadmap-draft"
 };
+const AUTOSAVE_DELAY_MS = 800;
 
 const state = {
   config: null,
   selectedRoleId: "",
   answers: {},
+  clientSubmissionId: "",
+  autosaveTimer: null,
+  isSubmitting: false,
   settings: {
     endpointUrl: IS_LOCAL_PREVIEW ? "" : DEFAULT_ENDPOINT_URL,
     quarter: "2026-Q2"
@@ -34,7 +38,7 @@ function loadSettings() {
   if (stored) {
     state.settings = { ...state.settings, ...JSON.parse(stored) };
   }
-  if (!IS_LOCAL_PREVIEW && !state.settings.endpointUrl) {
+  if (!IS_LOCAL_PREVIEW) {
     state.settings.endpointUrl = DEFAULT_ENDPOINT_URL;
   }
   $("#endpointInput").placeholder = DEFAULT_ENDPOINT_URL;
@@ -43,7 +47,7 @@ function loadSettings() {
 }
 
 function saveSettings() {
-  state.settings.endpointUrl = $("#endpointInput").value.trim();
+  state.settings.endpointUrl = IS_LOCAL_PREVIEW ? $("#endpointInput").value.trim() : DEFAULT_ENDPOINT_URL;
   state.settings.quarter = $("#quarterInput").value.trim() || "2026-Q2";
   localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(state.settings));
   closeSettings();
@@ -88,12 +92,18 @@ function renderRoles() {
 }
 
 function selectRole(roleId) {
+  if (state.selectedRoleId && roleId !== state.selectedRoleId && Object.keys(state.answers).length) {
+    const shouldContinue = confirm("Changer de role va recommencer le brouillon actuel. Continuer?");
+    if (!shouldContinue) return;
+  }
   state.selectedRoleId = roleId;
   state.answers = {};
+  state.clientSubmissionId = createClientSubmissionId();
   renderRoles();
   renderForm();
   $("#formDot").classList.add("done");
   localStorage.removeItem(STORAGE_KEYS.draft);
+  updateDraftStatus("");
 }
 
 function renderForm() {
@@ -337,6 +347,77 @@ function handleFieldChange(event) {
   }
 
   refreshConditionalFields();
+  scheduleAutosave();
+}
+
+function createClientSubmissionId() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return `roadmap_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
+
+function updateDraftStatus(message) {
+  const status = $("#draftStatus");
+  if (!status) return;
+  status.textContent = message || "";
+}
+
+function scheduleAutosave() {
+  window.clearTimeout(state.autosaveTimer);
+  state.autosaveTimer = window.setTimeout(() => {
+    saveDraft({ silent: true });
+  }, AUTOSAVE_DELAY_MS);
+}
+
+function restoreDraftIfAvailable() {
+  const raw = localStorage.getItem(STORAGE_KEYS.draft);
+  if (!raw) return;
+
+  let draft;
+  try {
+    draft = JSON.parse(raw);
+  } catch (error) {
+    localStorage.removeItem(STORAGE_KEYS.draft);
+    return;
+  }
+
+  if (!draft.selectedRoleId || !draft.answers) return;
+  const shouldRestore = confirm("Un brouillon Roadmap existe dans ce navigateur. Veux-tu le reprendre?");
+  if (!shouldRestore) return;
+
+  state.selectedRoleId = draft.selectedRoleId;
+  state.answers = { ...(draft.answers || {}) };
+  state.clientSubmissionId = draft.clientSubmissionId || createClientSubmissionId();
+  if (draft.quarter) state.settings.quarter = draft.quarter;
+  $("#quarterInput").value = state.settings.quarter || "2026-Q2";
+  renderRoles();
+  renderForm();
+  populateFormValues();
+  refreshConditionalFields();
+  $("#formDot").classList.add("done");
+  showNotice("Brouillon restaure dans ce navigateur.", "success");
+}
+
+function populateFormValues() {
+  $$("[data-question-id]").forEach((input) => {
+    const questionId = input.dataset.questionId;
+    const value = state.answers[questionId];
+    if (value === undefined || value === null) return;
+
+    if (input.type === "radio") {
+      input.checked = String(input.value) === String(value);
+      return;
+    }
+
+    if (input.type === "checkbox") {
+      const selected = Array.isArray(value)
+        ? value.map(String)
+        : String(value).split(",").map((item) => item.trim());
+      input.checked = selected.includes(input.value);
+      return;
+    }
+
+    input.value = value;
+  });
 }
 
 function renderPathwayPreview(pathwayId) {
@@ -394,8 +475,10 @@ function refreshConditionalFields() {
 
 function buildPayload(status = "submitted") {
   const role = roleById(state.selectedRoleId);
+  if (!state.clientSubmissionId) state.clientSubmissionId = createClientSubmissionId();
   return {
     project: state.config.meta.project,
+    clientSubmissionId: state.clientSubmissionId,
     configVersion: state.config.meta.version,
     status,
     quarter: state.settings.quarter,
@@ -424,17 +507,21 @@ function readCurrentFormValues() {
   });
 }
 
-function saveDraft() {
+function saveDraft(options = {}) {
+  const silent = options && options.silent === true;
+  if (!state.selectedRoleId) return;
   readCurrentFormValues();
   const payload = buildPayload("draft");
   localStorage.setItem(STORAGE_KEYS.draft, JSON.stringify(payload));
-  showNotice("Brouillon sauvegarde dans ce navigateur.", "success");
+  updateDraftStatus(`Brouillon sauvegarde a ${new Date().toLocaleTimeString("fr-CA", { hour: "2-digit", minute: "2-digit" })}.`);
+  if (!silent) showNotice("Brouillon sauvegarde dans ce navigateur.", "success");
 }
 
 function saveLocalSubmission(payload, id = crypto.randomUUID()) {
   const existing = JSON.parse(localStorage.getItem(STORAGE_KEYS.submissions) || "[]");
-  existing.unshift({ id, ...payload });
-  localStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(existing));
+  const filtered = existing.filter((submission) => submission.id !== id && submission.clientSubmissionId !== payload.clientSubmissionId);
+  filtered.unshift({ id, ...payload });
+  localStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(filtered));
 }
 
 async function submitPayload(payload) {
@@ -465,24 +552,36 @@ async function submitPayload(payload) {
 
 async function handleSubmit(event) {
   event.preventDefault();
+  if (state.isSubmitting) return;
   readCurrentFormValues();
 
   if (!event.target.reportValidity()) return;
 
   const payload = buildPayload("submitted");
+  const submitButton = $("#submitButton");
   try {
+    state.isSubmitting = true;
+    submitButton.disabled = true;
+    submitButton.textContent = "Envoi...";
     const result = await submitPayload(payload);
     if (!result.localOnly) {
       const localPayload = result.submissionId ? { ...payload, serverSubmissionId: result.submissionId } : payload;
-      saveLocalSubmission(localPayload, result.submissionId || undefined);
+      saveLocalSubmission(localPayload, result.submissionId || payload.clientSubmissionId);
     }
     $("#submitDot").classList.add("done");
     event.target.reset();
     state.answers = {};
+    state.clientSubmissionId = createClientSubmissionId();
+    localStorage.removeItem(STORAGE_KEYS.draft);
+    updateDraftStatus("");
     refreshConditionalFields();
     showPayload(payload, state.settings.endpointUrl ? "Soumission envoyee et copie locale conservee." : "Soumission conservee localement pour test.");
   } catch (error) {
     showNotice(error.message, "error");
+  } finally {
+    state.isSubmitting = false;
+    submitButton.disabled = false;
+    submitButton.textContent = "Soumettre";
   }
 }
 
@@ -510,6 +609,7 @@ function closeSettings() {
 }
 
 async function init() {
+  state.clientSubmissionId = createClientSubmissionId();
   loadSettings();
   $("#settingsButton").addEventListener("click", openSettings);
   $("#closeSettingsButton").addEventListener("click", closeSettings);
@@ -520,6 +620,10 @@ async function init() {
   try {
     await loadConfig();
     renderRoles();
+    restoreDraftIfAvailable();
+    window.addEventListener("beforeunload", () => {
+      if (state.selectedRoleId && Object.keys(state.answers).length) saveDraft({ silent: true });
+    });
   } catch (error) {
     showNotice(error.message, "error");
   }

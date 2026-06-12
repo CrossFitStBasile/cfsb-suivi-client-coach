@@ -93,7 +93,7 @@ async function loadConfig() {
 function loadLocalData() {
   const storedSettings = JSON.parse(localStorage.getItem(STORAGE_KEYS.settings) || "{}");
   state.settings = { ...state.settings, ...storedSettings };
-  if (!IS_LOCAL_PREVIEW && !state.settings.endpointUrl) {
+  if (!IS_LOCAL_PREVIEW) {
     state.settings.endpointUrl = DEFAULT_ENDPOINT_URL;
   }
   $("#endpointInput").placeholder = DEFAULT_ENDPOINT_URL;
@@ -115,7 +115,7 @@ function setSyncStatus(message, type = "") {
 }
 
 function saveSettings() {
-  state.settings.endpointUrl = $("#endpointInput").value.trim();
+  state.settings.endpointUrl = IS_LOCAL_PREVIEW ? $("#endpointInput").value.trim() : DEFAULT_ENDPOINT_URL;
   const existing = JSON.parse(localStorage.getItem(STORAGE_KEYS.settings) || "{}");
   localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify({ ...existing, endpointUrl: state.settings.endpointUrl }));
   closeSettings();
@@ -298,6 +298,7 @@ function renderDetail() {
         </div>
         <div class="actions">
           <button class="button secondary" id="exportButton" type="button">Exporter JSON</button>
+          <button class="button warn" id="archiveButton" type="button">Archiver soumission</button>
           <button class="button" id="saveNotesButton" type="button">Sauvegarder notes</button>
         </div>
       </div>
@@ -316,6 +317,7 @@ function renderDetail() {
 
   $("#saveNotesButton").addEventListener("click", () => saveNotes(submission));
   $("#exportButton").addEventListener("click", () => exportSelected(submission));
+  $("#archiveButton").addEventListener("click", () => archiveSelectedSubmission(submission));
 }
 
 function renderOwnerFields(notes) {
@@ -431,6 +433,72 @@ async function syncOwnerNotes(submission, notes) {
   const result = await response.json();
   if (!result.ok) {
     throw new Error(result.error || "Erreur inconnue pendant la sauvegarde owners.");
+  }
+}
+
+async function archiveSelectedSubmission(submission) {
+  const name = submission.answers?.employee_name || "cette soumission";
+  const submissionId = submission.serverSubmissionId || submission.id;
+  if (!submissionId) return;
+  if (!confirm(`Archiver ${name}? La ligne restera dans Google Sheets, mais elle sera cachee du dashboard owners.`)) return;
+
+  const previousSubmissions = [...state.submissions];
+  const previousSelectedId = state.selectedId;
+  const previousNotes = { ...state.ownerNotes };
+
+  state.submissions = state.submissions.filter((item) => item.id !== submission.id && item.serverSubmissionId !== submissionId);
+  delete state.ownerNotes[submission.id];
+  delete state.ownerNotes[submissionId];
+  state.selectedId = state.submissions[0]?.id || "";
+  saveLocalData();
+  renderList();
+  renderDetail();
+  setSyncStatus("Soumission archivee localement. Envoi de l'action a Apps Script...", "success");
+
+  try {
+    await syncArchiveAction(submissionId, name);
+    setSyncStatus("Soumission archivee. Elle restera disponible dans Google Sheets au besoin.", "success");
+    window.setTimeout(() => {
+      syncServerSubmissions({ silent: true }).catch((error) => {
+        setSyncStatus(`Archive sauvegardee, mais resynchronisation echouee: ${error.message}`, "error");
+      });
+    }, 800);
+  } catch (error) {
+    state.submissions = previousSubmissions;
+    state.selectedId = previousSelectedId;
+    state.ownerNotes = previousNotes;
+    saveLocalData();
+    renderList();
+    renderDetail();
+    setSyncStatus(`Archivage annule: ${error.message}`, "error");
+  }
+}
+
+async function syncArchiveAction(submissionId, name) {
+  if (!state.settings.endpointUrl) return;
+
+  const response = await fetch(state.settings.endpointUrl, {
+    method: "POST",
+    mode: "no-cors",
+    credentials: "include",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({
+      action: "archive_roadmap_submission",
+      submissionId,
+      actor: "owners_dashboard",
+      reason: `Archive depuis dashboard owners: ${name}`
+    })
+  });
+
+  if (response.type === "opaque") return;
+
+  if (!response.ok) {
+    throw new Error(`Erreur endpoint (${response.status})`);
+  }
+
+  const result = await response.json();
+  if (!result.ok) {
+    throw new Error(result.error || "Erreur inconnue pendant l'archivage.");
   }
 }
 
