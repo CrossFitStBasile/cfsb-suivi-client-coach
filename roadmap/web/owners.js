@@ -6,7 +6,8 @@ const STORAGE_KEYS = {
   settings: "cfsb-roadmap-settings",
   submissions: "cfsb-roadmap-submissions",
   ownerNotes: "cfsb-roadmap-owner-notes",
-  ownerAccess: "cfsb-roadmap-owner-access"
+  ownerAccess: "cfsb-roadmap-owner-access",
+  archivedSubmissions: "cfsb-roadmap-archived-submissions"
 };
 const OWNER_PIN_HASH = "2c0e6aedc46934b8f4c0eff7cb21be678c5a35449ea3374b15f3a2f65259c3d7";
 
@@ -15,6 +16,7 @@ const state = {
   submissions: [],
   selectedId: "",
   ownerNotes: {},
+  archivedSubmissions: {},
   lastSyncAt: "",
   settings: {
     endpointUrl: IS_LOCAL_PREVIEW ? "" : DEFAULT_ENDPOINT_URL
@@ -100,12 +102,14 @@ function loadLocalData() {
   $("#endpointInput").placeholder = DEFAULT_ENDPOINT_URL;
   state.submissions = JSON.parse(localStorage.getItem(STORAGE_KEYS.submissions) || "[]");
   state.ownerNotes = JSON.parse(localStorage.getItem(STORAGE_KEYS.ownerNotes) || "{}");
+  state.archivedSubmissions = JSON.parse(localStorage.getItem(STORAGE_KEYS.archivedSubmissions) || "{}");
   $("#endpointInput").value = state.settings.endpointUrl || "";
 }
 
 function saveLocalData() {
   localStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(state.submissions));
   localStorage.setItem(STORAGE_KEYS.ownerNotes, JSON.stringify(state.ownerNotes));
+  localStorage.setItem(STORAGE_KEYS.archivedSubmissions, JSON.stringify(state.archivedSubmissions));
 }
 
 function setSyncStatus(message, type = "") {
@@ -169,17 +173,35 @@ function renderList() {
   });
 }
 
+function submissionKey(submission) {
+  return submission?.serverSubmissionId || submission?.id || "";
+}
+
+function isArchivedSubmission(submissionOrId) {
+  const id = typeof submissionOrId === "string" ? submissionOrId : submissionKey(submissionOrId);
+  return Boolean(id && state.archivedSubmissions[id]);
+}
+
+function markSubmissionArchived(submissionId, name) {
+  if (!submissionId) return;
+  state.archivedSubmissions[submissionId] = {
+    archivedAt: new Date().toISOString(),
+    name: name || ""
+  };
+}
+
 function mergeServerSubmissions(serverSubmissions = []) {
   const byId = new Map();
 
   state.submissions.forEach((submission) => {
     const id = submission.serverSubmissionId || submission.id;
-    if (id) byId.set(id, submission);
+    if (id && !isArchivedSubmission(id)) byId.set(id, submission);
   });
 
   serverSubmissions.forEach((submission) => {
     const id = submission.serverSubmissionId || submission.id;
     if (!id) return;
+    if (isArchivedSubmission(id)) return;
     const existing = byId.get(id) || {};
     byId.set(id, {
       ...existing,
@@ -339,10 +361,10 @@ async function syncServerSubmissions({ silent = false } = {}) {
   const date = new Date(state.lastSyncAt).toLocaleString("fr-CA");
   if (result.snapshot) {
     const snapshotDate = result.snapshotGeneratedAt ? new Date(result.snapshotGeneratedAt).toLocaleString("fr-CA") : date;
-    setSyncStatus(`${result.count || 0} soumission(s) chargee(s) depuis le snapshot GitHub du ${snapshotDate}. Sync live bloquee dans ce navigateur.`, "success");
+    setSyncStatus(`${state.submissions.length} soumission(s) visible(s) depuis le snapshot GitHub du ${snapshotDate}. Sync live bloquee dans ce navigateur.`, "success");
     return;
   }
-  setSyncStatus(`${result.count || 0} soumission(s) chargee(s) depuis Google Sheets. Derniere sync: ${date}.`, "success");
+  setSyncStatus(`${state.submissions.length} soumission(s) visible(s) depuis Google Sheets. Derniere sync: ${date}.`, "success");
 }
 
 function renderDetail() {
@@ -528,12 +550,9 @@ async function archiveSelectedSubmission(submission) {
   const name = submission.answers?.employee_name || "cette soumission";
   const submissionId = submission.serverSubmissionId || submission.id;
   if (!submissionId) return;
-  if (!confirm(`Archiver ${name}? La ligne restera dans Google Sheets, mais elle sera cachee du dashboard owners.`)) return;
+  if (!confirm(`Archiver ${name}? La ligne restera dans Google Sheets, mais elle sera cachee du dashboard owners dans ce navigateur.`)) return;
 
-  const previousSubmissions = [...state.submissions];
-  const previousSelectedId = state.selectedId;
-  const previousNotes = { ...state.ownerNotes };
-
+  markSubmissionArchived(submissionId, name);
   state.submissions = state.submissions.filter((item) => item.id !== submission.id && item.serverSubmissionId !== submissionId);
   delete state.ownerNotes[submission.id];
   delete state.ownerNotes[submissionId];
@@ -545,20 +564,14 @@ async function archiveSelectedSubmission(submission) {
 
   try {
     await syncArchiveAction(submissionId, name);
-    setSyncStatus("Soumission archivee. Elle restera disponible dans Google Sheets au besoin.", "success");
+    setSyncStatus("Soumission archivee localement et action envoyee a Apps Script.", "success");
     window.setTimeout(() => {
       syncServerSubmissions({ silent: true }).catch((error) => {
-        setSyncStatus(`Archive sauvegardee, mais resynchronisation echouee: ${error.message}`, "error");
+        setSyncStatus(`Archive conservee localement. Resynchronisation echouee: ${error.message}`, "error");
       });
     }, 800);
   } catch (error) {
-    state.submissions = previousSubmissions;
-    state.selectedId = previousSelectedId;
-    state.ownerNotes = previousNotes;
-    saveLocalData();
-    renderList();
-    renderDetail();
-    setSyncStatus(`Archivage annule: ${error.message}`, "error");
+    setSyncStatus(`Archive conservee localement. Apps Script n'a pas confirme: ${error.message}`, "error");
   }
 }
 
