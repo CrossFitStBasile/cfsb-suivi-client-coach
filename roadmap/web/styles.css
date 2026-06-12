@@ -129,6 +129,10 @@ button {
   padding: 28px 0 56px;
 }
 
+.owner-container {
+  width: min(1480px, calc(100% - 32px));
+}
+
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.6fr);
@@ -721,7 +725,7 @@ select:focus {
 
 .admin-grid {
   display: grid;
-  grid-template-columns: minmax(220px, 0.42fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
@@ -762,9 +766,33 @@ select:focus {
   font-size: 13px;
 }
 
+.owner-submission-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.owner-submission-header > div {
+  min-width: 0;
+}
+
+.owner-submission-header h2 {
+  margin: 0;
+}
+
+.submission-picker {
+  width: min(460px, 42vw);
+  margin: 0;
+}
+
+.submission-picker select {
+  min-height: 42px;
+}
+
 .meeting-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
   gap: 16px;
   align-items: start;
 }
@@ -845,6 +873,14 @@ select:focus {
   .sticky-owner-notes {
     position: static;
     max-height: none;
+  }
+
+  .owner-submission-header {
+    display: grid;
+  }
+
+  .submission-picker {
+    width: 100%;
   }
 
   .topbar {
