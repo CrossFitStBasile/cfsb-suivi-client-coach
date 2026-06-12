@@ -22,6 +22,8 @@ const state = {
   config: null,
   submissions: [],
   selectedId: "",
+  selectedArchiveId: "",
+  view: "active",
   ownerNotes: {},
   archivedSubmissions: {},
   filters: {
@@ -140,6 +142,15 @@ function saveSettings() {
   closeSettings();
 }
 
+function normalizeName(value) {
+  return String(value || "Sans nom")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 function roleById(roleId) {
   return state.config.roles.find((role) => role.id === roleId);
 }
@@ -234,7 +245,49 @@ function filteredSubmissions() {
   });
 }
 
+function archivedEntries() {
+  return Object.entries(state.archivedSubmissions || {}).map(([id, archive]) => {
+    const submission = archive.submission || null;
+    const role = submission ? roleById(submission.selectedRoleId) : null;
+    const ownerNotes = archive.ownerNotes || (submission ? ownerNotesFor(submission) : {});
+    const name = archive.name || submission?.answers?.employee_name || "Sans nom";
+    return {
+      id,
+      archive,
+      submission,
+      ownerNotes,
+      name,
+      normalizedName: normalizeName(name),
+      roleLabel: role?.label || submission?.selectedRoleLabel || archive.roleLabel || "Role inconnu",
+      roleId: submission?.selectedRoleId || archive.roleId || "",
+      quarter: submission?.quarter || archive.quarter || "",
+      archivedAt: archive.archivedAt || "",
+      submittedAt: submission?.submittedAt || archive.submittedAt || ""
+    };
+  }).sort((a, b) => String(b.archivedAt || b.submittedAt || "").localeCompare(String(a.archivedAt || a.submittedAt || "")));
+}
+
+function filteredArchivedEntries() {
+  const search = state.filters.search.trim().toLowerCase();
+  return archivedEntries().filter((entry) => {
+    const status = entry.ownerNotes?.owner_status || "archived";
+    const haystack = [
+      entry.name,
+      entry.roleLabel,
+      entry.quarter,
+      statusLabel(status)
+    ].join(" ").toLowerCase();
+
+    if (search && !haystack.includes(search)) return false;
+    if (state.filters.role !== "all" && entry.roleId !== state.filters.role) return false;
+    if (state.filters.quarter !== "all" && entry.quarter !== state.filters.quarter) return false;
+    if (state.filters.status !== "all" && status !== state.filters.status) return false;
+    return true;
+  });
+}
+
 function ensureSelectedSubmissionVisible() {
+  if (state.view !== "active") return [];
   const visible = filteredSubmissions();
   if (!visible.length) {
     state.selectedId = "";
@@ -242,6 +295,19 @@ function ensureSelectedSubmissionVisible() {
   }
   if (!visible.some((submission) => submission.id === state.selectedId)) {
     state.selectedId = visible[0].id;
+  }
+  return visible;
+}
+
+function ensureSelectedArchiveVisible() {
+  if (state.view !== "archive") return [];
+  const visible = filteredArchivedEntries();
+  if (!visible.length) {
+    state.selectedArchiveId = "";
+    return visible;
+  }
+  if (!visible.some((entry) => entry.id === state.selectedArchiveId)) {
+    state.selectedArchiveId = visible[0].id;
   }
   return visible;
 }
@@ -255,7 +321,10 @@ function renderOwnerFilters() {
   const selectedRole = roleFilter.value || state.filters.role;
   const selectedQuarter = quarterFilter.value || state.filters.quarter;
   const selectedStatus = statusFilter.value || state.filters.status;
-  const quarters = [...new Set(state.submissions.map((submission) => submission.quarter).filter(Boolean))].sort().reverse();
+  const quarters = [...new Set([
+    ...state.submissions.map((submission) => submission.quarter).filter(Boolean),
+    ...archivedEntries().map((entry) => entry.quarter).filter(Boolean)
+  ])].sort().reverse();
 
   roleFilter.innerHTML = '<option value="all">Tous les roles</option>' + state.config.roles.map((role) => (
     `<option value="${escapeHtml(role.id)}">${escapeHtml(role.label)}</option>`
@@ -298,7 +367,36 @@ function bindOwnerFilters() {
   });
 }
 
+function renderViewTabs() {
+  const activeButton = $("#activeViewButton");
+  const archiveButton = $("#archiveViewButton");
+  if (!activeButton || !archiveButton) return;
+  activeButton.classList.toggle("active", state.view === "active");
+  archiveButton.classList.toggle("active", state.view === "archive");
+  const archiveCount = archivedEntries().length;
+  archiveButton.textContent = archiveCount ? `Archives (${archiveCount})` : "Archives";
+}
+
+function bindViewTabs() {
+  $("#activeViewButton")?.addEventListener("click", () => {
+    state.view = "active";
+    renderViewTabs();
+    renderList();
+    renderDetail();
+  });
+  $("#archiveViewButton")?.addEventListener("click", () => {
+    state.view = "archive";
+    renderViewTabs();
+    renderList();
+    renderDetail();
+  });
+}
+
 function renderList() {
+  if (state.view === "archive") {
+    ensureSelectedArchiveVisible();
+    return;
+  }
   const visibleSubmissions = ensureSelectedSubmissionVisible();
   const list = $("#submissionList");
   const count = $("#submissionCount");
@@ -379,6 +477,132 @@ function bindSubmissionPicker() {
   });
 }
 
+function archiveGroups(entries) {
+  const groups = new Map();
+  entries.forEach((entry) => {
+    const key = entry.normalizedName || entry.id;
+    if (!groups.has(key)) {
+      groups.set(key, { key, name: entry.name, entries: [] });
+    }
+    groups.get(key).entries.push(entry);
+  });
+  return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name, "fr"));
+}
+
+function renderArchivesView() {
+  const area = $("#detailArea");
+  const entries = ensureSelectedArchiveVisible();
+  const groups = archiveGroups(entries);
+  const selected = entries.find((entry) => entry.id === state.selectedArchiveId);
+
+  if (!entries.length) {
+    area.innerHTML = `
+      <section class="section">
+        <div class="section-header">
+          <h2>Archives</h2>
+          <p>${archivedEntries().length ? "Aucune archive ne correspond aux filtres actifs." : "Aucune rencontre archivee pour le moment."}</p>
+        </div>
+        <div class="section-body">
+          <div class="notice">Quand une rencontre sera archivee, elle apparaitra ici dans le dossier de la personne.</div>
+        </div>
+      </section>
+    `;
+    return;
+  }
+
+  area.innerHTML = `
+    <section class="section">
+      <div class="section-header owner-submission-header">
+        <div>
+          <h2>Archives / dossiers equipe</h2>
+          <p>${entries.length} roadmap archivee(s), regroupee(s) par membre. Les anciennes archives gardent leur contenu meme si le formulaire evolue.</p>
+        </div>
+      </div>
+      <div class="archive-browser">
+        <aside class="archive-list" aria-label="Dossiers membres archives">
+          ${groups.map((group) => `
+            <div class="archive-person">
+              <strong>${escapeHtml(group.name)}</strong>
+              <span>${group.entries.length} archive(s)</span>
+              ${group.entries.map((entry) => `
+                <button class="archive-entry${entry.id === state.selectedArchiveId ? " active" : ""}" type="button" data-archive-id="${escapeHtml(entry.id)}">
+                  <span>${escapeHtml(entry.quarter || "Sans trimestre")}</span>
+                  <small>${escapeHtml(entry.roleLabel)}${entry.archivedAt ? ` - archivee le ${escapeHtml(new Date(entry.archivedAt).toLocaleDateString("fr-CA"))}` : ""}</small>
+                </button>
+              `).join("")}
+            </div>
+          `).join("")}
+        </aside>
+        <div class="archive-detail">
+          ${selected ? renderArchivedEntryDetail(selected) : '<div class="notice">Selectionne une archive.</div>'}
+        </div>
+      </div>
+    </section>
+  `;
+
+  $$(".archive-entry", area).forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedArchiveId = button.dataset.archiveId;
+      renderArchivesView();
+    });
+  });
+  $("#exportArchiveButton")?.addEventListener("click", () => exportArchiveEntry(selected));
+}
+
+function renderArchivedEntryDetail(entry) {
+  const submission = entry.submission;
+  if (!submission) {
+    return `
+      <div class="notice">
+        Cette archive vient d'une ancienne version locale qui ne contenait que le marqueur d'archive. Les prochaines archives garderont les reponses completes.
+      </div>
+    `;
+  }
+
+  const summary = buildOwnerSummary(submission);
+  return `
+    <section class="section archive-inner-section">
+      <div class="section-header">
+        <h2>${escapeHtml(entry.name)}</h2>
+        <p>${escapeHtml(entry.roleLabel)} - ${escapeHtml(entry.quarter || "Sans trimestre")} - formulaire v${escapeHtml(entry.archive.formVersion || "inconnue")}</p>
+      </div>
+      <div class="section-body">
+        <div class="metrics">
+          <div class="metric"><strong>${escapeHtml(statusLabel(entry.ownerNotes?.owner_status || "archived"))}</strong><span>Statut final</span></div>
+          <div class="metric"><strong>${escapeHtml(entry.archivedAt ? new Date(entry.archivedAt).toLocaleDateString("fr-CA") : "Sans date")}</strong><span>Date archive</span></div>
+          <div class="metric"><strong>${escapeHtml(entry.submittedAt ? new Date(entry.submittedAt).toLocaleDateString("fr-CA") : "Sans date")}</strong><span>Date soumission</span></div>
+          <div class="metric"><strong>${escapeHtml(entry.ownerNotes?.owner_reviewer || "Non assigne")}</strong><span>Owner</span></div>
+        </div>
+        ${entry.ownerNotes?.owner_followup_notes ? `
+          <div class="archive-note">
+            <strong>Note de rencontre</strong>
+            <p>${escapeHtml(entry.ownerNotes.owner_followup_notes)}</p>
+          </div>
+        ` : ""}
+        ${renderOwnerSummary(summary)}
+        <div class="actions">
+          <button class="button secondary" id="exportArchiveButton" type="button">Exporter archive JSON</button>
+        </div>
+      </div>
+    </section>
+    <section class="section archive-inner-section">
+      <div class="section-header">
+        <h2>Reponses archivees</h2>
+        <p>Lecture de la soumission telle qu'elle a ete conservee au moment de l'archive.</p>
+      </div>
+      <div class="section-body">
+        ${renderResponseSections(submission)}
+      </div>
+    </section>
+  `;
+}
+
+function exportArchiveEntry(entry) {
+  if (!entry) return;
+  navigator.clipboard?.writeText(JSON.stringify(entry.archive, null, 2));
+  alert("Archive JSON copiee dans le presse-papiers.");
+}
+
 function submissionKey(submission) {
   return submission?.serverSubmissionId || submission?.id || "";
 }
@@ -388,11 +612,21 @@ function isArchivedSubmission(submissionOrId) {
   return Boolean(id && state.archivedSubmissions[id]);
 }
 
-function markSubmissionArchived(submissionId, name) {
+function markSubmissionArchived(submissionId, name, submission = null, ownerNotes = {}) {
   if (!submissionId) return;
   state.archivedSubmissions[submissionId] = {
     archivedAt: new Date().toISOString(),
-    name: name || ""
+    name: name || "",
+    roleId: submission?.selectedRoleId || "",
+    roleLabel: roleById(submission?.selectedRoleId)?.label || submission?.selectedRoleLabel || "",
+    quarter: submission?.quarter || "",
+    submittedAt: submission?.submittedAt || "",
+    formVersion: state.config?.meta?.version || "",
+    submission,
+    ownerNotes: {
+      ...ownerNotes,
+      owner_status: ownerNotes.owner_status || "archived"
+    }
   };
 }
 
@@ -562,6 +796,7 @@ async function syncServerSubmissions({ silent = false } = {}) {
   state.lastSyncAt = result.syncedAt || new Date().toISOString();
   saveLocalData();
   renderOwnerFilters();
+  renderViewTabs();
   renderList();
   renderDetail();
 
@@ -576,6 +811,10 @@ async function syncServerSubmissions({ silent = false } = {}) {
 
 function renderDetail() {
   const area = $("#detailArea");
+  if (state.view === "archive") {
+    renderArchivesView();
+    return;
+  }
   ensureSelectedSubmissionVisible();
   const submission = state.submissions.find((item) => item.id === state.selectedId);
   if (!submission) {
@@ -973,16 +1212,23 @@ async function syncOwnerNotes(submission, notes) {
 async function archiveSelectedSubmission(submission) {
   const name = submission.answers?.employee_name || "cette soumission";
   const submissionId = submission.serverSubmissionId || submission.id;
+  const notes = {
+    ...ownerNotesFor(submission),
+    owner_status: ownerNotesFor(submission).owner_status || "archived"
+  };
   if (!submissionId) return;
-  if (!confirm(`Archiver ${name}? La ligne restera dans Google Sheets, mais elle sera cachee du dashboard owners dans ce navigateur.`)) return;
+  if (!confirm(`Archiver ${name}? La rencontre sera retiree des actifs, mais restera consultable dans Archives / dossiers equipe.`)) return;
 
-  markSubmissionArchived(submissionId, name);
+  markSubmissionArchived(submissionId, name, submission, notes);
   state.submissions = state.submissions.filter((item) => item.id !== submission.id && item.serverSubmissionId !== submissionId);
   delete state.ownerNotes[submission.id];
   delete state.ownerNotes[submissionId];
   state.selectedId = state.submissions[0]?.id || "";
+  state.view = "archive";
+  state.selectedArchiveId = submissionId;
   saveLocalData();
   renderOwnerFilters();
+  renderViewTabs();
   renderList();
   renderDetail();
   setSyncStatus("Soumission archivee localement. Envoi de l'action a Apps Script...", "success");
@@ -1095,6 +1341,7 @@ function importPayload() {
     saveLocalData();
     closeImport();
     renderOwnerFilters();
+    renderViewTabs();
     renderList();
   } catch (error) {
     alert(`JSON invalide: ${error.message}`);
@@ -1102,12 +1349,15 @@ function importPayload() {
 }
 
 function clearLocal() {
-  if (!confirm("Supprimer les soumissions et notes locales de test?")) return;
+  if (!confirm("Supprimer les soumissions et notes actives locales de test? Les archives sont conservees.")) return;
   state.submissions = [];
   state.ownerNotes = {};
   saveLocalData();
   state.selectedId = "";
+  state.selectedArchiveId = "";
+  state.view = "active";
   renderOwnerFilters();
+  renderViewTabs();
   renderList();
   renderDetail();
 }
@@ -1130,6 +1380,7 @@ async function startDashboard() {
     $("#closeImportButton").addEventListener("click", closeImport);
     $("#saveImportButton").addEventListener("click", importPayload);
     bindOwnerFilters();
+    bindViewTabs();
     $("#syncButton").addEventListener("click", async () => {
       try {
         await syncServerSubmissions();
@@ -1139,6 +1390,7 @@ async function startDashboard() {
     });
     $("#clearLocalButton").addEventListener("click", clearLocal);
     renderOwnerFilters();
+    renderViewTabs();
     renderList();
     try {
       await syncServerSubmissions({ silent: true });

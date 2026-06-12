@@ -88,6 +88,8 @@ async function run() {
     await page.getByRole("button", { name: /Ouvrir le dashboard/i }).click();
     await page.getByRole("button", { name: /Importer JSON/i }).waitFor({ timeout: 15000 });
     await page.getByRole("button", { name: /Synchroniser/i }).waitFor({ timeout: 15000 });
+    await page.getByRole("button", { name: /^Actifs$/i }).waitFor({ timeout: 15000 });
+    await page.getByRole("button", { name: /Archives/i }).waitFor({ timeout: 15000 });
     await page.getByText(/soumission\(s\) (chargee|visible)\(s\) depuis (Google Sheets|le snapshot GitHub)/i).waitFor({ timeout: 30000 });
     await page.locator("#submissionSelect").waitFor({ timeout: 15000 });
     await page.locator("#submissionSelect").selectOption({ label: /Marc-Andr[eé]/i });
