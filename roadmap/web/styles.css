@@ -120,6 +120,7 @@ button {
 .top-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -203,6 +204,74 @@ button {
   border-color: var(--accent);
   background: var(--surface-2);
   color: var(--accent);
+}
+
+.pipeline-board {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.pipeline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.pipeline-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.pipeline-header p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pipeline-lanes {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pipeline-lane {
+  display: grid;
+  gap: 4px;
+  min-height: 74px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+}
+
+.pipeline-lane.active {
+  border-color: var(--accent);
+  background: var(--surface-2);
+}
+
+.pipeline-lane strong {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.pipeline-lane span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.button.compact {
+  min-height: 36px;
+  padding: 7px 10px;
 }
 
 .progress-list {
@@ -919,6 +988,79 @@ select:focus {
   gap: 12px;
 }
 
+.prep-panel,
+.team-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.team-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 16px;
+}
+
+.prep-block {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.prep-block h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.plain-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.insight-list {
+  display: grid;
+  gap: 8px;
+}
+
+.insight-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+}
+
+.insight-row strong {
+  min-width: 0;
+  font-size: 14px;
+}
+
+.insight-row span {
+  display: inline-grid;
+  place-items: center;
+  min-width: 32px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--accent);
+  font-weight: 800;
+}
+
 .summary-block {
   min-width: 0;
   padding: 12px;
@@ -1101,7 +1243,10 @@ select:focus {
   .admin-grid,
   .meeting-grid,
   .owner-toolbar,
-  .org-grid {
+  .org-grid,
+  .pipeline-lanes,
+  .prep-panel,
+  .team-grid {
     grid-template-columns: 1fr;
   }
 
