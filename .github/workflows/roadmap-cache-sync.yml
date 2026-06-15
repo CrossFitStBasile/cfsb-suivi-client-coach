@@ -1,0 +1,49 @@
+name: Roadmap submissions cache sync
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/15 * * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: roadmap-submissions-cache-sync
+  cancel-in-progress: false
+
+jobs:
+  sync-cache:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main
+
+      - name: Checkout GitHub Pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: site
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Refresh roadmap snapshot
+        run: node ../main/tools/sync-roadmap-cache.mjs
+        working-directory: site
+        env:
+          ROADMAP_CACHE_PATH: roadmap/data/roadmap-submissions-cache.json
+
+      - name: Commit snapshot when changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- roadmap/data/roadmap-submissions-cache.json; then
+            echo "No roadmap cache changes."
+            exit 0
+          fi
+          git add roadmap/data/roadmap-submissions-cache.json
+          git commit -m "Refresh roadmap submissions cache"
+          git push origin gh-pages
+        working-directory: site
