@@ -630,11 +630,16 @@ function markSubmissionArchived(submissionId, name, submission = null, ownerNote
   };
 }
 
-function mergeServerSubmissions(serverSubmissions = []) {
+function isServerBackedSubmission(submission) {
+  return Boolean(submission?.serverSubmissionId || submission?.source === "server");
+}
+
+function mergeServerSubmissions(serverSubmissions = [], { replaceServerBacked = true } = {}) {
   const byId = new Map();
 
   state.submissions.forEach((submission) => {
     const id = submission.serverSubmissionId || submission.id;
+    if (replaceServerBacked && isServerBackedSubmission(submission)) return;
     if (id && !isArchivedSubmission(id)) byId.set(id, submission);
   });
 
@@ -1336,7 +1341,8 @@ function importPayload() {
       id: crypto.randomUUID(),
       status: payload.status || "imported",
       submittedAt: payload.submittedAt || new Date().toISOString(),
-      ...payload
+      ...payload,
+      source: payload.source || "imported"
     });
     saveLocalData();
     closeImport();
