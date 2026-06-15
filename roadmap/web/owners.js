@@ -159,6 +159,15 @@ function statusLabel(statusId) {
   return OWNER_STATUSES.find(([id]) => id === statusId)?.[1] || "A lire";
 }
 
+function activeStatusCounts() {
+  const counts = Object.fromEntries(OWNER_STATUSES.map(([id]) => [id, 0]));
+  state.submissions.forEach((submission) => {
+    const status = ownerStatusFor(submission);
+    counts[status] = (counts[status] || 0) + 1;
+  });
+  return counts;
+}
+
 function ownerNotesFor(submission) {
   if (!submission) return {};
   const id = submission.serverSubmissionId || submission.id;
@@ -353,6 +362,7 @@ function bindOwnerFilters() {
 
   searchInput.addEventListener("input", () => {
     state.filters.search = searchInput.value;
+    renderPipelineBoard();
     renderList();
     renderDetail();
   });
@@ -361,6 +371,7 @@ function bindOwnerFilters() {
       state.filters.role = roleFilter.value;
       state.filters.quarter = quarterFilter.value;
       state.filters.status = statusFilter.value;
+      renderPipelineBoard();
       renderList();
       renderDetail();
     });
@@ -370,11 +381,15 @@ function bindOwnerFilters() {
 function renderViewTabs() {
   const activeButton = $("#activeViewButton");
   const archiveButton = $("#archiveViewButton");
-  if (!activeButton || !archiveButton) return;
+  const teamButton = $("#teamViewButton");
+  if (!activeButton || !archiveButton || !teamButton) return;
   activeButton.classList.toggle("active", state.view === "active");
   archiveButton.classList.toggle("active", state.view === "archive");
+  teamButton.classList.toggle("active", state.view === "team");
   const archiveCount = archivedEntries().length;
   archiveButton.textContent = archiveCount ? `Archives (${archiveCount})` : "Archives";
+  teamButton.textContent = state.submissions.length ? `Portrait equipe (${state.submissions.length})` : "Portrait equipe";
+  renderPipelineBoard();
 }
 
 function bindViewTabs() {
@@ -390,9 +405,16 @@ function bindViewTabs() {
     renderList();
     renderDetail();
   });
+  $("#teamViewButton")?.addEventListener("click", () => {
+    state.view = "team";
+    renderViewTabs();
+    renderList();
+    renderDetail();
+  });
 }
 
 function renderList() {
+  if (state.view === "team") return;
   if (state.view === "archive") {
     ensureSelectedArchiveVisible();
     return;
@@ -431,6 +453,61 @@ function renderList() {
       renderList();
       renderDetail();
     });
+  });
+}
+
+function renderPipelineBoard() {
+  const board = $("#pipelineBoard");
+  if (!board) return;
+  const counts = activeStatusCounts();
+  const visibleCount = state.view === "archive" ? filteredArchivedEntries().length : filteredSubmissions().length;
+  board.innerHTML = `
+    <div class="pipeline-header">
+      <div>
+        <h2>Pipeline roadmap</h2>
+        <p>${escapeHtml(visibleCount)} element(s) visibles avec les filtres actifs.</p>
+      </div>
+      <button class="button secondary compact" id="resetOwnerFiltersButton" type="button">Reinitialiser filtres</button>
+    </div>
+    <div class="pipeline-lanes">
+      ${OWNER_STATUSES.map(([id, label]) => `
+        <button class="pipeline-lane${state.filters.status === id && state.view !== "archive" ? " active" : ""}" type="button" data-pipeline-status="${escapeHtml(id)}">
+          <strong>${escapeHtml(String(counts[id] || 0))}</strong>
+          <span>${escapeHtml(label)}</span>
+        </button>
+      `).join("")}
+      <button class="pipeline-lane${state.view === "archive" ? " active" : ""}" type="button" data-pipeline-view="archive">
+        <strong>${escapeHtml(String(archivedEntries().length))}</strong>
+        <span>Archives</span>
+      </button>
+    </div>
+  `;
+
+  $$(".pipeline-lane[data-pipeline-status]", board).forEach((button) => {
+    button.addEventListener("click", () => {
+      state.view = "active";
+      state.filters.status = button.dataset.pipelineStatus || "all";
+      const statusFilter = $("#ownerStatusFilter");
+      if (statusFilter) statusFilter.value = state.filters.status;
+      renderViewTabs();
+      renderList();
+      renderDetail();
+    });
+  });
+  $("[data-pipeline-view='archive']", board)?.addEventListener("click", () => {
+    state.view = "archive";
+    renderViewTabs();
+    renderList();
+    renderDetail();
+  });
+  $("#resetOwnerFiltersButton")?.addEventListener("click", () => {
+    state.filters = { search: "", role: "all", quarter: "all", status: "all" };
+    const searchInput = $("#ownerSearchInput");
+    if (searchInput) searchInput.value = "";
+    renderOwnerFilters();
+    renderViewTabs();
+    renderList();
+    renderDetail();
   });
 }
 
@@ -547,6 +624,148 @@ function renderArchivesView() {
     });
   });
   $("#exportArchiveButton")?.addEventListener("click", () => exportArchiveEntry(selected));
+}
+
+function roleDistribution(submissions) {
+  const counts = new Map();
+  submissions.forEach((submission) => {
+    const role = roleById(submission.selectedRoleId);
+    const label = role?.label || submission.selectedRoleLabel || "Role inconnu";
+    counts.set(label, (counts.get(label) || 0) + 1);
+  });
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+}
+
+function teamSignals(submissions) {
+  const byModule = new Map();
+  const byKeyword = new Map();
+  let lowScoreCount = 0;
+  let expectedCount = 0;
+  let answeredCount = 0;
+
+  submissions.forEach((submission) => {
+    const summary = buildOwnerSummary(submission);
+    expectedCount += summary.expectedCount;
+    answeredCount += summary.answeredCount;
+    lowScoreCount += summary.lowScores.length;
+    summary.lowScores.forEach(({ question }) => {
+      const moduleTitle = question?.moduleTitle || "Question";
+      byModule.set(moduleTitle, (byModule.get(moduleTitle) || 0) + 1);
+    });
+    detectTextSignals(submission).forEach((signal) => {
+      byKeyword.set(signal.label, (byKeyword.get(signal.label) || 0) + 1);
+    });
+  });
+
+  return {
+    completion: expectedCount ? Math.round((answeredCount / expectedCount) * 100) : 0,
+    lowScoreCount,
+    modules: [...byModule.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6),
+    keywords: [...byKeyword.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6)
+  };
+}
+
+function renderInsightList(rows, emptyText) {
+  if (!rows.length) return `<div class="notice">${escapeHtml(emptyText)}</div>`;
+  return `
+    <div class="insight-list">
+      ${rows.map(([label, count]) => `
+        <div class="insight-row">
+          <strong>${escapeHtml(label)}</strong>
+          <span>${escapeHtml(String(count))}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderTeamView() {
+  const area = $("#detailArea");
+  const active = filteredSubmissions();
+  const archived = filteredArchivedEntries();
+  const signals = teamSignals(active);
+  const statuses = activeStatusCounts();
+  const roles = roleDistribution(active);
+
+  area.innerHTML = `
+    <section class="section">
+      <div class="section-header">
+        <h2>Portrait equipe</h2>
+        <p>Vue d'ensemble pour preparer les rencontres, reperer les risques et planifier les suivis.</p>
+      </div>
+      <div class="section-body">
+        <div class="metrics">
+          <div class="metric"><strong>${escapeHtml(String(active.length))}</strong><span>Roadmaps actifs</span></div>
+          <div class="metric"><strong>${escapeHtml(String(archived.length))}</strong><span>Archives visibles</span></div>
+          <div class="metric"><strong>${escapeHtml(`${signals.completion}%`)}</strong><span>Completion moyenne</span></div>
+          <div class="metric"><strong>${escapeHtml(String(signals.lowScoreCount))}</strong><span>Scores 1-2 detectes</span></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="team-grid">
+      <section class="section">
+        <div class="section-header">
+          <h2>Statuts owners</h2>
+          <p>Ce qui reste a traiter dans le trimestre.</p>
+        </div>
+        <div class="section-body">
+          <div class="insight-list">
+            ${OWNER_STATUSES.map(([id, label]) => `
+              <button class="insight-row" type="button" data-team-status="${escapeHtml(id)}">
+                <strong>${escapeHtml(label)}</strong>
+                <span>${escapeHtml(String(statuses[id] || 0))}</span>
+              </button>
+            `).join("")}
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
+          <h2>Roles representes</h2>
+          <p>Distribution des soumissions actives.</p>
+        </div>
+        <div class="section-body">
+          ${renderInsightList(roles, "Aucun role visible avec les filtres actifs.")}
+        </div>
+      </section>
+    </div>
+
+    <div class="team-grid">
+      <section class="section">
+        <div class="section-header">
+          <h2>Zones a surveiller</h2>
+          <p>Modules ou les scores faibles apparaissent le plus souvent.</p>
+        </div>
+        <div class="section-body">
+          ${renderInsightList(signals.modules, "Aucune zone faible detectee pour l'instant.")}
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-header">
+          <h2>Themes recurrents</h2>
+          <p>Mots signaux reperes dans les reponses ouvertes.</p>
+        </div>
+        <div class="section-body">
+          ${renderInsightList(signals.keywords, "Aucun theme recurrent detecte pour l'instant.")}
+        </div>
+      </section>
+    </div>
+  `;
+
+  $$("[data-team-status]", area).forEach((button) => {
+    button.addEventListener("click", () => {
+      state.view = "active";
+      state.filters.status = button.dataset.teamStatus || "all";
+      const statusFilter = $("#ownerStatusFilter");
+      if (statusFilter) statusFilter.value = state.filters.status;
+      renderViewTabs();
+      renderList();
+      renderDetail();
+    });
+  });
 }
 
 function renderArchivedEntryDetail(entry) {
@@ -816,6 +1035,10 @@ async function syncServerSubmissions({ silent = false } = {}) {
 
 function renderDetail() {
   const area = $("#detailArea");
+  if (state.view === "team") {
+    renderTeamView();
+    return;
+  }
   if (state.view === "archive") {
     renderArchivesView();
     return;
@@ -844,6 +1067,7 @@ function renderDetail() {
   const aspiration = answers.coach_aspiration_select || "none";
   const pathway = state.config.pathways.find((item) => item.id === aspiration);
   const ownerSummary = buildOwnerSummary(submission);
+  const prepPlan = buildPreparationPlan(submission, ownerSummary, notes);
 
   area.innerHTML = `
     <section class="section">
@@ -872,6 +1096,11 @@ function renderDetail() {
         </div>
         <div class="section-body">
           ${renderOwnerSummary(ownerSummary)}
+          ${renderPreparationPlan(prepPlan)}
+          <div class="actions">
+            <button class="button secondary" id="copyPrepButton" type="button">Copier preparation</button>
+            <button class="button secondary" id="copyRecapButton" type="button">Copier recap rencontre</button>
+          </div>
         </div>
       </section>
 
@@ -909,6 +1138,8 @@ function renderDetail() {
 
   $("#saveNotesButton").addEventListener("click", () => saveNotes(submission));
   $("#exportButton").addEventListener("click", () => exportSelected(submission));
+  $("#copyPrepButton").addEventListener("click", () => copyMeetingBrief(submission));
+  $("#copyRecapButton").addEventListener("click", () => copyMeetingRecap(submission));
   $("#copyResumeLinkButton").addEventListener("click", () => copyResumeLink(submission));
   $("#copyReminderButton").addEventListener("click", () => copyReminderMessage(submission));
   $("#archiveButton").addEventListener("click", () => archiveSelectedSubmission(submission));
@@ -919,7 +1150,6 @@ function renderDetail() {
 function renderOwnerFields(notes) {
   const reviewer = notes.owner_reviewer || "";
   const status = notes.owner_status || "to_read";
-  const mainNote = notes.owner_followup_notes || notes.owner_priority_topics || "";
   return `
     <label class="field">
       <span>Statut</span>
@@ -937,10 +1167,108 @@ function renderOwnerFields(notes) {
       </select>
     </label>
     <label class="field">
+      <span>Format rencontre</span>
+      <select data-owner-field="owner_meeting_format">
+        ${["", "Gabriel seul", "Michael seul", "Gabriel + Michael", "Rencontre courte", "Rencontre approfondie"].map((option) => `
+          <option value="${escapeHtml(option)}" ${notes.owner_meeting_format === option ? "selected" : ""}>${escapeHtml(option || "Choisir")}</option>
+        `).join("")}
+      </select>
+    </label>
+    <label class="field">
+      <span>Sujets a discuter</span>
+      <textarea data-owner-field="owner_priority_topics" placeholder="Themes prioritaires, irritants, points sensibles...">${escapeHtml(notes.owner_priority_topics || "")}</textarea>
+    </label>
+    <label class="field">
+      <span>Questions a poser</span>
+      <textarea data-owner-field="owner_questions" placeholder="Questions de clarification pour guider la rencontre...">${escapeHtml(notes.owner_questions || "")}</textarea>
+    </label>
+    <label class="field">
+      <span>Engagements du membre</span>
+      <textarea data-owner-field="owner_performance" placeholder="Objectifs, comportements ou actions que la personne prend...">${escapeHtml(notes.owner_performance || "")}</textarea>
+    </label>
+    <label class="field">
+      <span>Engagements direction</span>
+      <textarea data-owner-field="owner_direction_commitments" placeholder="Support, clarification, formation ou decision que CFSB prend...">${escapeHtml(notes.owner_direction_commitments || "")}</textarea>
+    </label>
+    <label class="field">
       <span>Note de rencontre</span>
-      <textarea class="owner-main-note" data-owner-field="owner_followup_notes" placeholder="Points a discuter, decisions, engagements, prochaine action...">${escapeHtml(mainNote)}</textarea>
+      <textarea class="owner-main-note" data-owner-field="owner_followup_notes" placeholder="Synthese finale, decisions, prochaine action, suivi au prochain trimestre...">${escapeHtml(notes.owner_followup_notes || "")}</textarea>
     </label>
   `;
+}
+
+function textAnswers(submission) {
+  return Object.values(submission.answers || {})
+    .map((value) => String(value ?? "").toLowerCase())
+    .filter(Boolean);
+}
+
+function detectTextSignals(submission) {
+  const text = textAnswers(submission).join(" ");
+  const signals = [
+    { label: "Argent / remuneration", patterns: ["argent", "salaire", "pay", "paye", "revenu", "taux", "remuneration"] },
+    { label: "Role / clarte", patterns: ["role", "clarte", "flou", "confus", "attente"] },
+    { label: "Mentorat / formation", patterns: ["mentor", "formation", "developpement", "apprendre", "feedback"] },
+    { label: "Systemes / outils", patterns: ["systeme", "outil", "kilo", "chip", "process", "procedure"] },
+    { label: "Horaire / energie", patterns: ["horaire", "temps", "fatigue", "energie", "charge", "disponibilite"] },
+    { label: "Clients / membres", patterns: ["client", "membre", "retention", "suivi", "appel"] }
+  ];
+  return signals.filter((signal) => signal.patterns.some((pattern) => text.includes(pattern)));
+}
+
+function buildPreparationPlan(submission, summary, notes = {}) {
+  const answers = submission.answers || {};
+  const pathway = state.config.pathways.find((item) => item.id === answers.coach_aspiration_select);
+  const signals = detectTextSignals(submission);
+  const questions = [];
+
+  summary.lowScores.slice(0, 3).forEach(({ question, value }) => {
+    questions.push(`Qu'est-ce qui ferait passer "${question?.label || "ce point"}" de ${value} a 3?`);
+  });
+  if (summary.missingRequired.length) {
+    questions.push("Quelles reponses importantes manquent encore et pourquoi?");
+  }
+  if (pathway && pathway.id !== "none") {
+    questions.push(`Qu'est-ce qui serait le prochain pas concret vers ${pathway.label}?`);
+  }
+  signals.slice(0, 2).forEach((signal) => {
+    questions.push(`Qu'est-ce qu'on doit clarifier autour de: ${signal.label}?`);
+  });
+  if (notes.owner_questions) {
+    questions.unshift(...String(notes.owner_questions).split("\n").map((item) => item.trim()).filter(Boolean).slice(0, 3));
+  }
+
+  return {
+    signals,
+    questions: [...new Set(questions)].slice(0, 6),
+    ownerTopics: String(notes.owner_priority_topics || "").split("\n").map((item) => item.trim()).filter(Boolean).slice(0, 5),
+    memberCommitments: String(notes.owner_performance || "").split("\n").map((item) => item.trim()).filter(Boolean).slice(0, 5),
+    directionCommitments: String(notes.owner_direction_commitments || "").split("\n").map((item) => item.trim()).filter(Boolean).slice(0, 5)
+  };
+}
+
+function renderPreparationPlan(plan) {
+  return `
+    <div class="prep-panel">
+      <div class="prep-block">
+        <h3>Questions suggerees</h3>
+        ${renderPlainList(plan.questions, "Aucune question prioritaire generee.")}
+      </div>
+      <div class="prep-block">
+        <h3>Signaux a surveiller</h3>
+        ${renderPlainList(plan.signals.map((signal) => signal.label), "Aucun signal texte recurrent detecte.")}
+      </div>
+      <div class="prep-block">
+        <h3>Engagements notes</h3>
+        ${renderPlainList([...plan.memberCommitments, ...plan.directionCommitments].slice(0, 6), "Aucun engagement structure pour l'instant.")}
+      </div>
+    </div>
+  `;
+}
+
+function renderPlainList(items, emptyText) {
+  if (!items.length) return `<p class="summary-empty">${escapeHtml(emptyText)}</p>`;
+  return `<ul class="plain-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
 }
 
 function buildOwnerSummary(submission) {
@@ -1158,6 +1486,7 @@ function bindOwnerAutosave(submission) {
       const notes = collectOwnerNotes();
       saveOwnerNotesLocal(submission, notes);
       renderOwnerFilters();
+      renderViewTabs();
       renderList();
       if (field.dataset.ownerField === "owner_status") {
         renderDetail();
@@ -1286,6 +1615,74 @@ function exportSelected(submission) {
   };
   navigator.clipboard?.writeText(JSON.stringify(payload, null, 2));
   alert("JSON copie dans le presse-papiers.");
+}
+
+function meetingTextBlock(title, items) {
+  const cleanItems = items.map((item) => String(item || "").trim()).filter(Boolean);
+  if (!cleanItems.length) return `${title}\n- Rien a signaler pour l'instant.`;
+  return `${title}\n${cleanItems.map((item) => `- ${item}`).join("\n")}`;
+}
+
+function meetingBriefText(submission, { recap = false } = {}) {
+  const notes = ownerNotesFor(submission);
+  const summary = buildOwnerSummary(submission);
+  const prep = buildPreparationPlan(submission, summary, notes);
+  const role = roleById(submission.selectedRoleId);
+  const answers = submission.answers || {};
+  const name = answers.employee_name || "Sans nom";
+  const header = [
+    `Roadmap - ${name}`,
+    `${role?.label || submission.selectedRoleLabel || "Role inconnu"} - ${submission.quarter || "Sans trimestre"}`,
+    `Statut owner: ${statusLabel(ownerStatusFor(submission))}`,
+    `Format suggere: ${notes.owner_meeting_format || recommendMeetingFormat(submission, notes)}`
+  ];
+  const lowScores = summary.lowScores.map(({ question, value }) => `${question?.label || "Question"} (${value})`).slice(0, 6);
+  const strengths = summary.strengths.map(({ question }) => question?.label || "Question").slice(0, 4);
+
+  const blocks = [
+    header.join("\n"),
+    "",
+    meetingTextBlock("Forces a souligner", strengths),
+    "",
+    meetingTextBlock("Points a clarifier", lowScores),
+    "",
+    meetingTextBlock("Questions suggerees", prep.questions),
+    "",
+    meetingTextBlock("Sujets owners notes", prep.ownerTopics)
+  ];
+
+  if (recap) {
+    blocks.push(
+      "",
+      meetingTextBlock("Engagements du membre", prep.memberCommitments),
+      "",
+      meetingTextBlock("Engagements direction", prep.directionCommitments),
+      "",
+      `Note finale\n${notes.owner_followup_notes || "- A completer."}`
+    );
+  }
+
+  return blocks.join("\n");
+}
+
+async function copyMeetingBrief(submission) {
+  const text = meetingBriefText(submission);
+  try {
+    await navigator.clipboard?.writeText(text);
+    setSyncStatus("Preparation de rencontre copiee dans le presse-papiers.", "success");
+  } catch (error) {
+    window.prompt("Copie la preparation:", text);
+  }
+}
+
+async function copyMeetingRecap(submission) {
+  const text = meetingBriefText(submission, { recap: true });
+  try {
+    await navigator.clipboard?.writeText(text);
+    setSyncStatus("Recap de rencontre copie dans le presse-papiers.", "success");
+  } catch (error) {
+    window.prompt("Copie le recap:", text);
+  }
 }
 
 async function copyResumeLink(submission) {
