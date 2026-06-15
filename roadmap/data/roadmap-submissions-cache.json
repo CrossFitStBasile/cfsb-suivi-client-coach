@@ -1,7 +1,7 @@
 {
   "ok": true,
   "project": "roadmap-trimestrielle-cfsb",
-  "syncedAt": "2026-06-15T20:14:49.622Z",
+  "syncedAt": "2026-06-15T20:40:38.007Z",
   "count": 5,
   "submissions": [
     {
@@ -103,7 +103,17 @@
         "lever_systems_detail": "Continuellement en changement ce qui fait que c'est difficile à suivre. ",
         "coach_aspiration_select": "none"
       },
-      "ownerNotes": {}
+      "ownerNotes": {
+        "owner_reviewer": "",
+        "owner_people_values": "",
+        "owner_gwc": "",
+        "owner_performance": "",
+        "owner_priority_topics": "",
+        "owner_questions": "",
+        "owner_meeting_format": "",
+        "owner_direction_commitments": "",
+        "owner_followup_notes": "À clarifier : Quels etaient tes engagements ou objectifs principaux du trimestre precedent?\nAucune idée\n\nTon plus grand apprentissage du trimestre\nS'était désagréable\n\nn'avait pas fait l'autoévaluation des compétences en janvier.\n\n"
+      }
     },
     {
       "id": "1ac2df33-d5da-40ea-b110-8a3dd3e59ed5",
@@ -510,6 +520,6 @@
     }
   ],
   "snapshot": true,
-  "snapshotGeneratedAt": "2026-06-15T20:14:50.347Z",
+  "snapshotGeneratedAt": "2026-06-15T20:40:38.669Z",
   "sourceEndpoint": "Apps Script list_roadmap_submissions active only"
 }
