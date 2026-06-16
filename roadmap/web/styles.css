@@ -1328,13 +1328,19 @@ select:focus {
   line-height: 1.4;
 }
 
+.efficiency-card small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .revenue-table-wrap {
   overflow-x: auto;
 }
 
 .revenue-table {
   width: 100%;
-  min-width: 860px;
+  min-width: 980px;
   border-collapse: collapse;
   font-size: 14px;
 }
@@ -1377,6 +1383,13 @@ select:focus {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
+}
+
+.unit-note {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .revenue-metrics {

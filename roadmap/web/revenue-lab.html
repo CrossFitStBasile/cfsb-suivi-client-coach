@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Laboratoire revenus coach - Roadmap CFSB</title>
-    <link rel="stylesheet" href="./styles.css?v=20260616-revenue-lab-v1">
+    <link rel="stylesheet" href="./styles.css?v=20260616-revenue-lab-v2">
   </head>
   <body>
     <div class="app-shell">
@@ -26,8 +26,8 @@
             <span>Roadmap / Coach compensation</span>
             <h1>Revenu vise, heures reelles, efficacite administrative.</h1>
             <p>
-              Un outil de projection pour relier le mix de services, le niveau de formation,
-              les heures invisibles et le taux horaire reel.
+              Un outil de projection base sur la grille de remuneration CFSB: volume paye,
+              heures terrain, admin invisible et taux horaire reel.
             </p>
           </div>
           <aside class="revenue-status-card" id="statusCard">
@@ -65,9 +65,9 @@
               <div class="efficiency-card" id="efficiencyCard"></div>
 
               <label class="field">
-                <span>Heures admin fixes par semaine</span>
+                <span>Admin invisible fixe par semaine</span>
                 <input class="input" id="fixedAdminInput" type="number" min="0" step="0.25" value="2">
-                <small>Meetings, formation, organisation ou suivis non rattaches a un service precis.</small>
+                <small>Temps non remunere ou non rattache a une ligne payee: organisation, messages, preparation et suivi general.</small>
               </label>
             </div>
           </aside>
@@ -75,7 +75,7 @@
           <section class="section revenue-main">
             <div class="section-header">
               <h2>Mix de services hebdomadaire</h2>
-              <p>Les taux viennent du niveau choisi et peuvent etre ajustes pour tester un scenario.</p>
+              <p>Les taux viennent de la grille salariale. Certaines lignes sont payees par client present, puis converties en heures terrain estimees.</p>
             </div>
             <div class="section-body">
               <div class="revenue-table-wrap">
@@ -85,7 +85,8 @@
                       <th>Service</th>
                       <th>Type</th>
                       <th>Taux</th>
-                      <th>Heures / sem.</th>
+                      <th>Volume / sem.</th>
+                      <th>Heures terrain</th>
                       <th>Admin invisible</th>
                       <th>Total</th>
                     </tr>
@@ -100,7 +101,7 @@
         <section class="section">
           <div class="section-header">
             <h2>Lecture du scenario</h2>
-            <p>Le taux horaire reel tient compte des heures invisibles estimees.</p>
+            <p>Le taux horaire reel tient compte des heures terrain et des heures invisibles estimees.</p>
           </div>
           <div class="section-body">
             <div class="revenue-metrics" id="resultMetrics"></div>
@@ -137,6 +138,6 @@
       </main>
     </div>
 
-    <script src="./revenue-lab.js?v=20260616-revenue-lab-v1"></script>
+    <script src="./revenue-lab.js?v=20260616-revenue-lab-v2"></script>
   </body>
 </html>

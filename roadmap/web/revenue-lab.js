@@ -1,87 +1,107 @@
 const LEVELS = [
   {
     id: "formation_interne",
-    label: "Formation interne / shadowing",
-    description: "Phase d'apprentissage avec taux plus conservateurs et plus de temps invisible.",
+    label: "Palier 0 - formation interne / shadowing",
+    description: "Stagiaire ou coach en formation. Beaucoup d'accompagnement et de temps invisible.",
     adminModifier: 1.25,
+    semiClientsPerHour: 2,
     rates: {
-      group: 24,
-      pv60: 24,
-      pv45: 18,
-      pv30: 15,
-      intro: 24,
-      semi: 18,
-      specialty: 30,
-      csm: 18,
-      other: 15.75
+      group: 22,
+      intro: 22,
+      pv60: 30.6,
+      pv45: 22.95,
+      pv30: 20.9,
+      semi: 20.9,
+      specialtyClient: 20.9,
+      legends: 50,
+      fitTeen: 6.8,
+      headCoach: 0,
+      csm: 16.1,
+      admin: 16.1
     }
   },
   {
     id: "cfl1",
-    label: "CrossFit Level 1",
-    description: "Coach autonome sur les bases, encore en construction de vitesse administrative.",
+    label: "Palier 1 - CF-L1",
+    description: "Coach certifie CF-L1. Base cours de groupe et introductions a 25 $/h.",
     adminModifier: 1.1,
+    semiClientsPerHour: 2,
     rates: {
-      group: 27,
-      pv60: 30,
-      pv45: 22.5,
-      pv30: 18,
-      intro: 27,
-      semi: 18,
-      specialty: 40,
-      csm: 18,
-      other: 15.75
+      group: 25,
+      intro: 25,
+      pv60: 30.6,
+      pv45: 22.95,
+      pv30: 20.9,
+      semi: 20.9,
+      specialtyClient: 20.9,
+      legends: 50,
+      fitTeen: 6.8,
+      headCoach: 0,
+      csm: 20,
+      admin: 20
     }
   },
   {
     id: "cfl2",
-    label: "CrossFit Level 2",
-    description: "Profil standard coach professionnel actuel, base proche du tableau de rendement.",
+    label: "Palier 2 - CF-L2 / professionnel reconnu",
+    description: "Base coach professionnel actuel: cours a 30 $/h et prive 60 min a 34,20 $/h.",
     adminModifier: 1,
+    semiClientsPerHour: 3,
     rates: {
       group: 30,
+      intro: 30,
       pv60: 34.2,
       pv45: 25.65,
       pv30: 20.9,
-      intro: 30,
       semi: 20.9,
-      specialty: 50,
+      specialtyClient: 20.9,
+      legends: 50,
+      fitTeen: 6.8,
+      headCoach: 30,
       csm: 20,
-      other: 15.75
+      admin: 21.5
     }
   },
   {
     id: "cfl3",
-    label: "CrossFit Level 3",
-    description: "Coach avance avec plus de valeur par heure et meilleure autonomie de suivi.",
+    label: "Palier 3 - CF-L3 / autonomie avancee",
+    description: "Coach avance avec autonomie, programmation et capacite de densifier le semi-prive.",
     adminModifier: 0.9,
+    semiClientsPerHour: 4,
     rates: {
-      group: 34,
-      pv60: 40,
-      pv45: 30,
-      pv30: 24,
-      intro: 34,
-      semi: 24,
-      specialty: 60,
-      csm: 22,
-      other: 18
+      group: 35,
+      intro: 35,
+      pv60: 34.2,
+      pv45: 25.65,
+      pv30: 20.9,
+      semi: 20.9,
+      specialtyClient: 20.9,
+      legends: 50,
+      fitTeen: 6.8,
+      headCoach: 35,
+      csm: 20,
+      admin: 23
     }
   },
   {
-    id: "senior_specialiste",
-    label: "Senior / specialiste",
-    description: "Coach reference ou specialiste avec offre plus forte et meilleure densite economique.",
+    id: "direction",
+    label: "Palier 4 - direction / lead",
+    description: "Role de direction ou leadership avec taches administratives plus avancees.",
     adminModifier: 0.8,
+    semiClientsPerHour: 4,
     rates: {
-      group: 38,
-      pv60: 48,
-      pv45: 36,
-      pv30: 28,
-      intro: 38,
-      semi: 28,
-      specialty: 75,
-      csm: 25,
-      other: 20
+      group: 35,
+      intro: 35,
+      pv60: 34.2,
+      pv45: 25.65,
+      pv30: 20.9,
+      semi: 20.9,
+      specialtyClient: 20.9,
+      legends: 50,
+      fitTeen: 6.8,
+      headCoach: 35,
+      csm: 20,
+      admin: 27.5
     }
   }
 ];
@@ -90,27 +110,27 @@ const EFFICIENCY = {
   1: {
     label: "1/5 - Admin envahissante",
     ratio: 1,
-    text: "Environ 1 h admin par 1 h de service. Le taux reel chute rapidement."
+    text: "Environ 1 h admin par 1 h terrain. Le taux reel chute rapidement."
   },
   2: {
     label: "2/5 - Encore lourd",
     ratio: 0.65,
-    text: "Environ 1 h admin par 1.5 h de service. Plusieurs suivis prennent trop de place."
+    text: "Environ 1 h admin par 1.5 h terrain. Plusieurs suivis prennent trop de place."
   },
   3: {
     label: "3/5 - Fonctionnel",
     ratio: 0.35,
-    text: "Environ 1 h admin par 3 h de service. Les systemes existent, mais demandent encore de l'attention."
+    text: "Environ 1 h admin par 3 h terrain. Les systemes existent, mais demandent encore de l'attention."
   },
   4: {
     label: "4/5 - Efficace",
     ratio: 0.22,
-    text: "Environ 1 h admin par 4.5 h de service. Les routines protegent le taux horaire reel."
+    text: "Environ 1 h admin par 4.5 h terrain. Les routines protegent le taux horaire reel."
   },
   5: {
     label: "5/5 - Tres efficace",
     ratio: 0.17,
-    text: "Environ 1 h admin par 5 a 6 h de service. Les suivis sont propres, rapides et repetables."
+    text: "Environ 1 h admin par 5 a 6 h terrain. Les suivis sont propres, rapides et repetables."
   }
 };
 
@@ -118,65 +138,138 @@ const SERVICES = [
   {
     id: "group",
     label: "Cours de groupe",
-    type: "Classe",
-    defaultHours: 8,
-    adminWeight: 0.1
+    type: "Cours",
+    rateKey: "group",
+    defaultVolume: 8,
+    unit: "cours / h",
+    timeMode: "same",
+    adminWeight: 0.1,
+    note: "Grille: cours de groupe selon palier de certification."
+  },
+  {
+    id: "intro",
+    label: "Introductions / fondations",
+    type: "Integration",
+    rateKey: "intro",
+    defaultVolume: 2,
+    unit: "seances / h",
+    timeMode: "same",
+    adminWeight: 0.55,
+    note: "Meme palier que les cours de groupe dans la grille."
   },
   {
     id: "pv60",
     label: "Prive 60 min",
-    type: "Service client",
-    defaultHours: 2,
-    adminWeight: 1
+    type: "Prive",
+    rateKey: "pv60",
+    defaultVolume: 2,
+    unit: "seances",
+    timeMode: "same",
+    adminWeight: 1,
+    note: "30,60 $/h au palier 1; 34,20 $/h avec certification professionnelle reconnue."
   },
   {
     id: "pv45",
     label: "Prive 45 min",
-    type: "Service client",
-    defaultHours: 0,
-    adminWeight: 0.9
+    type: "Prive",
+    rateKey: "pv45",
+    defaultVolume: 0,
+    unit: "seances",
+    timeMode: "fixedMinutes",
+    minutes: 45,
+    adminWeight: 0.9,
+    note: "Taux prorate a partir du prive 60 min."
   },
   {
     id: "pv30",
     label: "Prive 30 min",
-    type: "Service client",
-    defaultHours: 0,
-    adminWeight: 0.8
-  },
-  {
-    id: "intro",
-    label: "Intro / fondations",
-    type: "Integration",
-    defaultHours: 2,
-    adminWeight: 0.55
+    type: "Prive",
+    rateKey: "pv30",
+    defaultVolume: 0,
+    unit: "seances",
+    timeMode: "fixedMinutes",
+    minutes: 30,
+    adminWeight: 0.8,
+    note: "Minimum conserve selon le tableau de rendement existant."
   },
   {
     id: "semi",
     label: "Semi-prive",
-    type: "Service client",
-    defaultHours: 30,
-    adminWeight: 0.25
+    type: "Client-present",
+    rateKey: "semi",
+    defaultVolume: 30,
+    unit: "clients-seances",
+    timeMode: "levelCapacity",
+    adminWeight: 0.25,
+    note: "20,90 $ par client; capacite: 2, 3 ou 4 clients/h selon palier."
   },
   {
-    id: "specialty",
-    label: "Specialite / clinique",
-    type: "Expertise",
-    defaultHours: 4,
-    adminWeight: 0.5
+    id: "specialtyClient",
+    label: "Cours de specialite",
+    type: "Client-present",
+    rateKey: "specialtyClient",
+    defaultVolume: 0,
+    unit: "clients-seances",
+    timeMode: "fixedCapacity",
+    capacity: 6,
+    adminWeight: 0.35,
+    note: "20,90 $ par client present, maximum 6 clients par heure."
+  },
+  {
+    id: "legends",
+    label: "Programme Legendes",
+    type: "Programme CFSB",
+    rateKey: "legends",
+    defaultVolume: 4,
+    unit: "seances",
+    timeMode: "same",
+    adminWeight: 0.35,
+    note: "50 $ par seance, petit groupe de maximum 8 personnes."
+  },
+  {
+    id: "fitTeen",
+    label: "Programme Fit-Teen",
+    type: "Programme CFSB",
+    rateKey: "fitTeen",
+    defaultVolume: 0,
+    unit: "presences",
+    timeMode: "fixedCapacity",
+    capacity: 12,
+    adminWeight: 0.2,
+    note: "6,80 $ par client present, maximum 12 enfants."
+  },
+  {
+    id: "headCoach",
+    label: "Entraineur-chef",
+    type: "Leadership",
+    rateKey: "headCoach",
+    defaultVolume: 0,
+    unit: "heures",
+    timeMode: "same",
+    adminWeight: 0.2,
+    note: "30 $/h CF-L2 250 h; 35 $/h CF-L3 375 h."
   },
   {
     id: "csm",
     label: "CSM / suivi client",
     type: "Admin payee",
-    defaultHours: 4,
-    adminWeight: 0
+    rateKey: "csm",
+    defaultVolume: 4,
+    unit: "heures",
+    timeMode: "same",
+    adminWeight: 0,
+    note: "Tache administrative payee, palier 1 dans la grille."
   },
   {
-    id: "other",
-    label: "Meetings / formation / org",
+    id: "admin",
+    label: "Administration / meetings / formation",
     type: "Admin payee",
-    defaultHours: 2,
-    adminWeight: 0
+    rateKey: "admin",
+    defaultVolume: 2,
+    unit: "heures",
+    timeMode: "same",
+    adminWeight: 0,
+    note: "Paliers administratifs: 16,10 $ a 30 $/h selon role et niveau."
   }
 ];
 
@@ -224,8 +317,8 @@ function initializeServices(level = levelById(state.levelId)) {
   SERVICES.forEach((service) => {
     if (!state.services[service.id]) {
       state.services[service.id] = {
-        hours: service.defaultHours,
-        rate: level.rates[service.id] || 0
+        volume: service.defaultVolume,
+        rate: level.rates[service.rateKey] || 0
       };
     }
   });
@@ -234,7 +327,7 @@ function initializeServices(level = levelById(state.levelId)) {
 function applyLevelRates() {
   const level = levelById(state.levelId);
   SERVICES.forEach((service) => {
-    state.services[service.id].rate = level.rates[service.id] || 0;
+    state.services[service.id].rate = level.rates[service.rateKey] || 0;
   });
 }
 
@@ -244,10 +337,15 @@ function renderLevels() {
   `).join("");
 }
 
-function serviceAdminHours(service, level, efficiency) {
-  const values = state.services[service.id];
-  const hours = Number(values.hours) || 0;
-  return hours * efficiency.ratio * service.adminWeight * level.adminModifier;
+function estimateFloorHours(service, volume, level) {
+  if (service.timeMode === "fixedMinutes") return volume * service.minutes / 60;
+  if (service.timeMode === "levelCapacity") return volume / Math.max(level.semiClientsPerHour || 1, 1);
+  if (service.timeMode === "fixedCapacity") return volume / Math.max(service.capacity || 1, 1);
+  return volume;
+}
+
+function serviceAdminHours(service, floorHours, level, efficiency) {
+  return floorHours * efficiency.ratio * service.adminWeight * level.adminModifier;
 }
 
 function calculateScenario() {
@@ -255,28 +353,31 @@ function calculateScenario() {
   const efficiency = EFFICIENCY[state.adminEfficiency];
   const rows = SERVICES.map((service) => {
     const values = state.services[service.id];
-    const hours = Number(values.hours) || 0;
+    const volume = Number(values.volume) || 0;
     const rate = Number(values.rate) || 0;
-    const revenue = hours * rate;
-    const adminHours = serviceAdminHours(service, level, efficiency);
+    const revenue = volume * rate;
+    const floorHours = estimateFloorHours(service, volume, level);
+    const adminHours = serviceAdminHours(service, floorHours, level, efficiency);
     return {
       ...service,
-      hours,
+      volume,
       rate,
       revenue,
+      floorHours,
       adminHours
     };
   });
 
-  const serviceHours = rows.reduce((sum, row) => sum + row.hours, 0);
+  const paidVolume = rows.reduce((sum, row) => sum + row.volume, 0);
+  const floorHours = rows.reduce((sum, row) => sum + row.floorHours, 0);
   const invisibleAdminHours = rows.reduce((sum, row) => sum + row.adminHours, 0);
   const fixedAdminHours = Number(state.fixedAdminHours) || 0;
-  const totalRealHours = serviceHours + invisibleAdminHours + fixedAdminHours;
+  const totalRealHours = floorHours + invisibleAdminHours + fixedAdminHours;
   const weeklyRevenue = rows.reduce((sum, row) => sum + row.revenue, 0);
   const monthlyRevenue = weeklyRevenue * 4.3;
   const annualRevenue = weeklyRevenue * state.weeks;
   const realHourlyRate = totalRealHours ? weeklyRevenue / totalRealHours : 0;
-  const visibleHourlyRate = serviceHours ? weeklyRevenue / serviceHours : 0;
+  const floorHourlyRate = floorHours ? weeklyRevenue / floorHours : 0;
   const targetWeekly = state.weeks ? state.targetAnnual / state.weeks : 0;
   const weeklyGap = weeklyRevenue - targetWeekly;
   const annualGap = annualRevenue - state.targetAnnual;
@@ -284,7 +385,8 @@ function calculateScenario() {
 
   return {
     rows,
-    serviceHours,
+    paidVolume,
+    floorHours,
     invisibleAdminHours,
     fixedAdminHours,
     totalRealHours,
@@ -292,7 +394,7 @@ function calculateScenario() {
     monthlyRevenue,
     annualRevenue,
     realHourlyRate,
-    visibleHourlyRate,
+    floorHourlyRate,
     targetWeekly,
     weeklyGap,
     annualGap,
@@ -308,15 +410,17 @@ function renderServices() {
     <tr data-service-id="${row.id}">
       <td>
         <strong>${row.label}</strong>
-        <span>${adminExplanation(row)}</span>
+        <span>${row.note}</span>
       </td>
       <td>${row.type}</td>
       <td>
         <input class="table-input" type="number" min="0" step="0.05" value="${row.rate}" data-service-rate="${row.id}">
       </td>
       <td>
-        <input class="table-input" type="number" min="0" step="0.25" value="${row.hours}" data-service-hours="${row.id}">
+        <input class="table-input" type="number" min="0" step="0.25" value="${row.volume}" data-service-volume="${row.id}">
+        <span class="unit-note">${row.unit}</span>
       </td>
+      <td>${formatNumber(row.floorHours)} h</td>
       <td>${formatNumber(row.adminHours)} h</td>
       <td>${formatMoneyPrecise(row.revenue)}</td>
     </tr>
@@ -329,20 +433,13 @@ function renderServices() {
     });
   });
 
-  $$("[data-service-hours]").forEach((input) => {
+  $$("[data-service-volume]").forEach((input) => {
     input.addEventListener("input", () => {
-      state.services[input.dataset.serviceHours].hours = Number(input.value) || 0;
+      state.services[input.dataset.serviceVolume].volume = Number(input.value) || 0;
       renderResults();
       renderServices();
     });
   });
-}
-
-function adminExplanation(row) {
-  if (!row.adminWeight) return "Temps deja considere comme admin payee ou non dilue.";
-  if (row.adminWeight >= 0.9) return "Admin forte: programmation, notes, messages, ajustements.";
-  if (row.adminWeight >= 0.5) return "Admin moderee: preparation, coordination et notes.";
-  return "Admin faible: preparation standard et rangement mental.";
 }
 
 function metric(label, value, tone = "") {
@@ -360,15 +457,16 @@ function renderResults() {
   $("#efficiencyCard").innerHTML = `
     <strong>${scenario.efficiency.label}</strong>
     <span>${scenario.efficiency.text}</span>
+    <small>${scenario.level.description} Semi-prive estime a ${scenario.level.semiClientsPerHour} client(s) par heure.</small>
   `;
   $("#resultMetrics").innerHTML = [
     metric("Revenu hebdomadaire", formatCurrency(scenario.weeklyRevenue)),
     metric("Revenu mensuel", formatCurrency(scenario.monthlyRevenue)),
     metric("Revenu annuel", formatCurrency(scenario.annualRevenue), scenario.annualGap >= 0 ? "good" : "warn"),
-    metric("Heures service visibles", `${formatNumber(scenario.serviceHours)} h`),
+    metric("Heures terrain estimees", `${formatNumber(scenario.floorHours)} h`),
     metric("Admin invisible estimee", `${formatNumber(scenario.invisibleAdminHours)} h`),
     metric("Heures reelles totales", `${formatNumber(scenario.totalRealHours)} h`),
-    metric("Taux moyen visible", formatMoneyPrecise(scenario.visibleHourlyRate)),
+    metric("Taux terrain moyen", formatMoneyPrecise(scenario.floorHourlyRate)),
     metric("Taux horaire reel", formatMoneyPrecise(scenario.realHourlyRate), scenario.realHourlyRate >= 30 ? "good" : "warn")
   ].join("");
 
@@ -396,7 +494,7 @@ function renderResults() {
 }
 
 function roadmapPrompt(scenario) {
-  if (scenario.invisibleAdminHours > scenario.serviceHours * 0.5) {
+  if (scenario.invisibleAdminHours > scenario.floorHours * 0.5) {
     return "Le levier principal semble etre l'efficacite administrative avant d'ajouter plus de services.";
   }
   if (scenario.annualGap < 0) {
@@ -454,8 +552,8 @@ function resetLab() {
 function summaryText() {
   const scenario = calculateScenario();
   const activeRows = scenario.rows
-    .filter((row) => row.hours > 0)
-    .map((row) => `- ${row.label}: ${formatNumber(row.hours)} h x ${formatMoneyPrecise(row.rate)} = ${formatMoneyPrecise(row.revenue)}`)
+    .filter((row) => row.volume > 0)
+    .map((row) => `- ${row.label}: ${formatNumber(row.volume)} ${row.unit} x ${formatMoneyPrecise(row.rate)} = ${formatMoneyPrecise(row.revenue)} (${formatNumber(row.floorHours)} h terrain)`)
     .join("\n");
   return [
     "Projection revenus coach - CFSB",
@@ -467,7 +565,7 @@ function summaryText() {
     "",
     `Revenu hebdo: ${formatCurrency(scenario.weeklyRevenue)}`,
     `Revenu annuel: ${formatCurrency(scenario.annualRevenue)}`,
-    `Heures service visibles: ${formatNumber(scenario.serviceHours)} h`,
+    `Heures terrain estimees: ${formatNumber(scenario.floorHours)} h`,
     `Admin invisible estimee: ${formatNumber(scenario.invisibleAdminHours)} h`,
     `Heures reelles totales: ${formatNumber(scenario.totalRealHours)} h`,
     `Taux horaire reel: ${formatMoneyPrecise(scenario.realHourlyRate)}`,
