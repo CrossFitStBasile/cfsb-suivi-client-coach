@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="fr-CA">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Laboratoire revenus coach - Roadmap CFSB</title>
+    <link rel="stylesheet" href="./styles.css?v=20260616-revenue-lab-v1">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <strong>Laboratoire revenus coach</strong>
+          <span>Prototype separe du roadmap officiel</span>
+        </div>
+        <div class="top-actions">
+          <a class="button secondary" href="./owners.html">Dashboard owners</a>
+          <button class="button secondary" id="resetLabButton" type="button">Reinitialiser</button>
+          <button class="button" id="copyRevenueSummaryButton" type="button">Copier resume</button>
+        </div>
+      </header>
+
+      <main class="container revenue-container">
+        <section class="revenue-hero">
+          <div>
+            <span>Roadmap / Coach compensation</span>
+            <h1>Revenu vise, heures reelles, efficacite administrative.</h1>
+            <p>
+              Un outil de projection pour relier le mix de services, le niveau de formation,
+              les heures invisibles et le taux horaire reel.
+            </p>
+          </div>
+          <aside class="revenue-status-card" id="statusCard">
+            <strong id="statusAnnual">$0</strong>
+            <span>projection annuelle</span>
+          </aside>
+        </section>
+
+        <section class="revenue-grid">
+          <aside class="section revenue-controls">
+            <div class="section-header">
+              <h2>Hypotheses</h2>
+              <p>Niveau, objectif et efficacite admin.</p>
+            </div>
+            <div class="section-body">
+              <label class="field">
+                <span>Niveau de formation</span>
+                <select id="levelSelect"></select>
+              </label>
+
+              <label class="field">
+                <span>Objectif annuel souhaite</span>
+                <input class="input" id="targetAnnualInput" type="number" min="0" step="1000" value="70000">
+              </label>
+
+              <label class="field">
+                <span>Semaines payees par an</span>
+                <input class="input" id="weeksInput" type="number" min="1" max="52" step="0.1" value="51.6">
+              </label>
+
+              <label class="field">
+                <span>Efficacite administrative</span>
+                <input id="adminEfficiencyInput" type="range" min="1" max="5" step="1" value="3">
+              </label>
+              <div class="efficiency-card" id="efficiencyCard"></div>
+
+              <label class="field">
+                <span>Heures admin fixes par semaine</span>
+                <input class="input" id="fixedAdminInput" type="number" min="0" step="0.25" value="2">
+                <small>Meetings, formation, organisation ou suivis non rattaches a un service precis.</small>
+              </label>
+            </div>
+          </aside>
+
+          <section class="section revenue-main">
+            <div class="section-header">
+              <h2>Mix de services hebdomadaire</h2>
+              <p>Les taux viennent du niveau choisi et peuvent etre ajustes pour tester un scenario.</p>
+            </div>
+            <div class="section-body">
+              <div class="revenue-table-wrap">
+                <table class="revenue-table">
+                  <thead>
+                    <tr>
+                      <th>Service</th>
+                      <th>Type</th>
+                      <th>Taux</th>
+                      <th>Heures / sem.</th>
+                      <th>Admin invisible</th>
+                      <th>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody id="serviceRows"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </section>
+
+        <section class="section">
+          <div class="section-header">
+            <h2>Lecture du scenario</h2>
+            <p>Le taux horaire reel tient compte des heures invisibles estimees.</p>
+          </div>
+          <div class="section-body">
+            <div class="revenue-metrics" id="resultMetrics"></div>
+            <div class="reality-panel" id="realityPanel"></div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-header">
+            <h2>Ce que l'administration inclut</h2>
+            <p>Les heures invisibles representent les taches qui soutiennent la qualite du service.</p>
+          </div>
+          <div class="section-body">
+            <div class="admin-task-grid">
+              <article>
+                <strong>Programmation et preparation</strong>
+                <span>Planifier les seances, adapter les exercices, anticiper le materiel et les contraintes.</span>
+              </article>
+              <article>
+                <strong>Notes et dossier client</strong>
+                <span>Documenter les progres, blessures, absences, objectifs et ajustements importants.</span>
+              </article>
+              <article>
+                <strong>Suivi et communication</strong>
+                <span>Messages, relances, coordination avec Caroline, Michael, Gabriel ou les autres coachs.</span>
+              </article>
+              <article>
+                <strong>Analyse et retention</strong>
+                <span>Lire les signaux, preparer les check-ins, clarifier les prochaines etapes pour garder le membre engage.</span>
+              </article>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./revenue-lab.js?v=20260616-revenue-lab-v1"></script>
+  </body>
+</html>
