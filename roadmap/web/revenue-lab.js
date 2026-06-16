@@ -134,6 +134,62 @@ const EFFICIENCY = {
   }
 };
 
+const SEMI_BUDGET_RATE = 23;
+const SEMI_CSM_RATE = 20;
+
+const SEMI_TIERS = [
+  {
+    id: "part_time",
+    label: "Temps partiel",
+    rangeLabel: "5-15 SP/sem",
+    min: 5,
+    max: 15,
+    spRate: 21,
+    csmHours: 1,
+    budgetNote: "= Budget"
+  },
+  {
+    id: "level_1",
+    label: "Niveau 1 - Demarrage",
+    rangeLabel: "0-24 SP/sem",
+    min: 0,
+    max: 24,
+    spRate: 18,
+    csmHours: 7,
+    budgetNote: "Investissement"
+  },
+  {
+    id: "level_2",
+    label: "Niveau 2 - Croissance",
+    rangeLabel: "25-34 SP/sem",
+    min: 25,
+    max: 34,
+    spRate: 20,
+    csmHours: 4,
+    budgetNote: "<= Budget"
+  },
+  {
+    id: "level_3",
+    label: "Niveau 3 - Maturite",
+    rangeLabel: "35-44 SP/sem",
+    min: 35,
+    max: 44,
+    spRate: 21.5,
+    csmHours: 3,
+    budgetNote: "<= Budget"
+  },
+  {
+    id: "level_4",
+    label: "Niveau 4 - Senior",
+    rangeLabel: "45+ SP/sem",
+    min: 45,
+    max: Infinity,
+    spRate: 22.5,
+    csmHours: 1,
+    budgetNote: "<= Budget"
+  }
+];
+
 const SERVICES = [
   {
     id: "group",
@@ -254,11 +310,11 @@ const SERVICES = [
     label: "CSM / suivi client",
     type: "Admin payee",
     rateKey: "csm",
-    defaultVolume: 4,
+    defaultVolume: 0,
     unit: "heures",
     timeMode: "same",
     adminWeight: 0,
-    note: "Tache administrative payee, palier 1 dans la grille."
+    note: "Tache administrative payee hors modele semi-prive hybride. Ajouter seulement si elle n'est pas deja incluse dans la ligne automatique hybride."
   },
   {
     id: "admin",
@@ -279,6 +335,8 @@ const state = {
   weeks: 51.6,
   adminEfficiency: 3,
   fixedAdminHours: 2,
+  semiModel: "hybrid",
+  semiTierId: "auto",
   services: {}
 };
 
@@ -337,6 +395,31 @@ function renderLevels() {
   `).join("");
 }
 
+function renderSemiTiers() {
+  $("#semiTierSelect").innerHTML = [
+    `<option value="auto" ${state.semiTierId === "auto" ? "selected" : ""}>Auto selon SP/sem</option>`,
+    ...SEMI_TIERS.map((tier) => `
+      <option value="${tier.id}" ${tier.id === state.semiTierId ? "selected" : ""}>${tier.label} (${tier.rangeLabel})</option>
+    `)
+  ].join("");
+}
+
+function semiTierById(tierId) {
+  return SEMI_TIERS.find((tier) => tier.id === tierId) || SEMI_TIERS[2];
+}
+
+function autoSemiTier(volume) {
+  if (volume >= 45) return semiTierById("level_4");
+  if (volume >= 35) return semiTierById("level_3");
+  if (volume >= 25) return semiTierById("level_2");
+  if (volume >= 5 && volume <= 15) return semiTierById("part_time");
+  return semiTierById("level_1");
+}
+
+function currentSemiTier(volume) {
+  return state.semiTierId === "auto" ? autoSemiTier(volume) : semiTierById(state.semiTierId);
+}
+
 function estimateFloorHours(service, volume, level) {
   if (service.timeMode === "fixedMinutes") return volume * service.minutes / 60;
   if (service.timeMode === "levelCapacity") return volume / Math.max(level.semiClientsPerHour || 1, 1);
@@ -351,21 +434,61 @@ function serviceAdminHours(service, floorHours, level, efficiency) {
 function calculateScenario() {
   const level = levelById(state.levelId);
   const efficiency = EFFICIENCY[state.adminEfficiency];
-  const rows = SERVICES.map((service) => {
+  const semiVolume = Number(state.services.semi?.volume) || 0;
+  const semiTier = currentSemiTier(semiVolume);
+  let semiHybridSummary = null;
+  const rows = [];
+
+  SERVICES.forEach((service) => {
     const values = state.services[service.id];
     const volume = Number(values.volume) || 0;
-    const rate = Number(values.rate) || 0;
+    const isSemiHybrid = service.id === "semi" && state.semiModel === "hybrid";
+    const rate = isSemiHybrid ? semiTier.spRate : Number(values.rate) || 0;
     const revenue = volume * rate;
     const floorHours = estimateFloorHours(service, volume, level);
     const adminHours = serviceAdminHours(service, floorHours, level, efficiency);
-    return {
+    const row = {
       ...service,
       volume,
       rate,
       revenue,
       floorHours,
-      adminHours
+      adminHours,
+      autoRate: isSemiHybrid,
+      note: isSemiHybrid
+        ? `${semiTier.label}: ${formatMoneyPrecise(semiTier.spRate)} par presence + ${semiTier.csmHours} h CSM a ${formatMoneyPrecise(SEMI_CSM_RATE)}. Budget reference: ${formatMoneyPrecise(SEMI_BUDGET_RATE)} par presence.`
+        : service.note
     };
+    rows.push(row);
+
+    if (isSemiHybrid) {
+      const csmRevenue = semiTier.csmHours * SEMI_CSM_RATE;
+      const budgetRevenue = volume * SEMI_BUDGET_RATE;
+      const hybridRevenue = revenue + csmRevenue;
+      semiHybridSummary = {
+        tier: semiTier,
+        spRevenue: revenue,
+        csmRevenue,
+        hybridRevenue,
+        budgetRevenue,
+        weeklyDelta: hybridRevenue - budgetRevenue
+      };
+      rows.push({
+        id: "semiCsm",
+        label: "CSM semi-prive hybride",
+        type: "CSM paye",
+        rateKey: "semiCsm",
+        volume: semiTier.csmHours,
+        rate: SEMI_CSM_RATE,
+        revenue: csmRevenue,
+        floorHours: semiTier.csmHours,
+        adminHours: 0,
+        unit: "heures",
+        autoRate: true,
+        generated: true,
+        note: "Temps protege pour developpement du portefeuille, prospection, check-ups trimestriels et retention."
+      });
+    }
   });
 
   const paidVolume = rows.reduce((sum, row) => sum + row.volume, 0);
@@ -400,7 +523,8 @@ function calculateScenario() {
     annualGap,
     requiredRealHoursAtCurrentRate,
     level,
-    efficiency
+    efficiency,
+    semiHybridSummary
   };
 }
 
@@ -414,10 +538,10 @@ function renderServices() {
       </td>
       <td>${row.type}</td>
       <td>
-        <input class="table-input" type="number" min="0" step="0.05" value="${row.rate}" data-service-rate="${row.id}">
+        <input class="table-input" type="number" min="0" step="0.05" value="${row.rate}" data-service-rate="${row.id}" ${row.autoRate ? "disabled" : ""}>
       </td>
       <td>
-        <input class="table-input" type="number" min="0" step="0.25" value="${row.volume}" data-service-volume="${row.id}">
+        <input class="table-input" type="number" min="0" step="0.25" value="${row.volume}" data-service-volume="${row.id}" ${row.generated ? "disabled" : ""}>
         <span class="unit-note">${row.unit}</span>
       </td>
       <td>${formatNumber(row.floorHours)} h</td>
@@ -428,6 +552,7 @@ function renderServices() {
 
   $$("[data-service-rate]").forEach((input) => {
     input.addEventListener("input", () => {
+      if (input.disabled) return;
       state.services[input.dataset.serviceRate].rate = Number(input.value) || 0;
       renderResults();
     });
@@ -435,6 +560,7 @@ function renderServices() {
 
   $$("[data-service-volume]").forEach((input) => {
     input.addEventListener("input", () => {
+      if (input.disabled) return;
       state.services[input.dataset.serviceVolume].volume = Number(input.value) || 0;
       renderResults();
       renderServices();
@@ -459,7 +585,8 @@ function renderResults() {
     <span>${scenario.efficiency.text}</span>
     <small>${scenario.level.description} Semi-prive estime a ${scenario.level.semiClientsPerHour} client(s) par heure.</small>
   `;
-  $("#resultMetrics").innerHTML = [
+  $("#semiModelCard").innerHTML = semiModelText(scenario);
+  const metrics = [
     metric("Revenu hebdomadaire", formatCurrency(scenario.weeklyRevenue)),
     metric("Revenu mensuel", formatCurrency(scenario.monthlyRevenue)),
     metric("Revenu annuel", formatCurrency(scenario.annualRevenue), scenario.annualGap >= 0 ? "good" : "warn"),
@@ -468,7 +595,14 @@ function renderResults() {
     metric("Heures reelles totales", `${formatNumber(scenario.totalRealHours)} h`),
     metric("Taux terrain moyen", formatMoneyPrecise(scenario.floorHourlyRate)),
     metric("Taux horaire reel", formatMoneyPrecise(scenario.realHourlyRate), scenario.realHourlyRate >= 30 ? "good" : "warn")
-  ].join("");
+  ];
+  if (scenario.semiHybridSummary) {
+    metrics.push(
+      metric("Budget SP 23 $", formatCurrency(scenario.semiHybridSummary.budgetRevenue)),
+      metric("Ecart semi-prive", `${scenario.semiHybridSummary.weeklyDelta >= 0 ? "+" : "-"}${formatMoneyPrecise(Math.abs(scenario.semiHybridSummary.weeklyDelta))}`, scenario.semiHybridSummary.weeklyDelta >= 0 ? "good" : "warn")
+    );
+  }
+  $("#resultMetrics").innerHTML = metrics.join("");
 
   const gapText = scenario.annualGap >= 0
     ? `${formatCurrency(scenario.annualGap)} au-dessus de l'objectif annuel.`
@@ -493,7 +627,28 @@ function renderResults() {
   `;
 }
 
+function semiModelText(scenario) {
+  if (!scenario.semiHybridSummary) {
+    return `
+      <strong>Mode standard semi-prive</strong>
+      <span>Le semi-prive est calcule avec le taux par client de la grille salariale.</span>
+    `;
+  }
+  const summary = scenario.semiHybridSummary;
+  const deltaText = summary.weeklyDelta >= 0
+    ? `${formatMoneyPrecise(summary.weeklyDelta)} au-dessus du budget 23 $.`
+    : `${formatMoneyPrecise(Math.abs(summary.weeklyDelta))} sous le budget 23 $.`;
+  return `
+    <strong>${summary.tier.label} (${summary.tier.rangeLabel})</strong>
+    <span>${formatMoneyPrecise(summary.tier.spRate)} par presence + ${summary.tier.csmHours} h CSM payees = ${formatMoneyPrecise(summary.hybridRevenue)} / sem.</span>
+    <small>Reference 23 $: ${formatMoneyPrecise(summary.budgetRevenue)} / sem. Ecart: ${deltaText}</small>
+  `;
+}
+
 function roadmapPrompt(scenario) {
+  if (scenario.semiHybridSummary && Math.abs(scenario.semiHybridSummary.weeklyDelta) <= 10) {
+    return "Le modele semi-prive est quasi neutre; la discussion peut porter sur la qualite des check-ups et de la prospection CSM.";
+  }
   if (scenario.invisibleAdminHours > scenario.floorHours * 0.5) {
     return "Le levier principal semble etre l'efficacite administrative avant d'ajouter plus de services.";
   }
@@ -512,6 +667,8 @@ function collectInputs() {
   state.weeks = Number($("#weeksInput").value) || 51.6;
   state.adminEfficiency = Number($("#adminEfficiencyInput").value) || 3;
   state.fixedAdminHours = Number($("#fixedAdminInput").value) || 0;
+  state.semiModel = $("#semiModelSelect").value;
+  state.semiTierId = $("#semiTierSelect").value;
 }
 
 function bindControls() {
@@ -528,8 +685,30 @@ function bindControls() {
       renderResults();
     });
   });
+  ["semiModelSelect", "semiTierSelect"].forEach((id) => {
+    $(`#${id}`).addEventListener("change", () => {
+      collectInputs();
+      renderServices();
+      renderResults();
+    });
+  });
   $("#resetLabButton").addEventListener("click", resetLab);
   $("#copyRevenueSummaryButton").addEventListener("click", copySummary);
+}
+
+function startControlWatcher() {
+  let previousSemiModel = state.semiModel;
+  let previousSemiTierId = state.semiTierId;
+  window.setInterval(() => {
+    const currentSemiModel = $("#semiModelSelect").value;
+    const currentSemiTierId = $("#semiTierSelect").value;
+    if (currentSemiModel === previousSemiModel && currentSemiTierId === previousSemiTierId) return;
+    previousSemiModel = currentSemiModel;
+    previousSemiTierId = currentSemiTierId;
+    collectInputs();
+    renderServices();
+    renderResults();
+  }, 400);
 }
 
 function resetLab() {
@@ -538,13 +717,17 @@ function resetLab() {
   state.weeks = 51.6;
   state.adminEfficiency = 3;
   state.fixedAdminHours = 2;
+  state.semiModel = "hybrid";
+  state.semiTierId = "auto";
   state.services = {};
   initializeServices();
   $("#targetAnnualInput").value = state.targetAnnual;
   $("#weeksInput").value = state.weeks;
   $("#adminEfficiencyInput").value = state.adminEfficiency;
   $("#fixedAdminInput").value = state.fixedAdminHours;
+  $("#semiModelSelect").value = state.semiModel;
   renderLevels();
+  renderSemiTiers();
   renderServices();
   renderResults();
 }
@@ -559,6 +742,7 @@ function summaryText() {
     "Projection revenus coach - CFSB",
     `Niveau: ${scenario.level.label}`,
     `Efficacite administrative: ${scenario.efficiency.label}`,
+    `Mode semi-prive: ${state.semiModel === "hybrid" ? "Hybride SP + CSM" : "Standard par client"}`,
     `Objectif annuel: ${formatCurrency(state.targetAnnual)}`,
     "",
     activeRows || "- Aucun service entre.",
@@ -570,6 +754,9 @@ function summaryText() {
     `Heures reelles totales: ${formatNumber(scenario.totalRealHours)} h`,
     `Taux horaire reel: ${formatMoneyPrecise(scenario.realHourlyRate)}`,
     `Ecart annuel: ${scenario.annualGap >= 0 ? "+" : "-"}${formatCurrency(Math.abs(scenario.annualGap))}`,
+    scenario.semiHybridSummary
+      ? `Semi-prive hybride: ${scenario.semiHybridSummary.tier.label}, ecart vs budget 23 $ ${scenario.semiHybridSummary.weeklyDelta >= 0 ? "+" : "-"}${formatMoneyPrecise(Math.abs(scenario.semiHybridSummary.weeklyDelta))} / sem`
+      : "Semi-prive: mode standard",
     "",
     `Constat: ${roadmapPrompt(scenario)}`
   ].join("\n");
@@ -591,7 +778,9 @@ async function copySummary() {
 function init() {
   initializeServices();
   renderLevels();
+  renderSemiTiers();
   bindControls();
+  startControlWatcher();
   renderServices();
   renderResults();
 }

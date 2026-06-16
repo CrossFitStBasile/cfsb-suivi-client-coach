@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Laboratoire revenus coach - Roadmap CFSB</title>
-    <link rel="stylesheet" href="./styles.css?v=20260616-revenue-lab-v2">
+    <link rel="stylesheet" href="./styles.css?v=20260616-revenue-lab-v3">
   </head>
   <body>
     <div class="app-shell">
@@ -65,6 +65,20 @@
               <div class="efficiency-card" id="efficiencyCard"></div>
 
               <label class="field">
+                <span>Mode semi-prive</span>
+                <select id="semiModelSelect">
+                  <option value="hybrid">Hybride SP + CSM</option>
+                  <option value="standard">Standard par client</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>Statut semi-prive</span>
+                <select id="semiTierSelect"></select>
+              </label>
+              <div class="efficiency-card semi-model-card" id="semiModelCard"></div>
+
+              <label class="field">
                 <span>Admin invisible fixe par semaine</span>
                 <input class="input" id="fixedAdminInput" type="number" min="0" step="0.25" value="2">
                 <small>Temps non remunere ou non rattache a une ligne payee: organisation, messages, preparation et suivi general.</small>
@@ -75,7 +89,7 @@
           <section class="section revenue-main">
             <div class="section-header">
               <h2>Mix de services hebdomadaire</h2>
-              <p>Les taux viennent de la grille salariale. Certaines lignes sont payees par client present, puis converties en heures terrain estimees.</p>
+              <p>Les taux viennent de la grille salariale. Le semi-prive peut etre calcule en mode standard ou en mode hybride SP + CSM.</p>
             </div>
             <div class="section-body">
               <div class="revenue-table-wrap">
@@ -132,12 +146,16 @@
                 <strong>Analyse et retention</strong>
                 <span>Lire les signaux, preparer les check-ins, clarifier les prochaines etapes pour garder le membre engage.</span>
               </article>
+              <article>
+                <strong>CSM semi-prive</strong>
+                <span>Prospection, check-ups trimestriels, retention du portefeuille et notes de suivi loggees.</span>
+              </article>
             </div>
           </div>
         </section>
       </main>
     </div>
 
-    <script src="./revenue-lab.js?v=20260616-revenue-lab-v2"></script>
+    <script src="./revenue-lab.js?v=20260616-revenue-lab-v3"></script>
   </body>
 </html>
