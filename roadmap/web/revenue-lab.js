@@ -15,7 +15,7 @@ const LEVELS = [
       specialtyClient: 20.9,
       cifs: 50,
       headCoach: 0,
-      csm: 16.1,
+      csm: 20,
       admin: 16.1
     }
   },
@@ -35,7 +35,7 @@ const LEVELS = [
       specialtyClient: 20.9,
       cifs: 50,
       headCoach: 0,
-      csm: 16.1,
+      csm: 20,
       admin: 16.1
     }
   },
@@ -55,7 +55,7 @@ const LEVELS = [
       specialtyClient: 20.9,
       cifs: 50,
       headCoach: 30,
-      csm: 16.1,
+      csm: 20,
       admin: 16.1
     }
   },
@@ -75,7 +75,7 @@ const LEVELS = [
       specialtyClient: 20.9,
       cifs: 50,
       headCoach: 35,
-      csm: 16.1,
+      csm: 20,
       admin: 16.1
     }
   },
@@ -95,7 +95,7 @@ const LEVELS = [
       specialtyClient: 20.9,
       cifs: 50,
       headCoach: 35,
-      csm: 16.1,
+      csm: 20,
       admin: 16.1
     }
   }
@@ -130,7 +130,7 @@ const EFFICIENCY = {
 };
 
 const SEMI_BUDGET_RATE = 23;
-const SEMI_CSM_RATE = 16.1;
+const SEMI_CSM_RATE = 20;
 
 const SEMI_TIERS = [
   {
@@ -297,7 +297,7 @@ const SERVICES = [
     unit: "heures",
     timeMode: "same",
     adminWeight: 0,
-    note: "Tache administrative coach payee au taux salle de mouvement: 16,10 $/h."
+    note: "Volet CSM paye a 20 $/h selon le modele hybride et les suivis client."
   },
   {
     id: "admin",
