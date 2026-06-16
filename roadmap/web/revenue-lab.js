@@ -563,6 +563,9 @@ function metric(label, value, tone = "") {
 function renderResults() {
   const scenario = calculateScenario();
   $("#statusAnnual").textContent = formatCurrency(scenario.annualRevenue);
+  $("#statusWeekly").textContent = formatCurrency(scenario.weeklyRevenue);
+  $("#statusRealRate").textContent = formatMoneyPrecise(scenario.realHourlyRate);
+  $("#statusRealHours").textContent = `${formatNumber(scenario.totalRealHours)} h`;
   $("#efficiencyCard").innerHTML = `
     <strong>${scenario.efficiency.label}</strong>
     <span>${scenario.efficiency.text}</span>
