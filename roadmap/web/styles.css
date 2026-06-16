@@ -1237,6 +1237,222 @@ select:focus {
   white-space: pre-wrap;
 }
 
+.revenue-container {
+  width: min(1440px, calc(100% - 32px));
+}
+
+.revenue-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+  gap: 20px;
+  align-items: end;
+  padding: 30px 0 18px;
+}
+
+.revenue-hero > div {
+  display: grid;
+  gap: 10px;
+}
+
+.revenue-hero span {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.revenue-hero h1 {
+  max-width: 900px;
+  margin: 0;
+  font-size: clamp(34px, 5vw, 58px);
+  line-height: 0.98;
+}
+
+.revenue-hero p {
+  max-width: 760px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1.5;
+}
+
+.revenue-status-card {
+  display: grid;
+  gap: 6px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.revenue-status-card strong {
+  font-size: 32px;
+  line-height: 1;
+}
+
+.revenue-status-card span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.revenue-grid {
+  display: grid;
+  grid-template-columns: minmax(270px, 0.32fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.revenue-controls {
+  position: sticky;
+  top: 88px;
+}
+
+.efficiency-card {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.efficiency-card strong {
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.efficiency-card span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.revenue-table-wrap {
+  overflow-x: auto;
+}
+
+.revenue-table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.revenue-table th,
+.revenue-table td {
+  padding: 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.revenue-table th {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.revenue-table td:first-child {
+  min-width: 220px;
+}
+
+.revenue-table td:first-child strong,
+.revenue-table td:first-child span {
+  display: block;
+}
+
+.revenue-table td:first-child span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.table-input {
+  width: 100%;
+  min-width: 92px;
+  min-height: 38px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.revenue-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.revenue-metric {
+  min-height: 88px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.revenue-metric.good {
+  border-color: rgba(29, 127, 79, 0.35);
+  background: rgba(29, 127, 79, 0.08);
+}
+
+.revenue-metric.warn {
+  border-color: rgba(180, 119, 20, 0.35);
+  background: rgba(180, 119, 20, 0.08);
+}
+
+.revenue-metric strong {
+  display: block;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.revenue-metric span {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.reality-panel {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.reality-panel article,
+.admin-task-grid article {
+  display: grid;
+  gap: 7px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.reality-panel p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.admin-task-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.admin-task-grid span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 @media (max-width: 880px) {
   .hero,
   .layout,
@@ -1246,7 +1462,12 @@ select:focus {
   .org-grid,
   .pipeline-lanes,
   .prep-panel,
-  .team-grid {
+  .team-grid,
+  .revenue-hero,
+  .revenue-grid,
+  .revenue-metrics,
+  .reality-panel,
+  .admin-task-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1260,7 +1481,8 @@ select:focus {
   }
 
   .admin-grid > .panel,
-  .sticky-owner-notes {
+  .sticky-owner-notes,
+  .revenue-controls {
     position: static;
     max-height: none;
   }
