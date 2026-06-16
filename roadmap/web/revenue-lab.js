@@ -13,8 +13,7 @@ const LEVELS = [
       pv30: 20.9,
       semi: 20.9,
       specialtyClient: 20.9,
-      legends: 50,
-      fitTeen: 6.8,
+      cifs: 50,
       headCoach: 0,
       csm: 16.1,
       admin: 16.1
@@ -34,11 +33,10 @@ const LEVELS = [
       pv30: 20.9,
       semi: 20.9,
       specialtyClient: 20.9,
-      legends: 50,
-      fitTeen: 6.8,
+      cifs: 50,
       headCoach: 0,
-      csm: 20,
-      admin: 20
+      csm: 16.1,
+      admin: 16.1
     }
   },
   {
@@ -55,11 +53,10 @@ const LEVELS = [
       pv30: 20.9,
       semi: 20.9,
       specialtyClient: 20.9,
-      legends: 50,
-      fitTeen: 6.8,
+      cifs: 50,
       headCoach: 30,
-      csm: 20,
-      admin: 21.5
+      csm: 16.1,
+      admin: 16.1
     }
   },
   {
@@ -76,11 +73,10 @@ const LEVELS = [
       pv30: 20.9,
       semi: 20.9,
       specialtyClient: 20.9,
-      legends: 50,
-      fitTeen: 6.8,
+      cifs: 50,
       headCoach: 35,
-      csm: 20,
-      admin: 23
+      csm: 16.1,
+      admin: 16.1
     }
   },
   {
@@ -97,11 +93,10 @@ const LEVELS = [
       pv30: 20.9,
       semi: 20.9,
       specialtyClient: 20.9,
-      legends: 50,
-      fitTeen: 6.8,
+      cifs: 50,
       headCoach: 35,
-      csm: 20,
-      admin: 27.5
+      csm: 16.1,
+      admin: 16.1
     }
   }
 ];
@@ -135,7 +130,7 @@ const EFFICIENCY = {
 };
 
 const SEMI_BUDGET_RATE = 23;
-const SEMI_CSM_RATE = 20;
+const SEMI_CSM_RATE = 16.1;
 
 const SEMI_TIERS = [
   {
@@ -272,27 +267,15 @@ const SERVICES = [
     note: "20,90 $ par client present, maximum 6 clients par heure."
   },
   {
-    id: "legends",
-    label: "Programme Legendes",
+    id: "cifs",
+    label: "Programme CIFS",
     type: "Programme CFSB",
-    rateKey: "legends",
+    rateKey: "cifs",
     defaultVolume: 4,
     unit: "seances",
     timeMode: "same",
     adminWeight: 0.35,
-    note: "50 $ par seance, petit groupe de maximum 8 personnes."
-  },
-  {
-    id: "fitTeen",
-    label: "Programme Fit-Teen",
-    type: "Programme CFSB",
-    rateKey: "fitTeen",
-    defaultVolume: 0,
-    unit: "presences",
-    timeMode: "fixedCapacity",
-    capacity: 12,
-    adminWeight: 0.2,
-    note: "6,80 $ par client present, maximum 12 enfants."
+    note: "Regroupe Legendes, Fit-Teen et FitKid. Meme taux: 50 $ par seance."
   },
   {
     id: "headCoach",
@@ -314,7 +297,7 @@ const SERVICES = [
     unit: "heures",
     timeMode: "same",
     adminWeight: 0,
-    note: "Tache administrative payee hors modele semi-prive hybride. Ajouter seulement si elle n'est pas deja incluse dans la ligne automatique hybride."
+    note: "Tache administrative coach payee au taux salle de mouvement: 16,10 $/h."
   },
   {
     id: "admin",
@@ -325,7 +308,7 @@ const SERVICES = [
     unit: "heures",
     timeMode: "same",
     adminWeight: 0,
-    note: "Paliers administratifs: 16,10 $ a 30 $/h selon role et niveau."
+    note: "Administration coach payee au taux salle de mouvement: 16,10 $/h."
   }
 ];
 
