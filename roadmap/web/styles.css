@@ -1243,10 +1243,10 @@ select:focus {
 
 .revenue-hero {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(320px, 0.7fr);
-  gap: 20px;
+  grid-template-columns: 1fr;
+  gap: 12px;
   align-items: center;
-  padding: 28px 0 16px;
+  padding: 26px 0 14px;
 }
 
 .revenue-hero > div {
@@ -1269,7 +1269,7 @@ select:focus {
 }
 
 .revenue-hero p {
-  max-width: 760px;
+  max-width: 840px;
   margin: 0;
   color: var(--muted);
   font-size: 17px;
@@ -1420,6 +1420,25 @@ select:focus {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.35;
+}
+
+.revenue-table tr.active-service-row {
+  background: rgba(29, 127, 79, 0.06);
+}
+
+.revenue-table tr.active-service-row td:first-child {
+  border-left: 4px solid var(--accent);
+  padding-left: 8px;
+}
+
+.revenue-table tr.active-service-row td:last-child {
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.revenue-table tr.active-service-row .table-input {
+  border-color: rgba(29, 127, 79, 0.35);
+  background: #fff;
 }
 
 .table-input {

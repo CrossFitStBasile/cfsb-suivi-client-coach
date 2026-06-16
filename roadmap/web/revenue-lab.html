@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Laboratoire revenus coach - Roadmap CFSB</title>
-    <link rel="stylesheet" href="./styles.css?v=20260616-revenue-lab-v6">
+    <link rel="stylesheet" href="./styles.css?v=20260616-revenue-lab-v7">
   </head>
   <body>
     <div class="app-shell">
@@ -27,27 +27,9 @@
             <h1>Revenu vise, heures reelles, efficacite administrative.</h1>
             <p>
               Un outil de projection base sur la grille de remuneration CFSB: volume paye,
-              heures terrain, admin invisible et taux horaire reel.
+              heures terrain, admin incluse et taux horaire reel.
             </p>
           </div>
-          <aside class="revenue-status-grid" id="statusCard">
-            <article class="revenue-status-card">
-              <strong id="statusAnnual">$0</strong>
-              <span>Projection annuelle</span>
-            </article>
-            <article class="revenue-status-card">
-              <strong id="statusWeekly">$0</strong>
-              <span>Revenu / semaine</span>
-            </article>
-            <article class="revenue-status-card">
-              <strong id="statusRealRate">$0</strong>
-              <span>Taux horaire reel</span>
-            </article>
-            <article class="revenue-status-card">
-              <strong id="statusRealHours">0 h</strong>
-              <span>Heures reelles / sem.</span>
-            </article>
-          </aside>
         </section>
 
         <nav class="revenue-journey" aria-label="Parcours du simulateur">
@@ -128,7 +110,7 @@
                     <th>Taux</th>
                     <th>Volume / sem.</th>
                     <th>Heures terrain</th>
-                    <th>Admin invisible</th>
+                    <th>Admin incluse</th>
                     <th>Total</th>
                   </tr>
                 </thead>
@@ -141,7 +123,7 @@
         <section class="section revenue-step">
           <div class="section-header">
             <h2>4. Efficacite administrative</h2>
-            <p>Cette section sert a rendre visible le temps cache: preparation, suivi, notes, check-ups et relances.</p>
+            <p>Cette section sert a rendre visible le temps de soutien inclus: preparation, suivi, notes, check-ups et relances.</p>
           </div>
           <div class="section-body">
             <div class="admin-assessment-grid">
@@ -153,9 +135,9 @@
                 <div class="efficiency-card" id="efficiencyCard"></div>
 
                 <label class="field">
-                  <span>Admin invisible fixe par semaine</span>
+                  <span>Admin incluse fixe par semaine</span>
                   <input class="input" id="fixedAdminInput" type="number" min="0" step="0.25" value="2">
-                  <small>Temps non remunere ou non rattache a une ligne payee: organisation, messages, preparation et suivi general.</small>
+                  <small>Temps de soutien inclus dans la remuneration globale: organisation, messages, preparation et suivi general.</small>
                 </label>
               </div>
 
@@ -194,6 +176,6 @@
       </main>
     </div>
 
-    <script src="./revenue-lab.js?v=20260616-revenue-lab-v6"></script>
+    <script src="./revenue-lab.js?v=20260616-revenue-lab-v7"></script>
   </body>
 </html>

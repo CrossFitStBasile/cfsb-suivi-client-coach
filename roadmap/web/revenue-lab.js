@@ -2,7 +2,7 @@ const LEVELS = [
   {
     id: "formation_interne",
     label: "Palier 0 - formation interne / shadowing",
-    description: "Stagiaire ou coach en formation. Beaucoup d'accompagnement et de temps invisible.",
+    description: "Stagiaire ou coach en formation. Beaucoup d'accompagnement et de temps de soutien inclus.",
     adminModifier: 1.25,
     semiClientsPerHour: 2,
     rates: {
@@ -514,7 +514,7 @@ function calculateScenario() {
 function renderServices() {
   const scenario = calculateScenario();
   $("#serviceRows").innerHTML = scenario.rows.map((row) => `
-    <tr data-service-id="${row.id}">
+    <tr class="${row.volume > 0 ? "active-service-row" : ""}" data-service-id="${row.id}">
       <td>
         <strong>${row.label}</strong>
         <span>${row.note}</span>
@@ -562,10 +562,6 @@ function metric(label, value, tone = "") {
 
 function renderResults() {
   const scenario = calculateScenario();
-  $("#statusAnnual").textContent = formatCurrency(scenario.annualRevenue);
-  $("#statusWeekly").textContent = formatCurrency(scenario.weeklyRevenue);
-  $("#statusRealRate").textContent = formatMoneyPrecise(scenario.realHourlyRate);
-  $("#statusRealHours").textContent = `${formatNumber(scenario.totalRealHours)} h`;
   $("#efficiencyCard").innerHTML = `
     <strong>${scenario.efficiency.label}</strong>
     <span>${scenario.efficiency.text}</span>
@@ -577,17 +573,11 @@ function renderResults() {
     metric("Revenu mensuel", formatCurrency(scenario.monthlyRevenue)),
     metric("Revenu annuel", formatCurrency(scenario.annualRevenue), scenario.annualGap >= 0 ? "good" : "warn"),
     metric("Heures terrain estimees", `${formatNumber(scenario.floorHours)} h`),
-    metric("Admin invisible estimee", `${formatNumber(scenario.invisibleAdminHours)} h`),
+    metric("Admin incluse estimee", `${formatNumber(scenario.invisibleAdminHours)} h`),
     metric("Heures reelles totales", `${formatNumber(scenario.totalRealHours)} h`),
     metric("Taux terrain moyen", formatMoneyPrecise(scenario.floorHourlyRate)),
     metric("Taux horaire reel", formatMoneyPrecise(scenario.realHourlyRate), scenario.realHourlyRate >= 30 ? "good" : "warn")
   ];
-  if (scenario.semiHybridSummary) {
-    metrics.push(
-      metric("Budget SP 23 $", formatCurrency(scenario.semiHybridSummary.budgetRevenue)),
-      metric("Ecart semi-prive", `${scenario.semiHybridSummary.weeklyDelta >= 0 ? "+" : "-"}${formatMoneyPrecise(Math.abs(scenario.semiHybridSummary.weeklyDelta))}`, scenario.semiHybridSummary.weeklyDelta >= 0 ? "good" : "warn")
-    );
-  }
   $("#resultMetrics").innerHTML = metrics.join("");
 
   const gapText = scenario.annualGap >= 0
@@ -621,13 +611,10 @@ function semiModelText(scenario) {
     `;
   }
   const summary = scenario.semiHybridSummary;
-  const deltaText = summary.weeklyDelta >= 0
-    ? `${formatMoneyPrecise(summary.weeklyDelta)} au-dessus du budget 23 $.`
-    : `${formatMoneyPrecise(Math.abs(summary.weeklyDelta))} sous le budget 23 $.`;
   return `
     <strong>${summary.tier.label} (${summary.tier.rangeLabel})</strong>
     <span>${formatMoneyPrecise(summary.tier.spRate)} par presence + ${summary.tier.csmHours} h CSM payees = ${formatMoneyPrecise(summary.hybridRevenue)} / sem.</span>
-    <small>Reference 23 $: ${formatMoneyPrecise(summary.budgetRevenue)} / sem. Ecart: ${deltaText}</small>
+    <small>Reference budget 23 $: ${formatMoneyPrecise(summary.budgetRevenue)} / sem. Le CSM est inclus dans ce modele.</small>
   `;
 }
 
@@ -736,12 +723,12 @@ function summaryText() {
     `Revenu hebdo: ${formatCurrency(scenario.weeklyRevenue)}`,
     `Revenu annuel: ${formatCurrency(scenario.annualRevenue)}`,
     `Heures terrain estimees: ${formatNumber(scenario.floorHours)} h`,
-    `Admin invisible estimee: ${formatNumber(scenario.invisibleAdminHours)} h`,
+    `Admin incluse estimee: ${formatNumber(scenario.invisibleAdminHours)} h`,
     `Heures reelles totales: ${formatNumber(scenario.totalRealHours)} h`,
     `Taux horaire reel: ${formatMoneyPrecise(scenario.realHourlyRate)}`,
     `Ecart annuel: ${scenario.annualGap >= 0 ? "+" : "-"}${formatCurrency(Math.abs(scenario.annualGap))}`,
     scenario.semiHybridSummary
-      ? `Semi-prive hybride: ${scenario.semiHybridSummary.tier.label}, ecart vs budget 23 $ ${scenario.semiHybridSummary.weeklyDelta >= 0 ? "+" : "-"}${formatMoneyPrecise(Math.abs(scenario.semiHybridSummary.weeklyDelta))} / sem`
+      ? `Semi-prive hybride: ${scenario.semiHybridSummary.tier.label}, CSM inclus dans le modele`
       : "Semi-prive: mode standard",
     "",
     `Constat: ${roadmapPrompt(scenario)}`
