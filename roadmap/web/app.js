@@ -16,6 +16,7 @@ const state = {
   clientSubmissionId: "",
   resumeSubmissionId: "",
   autosaveTimer: null,
+  submitFeedbackTimer: null,
   isSubmitting: false,
   settings: {
     endpointUrl: IS_LOCAL_PREVIEW ? "" : DEFAULT_ENDPOINT_URL,
@@ -660,11 +661,8 @@ async function handleSubmit(event) {
   if (!event.target.reportValidity()) return;
 
   const payload = buildPayload("submitted");
-  const submitButton = $("#submitButton");
   try {
-    state.isSubmitting = true;
-    submitButton.disabled = true;
-    submitButton.textContent = "Envoi...";
+    setSubmitInProgress(true);
     const result = await submitPayload(payload);
     if (!result.localOnly) {
       const localPayload = result.submissionId ? { ...payload, serverSubmissionId: result.submissionId } : payload;
@@ -682,10 +680,46 @@ async function handleSubmit(event) {
   } catch (error) {
     showNotice(error.message, "error");
   } finally {
-    state.isSubmitting = false;
-    submitButton.disabled = false;
-    submitButton.textContent = "Soumettre";
+    setSubmitInProgress(false);
   }
+}
+
+function setSubmitInProgress(isInProgress) {
+  const submitButton = $("#submitButton");
+  const saveDraftButton = $("#saveDraftButton");
+  state.isSubmitting = isInProgress;
+  window.clearTimeout(state.submitFeedbackTimer);
+  state.submitFeedbackTimer = null;
+
+  if (submitButton) {
+    submitButton.disabled = isInProgress;
+    submitButton.textContent = isInProgress ? "Envoi en cours..." : "Soumettre";
+    submitButton.setAttribute("aria-busy", isInProgress ? "true" : "false");
+  }
+
+  if (saveDraftButton) {
+    saveDraftButton.disabled = isInProgress;
+  }
+
+  if (!isInProgress) {
+    if ($("#draftStatus")?.textContent === "Sauvegarde en cours vers la base Roadmap...") {
+      updateDraftStatus("");
+    }
+    return;
+  }
+
+  showNotice(
+    "Envoi en cours. Ne ferme pas cette page et ne reclique pas: la sauvegarde peut prendre jusqu'a 30 secondes.",
+    "sending"
+  );
+  updateDraftStatus("Sauvegarde en cours vers la base Roadmap...");
+  state.submitFeedbackTimer = window.setTimeout(() => {
+    if (!state.isSubmitting) return;
+    showNotice(
+      "Toujours en sauvegarde. C'est normal si Apps Script prend quelques secondes; garde cette page ouverte jusqu'au message de confirmation.",
+      "sending"
+    );
+  }, 12000);
 }
 
 function showNotice(message, type = "") {
