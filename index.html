@@ -1036,6 +1036,186 @@
     const IS_TEST_MODE = ["1", "true", "coach", "test"].includes(String(params.get("test") || params.get("mode") || "").toLowerCase());
     document.body.classList.toggle("test-mode", IS_TEST_MODE);
 
+    const QUESTIONNAIRE_TYPES = {
+      suivi_global: {
+        type: "suivi_global",
+        title: "Suivi client-coach",
+        sidebar: "Quelques minutes pour dire où tu en es, ce qui va bien, et ce que ton coach devrait savoir pour mieux t'accompagner.",
+        heading: "On prend le pouls de ton entraînement.",
+        lead: "Tes réponses aident ton coach à mieux comprendre ta réalité actuelle. Réponds simplement avec ce qui est vrai aujourd'hui."
+      },
+      habitudes_quotidiennes: {
+        type: "habitudes_quotidiennes",
+        title: "Habitudes quotidiennes",
+        sidebar: "Un suivi court sur les habitudes de base: rythme, sommeil, hydratation, mouvement et priorité du moment.",
+        heading: "On regarde tes habitudes de la semaine.",
+        lead: "Réponds simplement. Le but est d'aider ton coach à voir quelle petite action pourrait t'aider maintenant.",
+        sections: [
+          {
+            title: "Rythme",
+            kicker: "7 habitudes",
+            heading: "Comment se passe ta routine en ce moment ?",
+            lead: "Ces questions donnent une lecture rapide de tes habitudes quotidiennes.",
+            fields: [
+              { type: "radio", name: "habits_priorities", label: "Tes priorités sont-elles claires avec ton coach ?", options: ["Oui, très claires", "À clarifier un peu", "Non, pas vraiment"] },
+              { type: "radio", name: "habits_rhythm", label: "As-tu un rythme quotidien autour du sommeil, de la nutrition et du mouvement ?", options: ["Oui, assez stable", "Variable selon les journées", "Non, difficile en ce moment"] },
+              { type: "radio", name: "habits_water", label: "Quelle quantité d'eau bois-tu généralement par jour ?", options: ["Moins de 1 L", "Entre 1 et 2 L", "2 L ou plus", "Je ne sais pas"] },
+              { type: "radio", name: "habits_movement30", label: "Fais-tu environ 30 minutes de mouvement par jour ?", options: ["Oui", "Quelques jours", "Rarement"] },
+              { type: "radio", name: "habits_outdoor15", label: "Vas-tu dehors au moins 15 minutes par jour ?", options: ["Oui", "Quelques jours", "Rarement"] },
+              { type: "radio", name: "habits_sleep7", label: "Dors-tu environ 7 heures ou plus par nuit ?", options: ["Oui", "Parfois", "Rarement"] },
+              { type: "radio", name: "habits_bowel_daily", label: "Vas-tu à la selle au moins une fois par jour ?", options: ["Oui", "Pas toujours", "Non"] }
+            ]
+          },
+          {
+            title: "Priorité",
+            kicker: "Prochaine action",
+            heading: "Quelle habitude mérite le plus d'attention ?",
+            lead: "Nomme ce qui serait le plus utile à travailler avec ton coach.",
+            fields: [
+              { type: "checkbox", name: "habits_focus", label: "Quel sujet serait le plus pertinent à améliorer ?", options: ["Sommeil", "Hydratation", "Nutrition", "Mouvement", "Routine", "Stress", "Clarté des priorités"] },
+              { type: "textarea", name: "habits_priority", label: "Qu'aimerais-tu améliorer en premier ?", placeholder: "Exemple: boire plus d'eau, dormir plus tôt, bouger les jours sans entraînement..." },
+              { type: "radio", name: "habits_support", label: "Quel type de support aimerais-tu de ton coach ?", options: ["Aucun pour l'instant", "Un rappel simple", "En parler à la prochaine séance", "Me contacter rapidement"] }
+            ]
+          }
+        ]
+      },
+      evaluation_habitudes_vie: {
+        type: "evaluation_habitudes_vie",
+        title: "Évaluation habitudes de vie",
+        sidebar: "Une évaluation plus complète pour mieux comprendre ton énergie, ta nutrition, ton sommeil, ton stress et tes priorités.",
+        heading: "On fait le portrait de tes habitudes de vie.",
+        lead: "Cette évaluation aide ton coach à mieux cibler les leviers qui pourraient soutenir ta progression.",
+        sections: [
+          {
+            title: "Contexte",
+            kicker: "Départ",
+            heading: "Qu'est-ce qui t'amène à faire cette évaluation ?",
+            lead: "Le but est de comprendre ta réalité actuelle avant de parler de solutions.",
+            fields: [
+              { type: "textarea", name: "eval_main_goal", label: "Quel est ton objectif principal en ce moment ?", placeholder: "Exemple: énergie, perte de poids, force, constance, santé..." },
+              { type: "checkbox", name: "eval_obstacles", label: "Qu'est-ce qui nuit le plus à tes habitudes actuellement ?", options: ["Horaire", "Stress", "Sommeil", "Alimentation", "Motivation", "Douleurs", "Organisation", "Je ne sais pas"] },
+              { type: "radio", name: "eval_readiness", label: "À quel point te sens-tu prêt à changer une habitude maintenant ?", options: ["Très prêt", "Prêt avec support", "Ambivalent", "Pas prêt pour l'instant"] }
+            ]
+          },
+          {
+            title: "Nutrition",
+            kicker: "Énergie",
+            heading: "Comment décrirais-tu ton alimentation ?",
+            lead: "Réponds selon ta semaine normale, pas selon une journée parfaite.",
+            fields: [
+              { type: "radio", name: "eval_meals", label: "Combien de repas complets prends-tu généralement par jour ?", options: ["1 ou moins", "2", "3", "3 et collations", "Variable"] },
+              { type: "radio", name: "eval_protein", label: "As-tu une source de protéine à la plupart de tes repas ?", options: ["Oui", "Souvent", "Parfois", "Rarement"] },
+              { type: "radio", name: "eval_fruits_vegetables", label: "Manges-tu des fruits ou légumes chaque jour ?", options: ["Oui", "Souvent", "Parfois", "Rarement"] },
+              { type: "radio", name: "eval_hydration", label: "Comment est ton hydratation ?", options: ["Bonne", "Correcte", "À améliorer", "Je ne sais pas"] },
+              { type: "textarea", name: "eval_nutrition_note", label: "Y a-t-il quelque chose à savoir sur ton alimentation ?", placeholder: "Exemple: fringales, repas sautés, manque de temps, digestion..." }
+            ]
+          },
+          {
+            title: "Récupération",
+            kicker: "Sommeil et stress",
+            heading: "Comment récupères-tu ?",
+            lead: "Sommeil, stress et récupération influencent directement l'entraînement.",
+            fields: [
+              { type: "radio", name: "eval_sleep", label: "Combien d'heures dors-tu en moyenne ?", options: ["Moins de 5 h", "5 à 6 h", "6 à 7 h", "7 à 8 h", "8 h ou plus"] },
+              { type: "radio", name: "eval_sleep_quality", label: "Comment est la qualité de ton sommeil ?", options: ["Très bonne", "Bonne", "Variable", "Difficile"] },
+              { type: "radio", name: "eval_stress", label: "Ton stress actuel est plutôt :", options: ["Bas", "Modéré", "Élevé", "Très élevé"] },
+              { type: "textarea", name: "eval_recovery_note", label: "Qu'est-ce qui aide ou nuit à ta récupération ?", placeholder: "Exemple: travail, enfants, écrans, café, horaire, douleur..." }
+            ]
+          },
+          {
+            title: "Mouvement",
+            kicker: "Corps et énergie",
+            heading: "Comment ton corps répond-il ?",
+            lead: "Cette section aide à repérer si le plan doit être ajusté.",
+            fields: [
+              { type: "radio", name: "eval_energy", label: "Ton énergie générale est :", options: ["Très bonne", "Bonne", "Variable", "Basse"] },
+              { type: "radio", name: "eval_movement_outside_training", label: "Bouges-tu les jours sans entraînement ?", options: ["Oui", "Parfois", "Rarement", "Non"] },
+              { type: "radio", name: "eval_pain", label: "As-tu une douleur ou limitation à considérer ?", options: ["Non", "Oui légère", "Oui importante", "Je ne suis pas certain"] },
+              { type: "textarea", name: "eval_body_note", label: "Qu'aimerais-tu que ton coach sache sur ton corps ou ton énergie ?", placeholder: "Exemple: douleurs, fatigue, motivation, récupération, cycles..." }
+            ]
+          },
+          {
+            title: "Plan",
+            kicker: "Prochaine étape",
+            heading: "Quelle action serait la plus utile maintenant ?",
+            lead: "Choisis une priorité simple à discuter ou à mettre en place.",
+            fields: [
+              { type: "checkbox", name: "eval_next_focus", label: "Sur quoi veux-tu mettre le focus ?", options: ["Sommeil", "Nutrition", "Hydratation", "Stress", "Mouvement", "Routine", "Objectif", "Douleur"] },
+              { type: "textarea", name: "eval_commitment", label: "Quelle petite action serais-tu prêt à essayer cette semaine ?", placeholder: "Une action simple, réaliste et mesurable." },
+              { type: "radio", name: "eval_contact", label: "Souhaites-tu en parler avec ton coach ?", options: ["Oui, rapidement", "Oui, à la prochaine séance", "Seulement si nécessaire", "Non, je voulais surtout faire le point"] }
+            ]
+          }
+        ]
+      }
+    };
+
+    function activeQuestionnaireType() {
+      const rawType = String(params.get("type") || params.get("questionnaire_type") || "suivi_global").trim();
+      return QUESTIONNAIRE_TYPES[rawType] ? rawType : "suivi_global";
+    }
+
+    const ACTIVE_QUESTIONNAIRE = QUESTIONNAIRE_TYPES[activeQuestionnaireType()];
+
+    function fieldHtml(field) {
+      const label = `<label class="question">${field.label}</label>`;
+      if (field.type === "textarea") {
+        return `<div class="field">${label}<textarea name="${field.name}" placeholder="${field.placeholder || ""}"></textarea></div>`;
+      }
+      const inputType = field.type === "checkbox" ? "checkbox" : "radio";
+      const options = (field.options || []).map((option) => (
+        `<label class="choice"><input type="${inputType}" name="${field.name}" value="${option}"><span><strong>${option}</strong></span></label>`
+      )).join("");
+      return `<div class="field">${label}<div class="choice-grid">${options}</div></div>`;
+    }
+
+    function sectionHtml(section) {
+      return `
+        <section class="section generated-questionnaire-section" data-title="${section.title}">
+          <div class="kicker">${section.kicker}</div>
+          <h2>${section.heading}</h2>
+          <p class="lead">${section.lead}</p>
+          <div class="field-stack">
+            ${section.fields.map(fieldHtml).join("")}
+          </div>
+        </section>
+      `;
+    }
+
+    function configureQuestionnaireExperience() {
+      const sidebarIntro = document.querySelector(".sidebar .intro");
+      const brandSubtitle = document.querySelector(".brand span");
+      const firstSection = document.querySelector('.section[data-title="Départ"]');
+      if (sidebarIntro) sidebarIntro.textContent = ACTIVE_QUESTIONNAIRE.sidebar;
+      if (brandSubtitle) brandSubtitle.textContent = ACTIVE_QUESTIONNAIRE.title;
+      if (firstSection) {
+        const heading = firstSection.querySelector("h1");
+        const lead = firstSection.querySelector(".lead");
+        if (heading) heading.textContent = ACTIVE_QUESTIONNAIRE.heading;
+        if (lead) lead.textContent = ACTIVE_QUESTIONNAIRE.lead;
+      }
+
+      if (ACTIVE_QUESTIONNAIRE.type === "suivi_global") return;
+
+      const titlesToReplace = new Set(["État", "Bilan", "Objectif", "Programme", "Confort", "Envoi"]);
+      document.querySelectorAll(".section").forEach((section) => {
+        if (titlesToReplace.has(section.dataset.title || "")) section.remove();
+      });
+      const completeSection = document.querySelector(".section.complete");
+      if (completeSection) {
+        completeSection.insertAdjacentHTML("beforebegin", ACTIVE_QUESTIONNAIRE.sections.map(sectionHtml).join(""));
+      }
+
+      const steps = document.querySelector(".steps");
+      if (steps) {
+        const labels = ["Départ", ...ACTIVE_QUESTIONNAIRE.sections.map((section) => section.title), "Résumé"];
+        steps.innerHTML = labels.map((label, index) => (
+          `<div class="step-dot${index === 0 ? " active" : ""}" data-step-label="${index}"><span>${index + 1}</span><span>${label}</span></div>`
+        )).join("");
+      }
+    }
+
+    configureQuestionnaireExperience();
+
     const sections = Array.from(document.querySelectorAll(".section")).filter((section) => (
       IS_TEST_MODE || !section.classList.contains("test-only-section")
     ));
@@ -1048,7 +1228,7 @@
     ));
     const DEFAULT_ENDPOINT_URL = "https://script.google.com/macros/s/AKfycbxnhlehsj_NQU73k3csMQPj0NAm3QSQrpjk0Ar6VYOjXYZO-m9_GSxtmEqYw9y_9DSQEA/exec";
     const ENDPOINT_URL = params.get("endpoint") || DEFAULT_ENDPOINT_URL;
-    const APP_VERSION = "github-pages-v8-phone-first";
+    const APP_VERSION = "github-pages-v9-questionnaire-types";
     const SCHEMA_VERSION = "1.0";
     const PAYLOAD_SOURCE = "cfsb-client-coach-questionnaire";
     const FALLBACK_COACHES = [
@@ -1197,6 +1377,9 @@
     }
 
     function computeStatus() {
+      if (ACTIVE_QUESTIONNAIRE.type === "habitudes_quotidiennes") return computeHabitsStatus();
+      if (ACTIVE_QUESTIONNAIRE.type === "evaluation_habitudes_vie") return computeLifestyleEvaluationStatus();
+
       const motivation = valueOf("motivation");
       const state = valueOf("state");
       const goal = valueOf("goal");
@@ -1291,6 +1474,101 @@
       return `${window.location.origin}${window.location.pathname}${query ? `?${query}` : ""}`;
     }
 
+    function questionnaireSpecificAnswers() {
+      if (ACTIVE_QUESTIONNAIRE.type === "habitudes_quotidiennes") {
+        return {
+          questionnaire_type: ACTIVE_QUESTIONNAIRE.type,
+          questionnaire_label: ACTIVE_QUESTIONNAIRE.title,
+          habits_priorities: valueOf("habits_priorities"),
+          habits_rhythm: valueOf("habits_rhythm"),
+          habits_water: valueOf("habits_water"),
+          habits_movement30: valueOf("habits_movement30"),
+          habits_outdoor15: valueOf("habits_outdoor15"),
+          habits_sleep7: valueOf("habits_sleep7"),
+          habits_bowel_daily: valueOf("habits_bowel_daily"),
+          habits_focus: valuesOf("habits_focus"),
+          habits_priority: fieldValue("habits_priority"),
+          habits_support: valueOf("habits_support")
+        };
+      }
+
+      if (ACTIVE_QUESTIONNAIRE.type === "evaluation_habitudes_vie") {
+        return {
+          questionnaire_type: ACTIVE_QUESTIONNAIRE.type,
+          questionnaire_label: ACTIVE_QUESTIONNAIRE.title,
+          eval_main_goal: fieldValue("eval_main_goal"),
+          eval_obstacles: valuesOf("eval_obstacles"),
+          eval_readiness: valueOf("eval_readiness"),
+          eval_meals: valueOf("eval_meals"),
+          eval_protein: valueOf("eval_protein"),
+          eval_fruits_vegetables: valueOf("eval_fruits_vegetables"),
+          eval_hydration: valueOf("eval_hydration"),
+          eval_nutrition_note: fieldValue("eval_nutrition_note"),
+          eval_sleep: valueOf("eval_sleep"),
+          eval_sleep_quality: valueOf("eval_sleep_quality"),
+          eval_stress: valueOf("eval_stress"),
+          eval_recovery_note: fieldValue("eval_recovery_note"),
+          eval_energy: valueOf("eval_energy"),
+          eval_movement_outside_training: valueOf("eval_movement_outside_training"),
+          eval_pain: valueOf("eval_pain"),
+          eval_body_note: fieldValue("eval_body_note"),
+          eval_next_focus: valuesOf("eval_next_focus"),
+          eval_commitment: fieldValue("eval_commitment"),
+          eval_contact: valueOf("eval_contact")
+        };
+      }
+
+      return {
+        questionnaire_type: ACTIVE_QUESTIONNAIRE.type,
+        questionnaire_label: ACTIVE_QUESTIONNAIRE.title
+      };
+    }
+
+    function computeHabitsStatus() {
+      if (valueOf("habits_support") === "Me contacter rapidement") return "rouge";
+      const concernValues = [
+        valueOf("habits_priorities"),
+        valueOf("habits_rhythm"),
+        valueOf("habits_movement30"),
+        valueOf("habits_outdoor15"),
+        valueOf("habits_sleep7"),
+        valueOf("habits_bowel_daily")
+      ];
+      let concernScore = 0;
+      concernValues.forEach((value) => {
+        if (["Non, pas vraiment", "Non, difficile en ce moment", "Rarement", "Non"].includes(value)) concernScore += 2;
+        if (["À clarifier un peu", "Variable selon les journées", "Quelques jours", "Parfois", "Pas toujours"].includes(value)) concernScore += 1;
+      });
+      if (valueOf("habits_water") === "Moins de 1 L") concernScore += 1;
+      if (valueOf("habits_support") === "En parler à la prochaine séance") concernScore += 1;
+      if (concernScore >= 4) return "orange";
+      if (concernScore >= 1) return "jaune";
+      return "vert";
+    }
+
+    function computeLifestyleEvaluationStatus() {
+      if (valueOf("eval_contact") === "Oui, rapidement") return "rouge";
+      if (valueOf("eval_pain") === "Oui importante") return "rouge";
+      let concernScore = 0;
+      if (valueOf("eval_readiness") === "Ambivalent") concernScore += 1;
+      if (valueOf("eval_readiness") === "Pas prêt pour l'instant") concernScore += 2;
+      if (["1 ou moins", "Variable"].includes(valueOf("eval_meals"))) concernScore += 1;
+      if (["Parfois", "Rarement"].includes(valueOf("eval_protein"))) concernScore += 1;
+      if (["Parfois", "Rarement"].includes(valueOf("eval_fruits_vegetables"))) concernScore += 1;
+      if (["À améliorer", "Je ne sais pas"].includes(valueOf("eval_hydration"))) concernScore += 1;
+      if (["Moins de 5 h", "5 à 6 h"].includes(valueOf("eval_sleep"))) concernScore += 2;
+      if (valueOf("eval_sleep_quality") === "Difficile") concernScore += 2;
+      if (valueOf("eval_stress") === "Très élevé") concernScore += 2;
+      if (valueOf("eval_stress") === "Élevé") concernScore += 1;
+      if (valueOf("eval_energy") === "Basse") concernScore += 1;
+      if (["Rarement", "Non"].includes(valueOf("eval_movement_outside_training"))) concernScore += 1;
+      if (valueOf("eval_pain") === "Oui légère" || valueOf("eval_pain") === "Je ne suis pas certain") concernScore += 1;
+      if (valueOf("eval_contact") === "Oui, à la prochaine séance") concernScore += 1;
+      if (concernScore >= 5) return "orange";
+      if (concernScore >= 1) return "jaune";
+      return "vert";
+    }
+
     function buildPayload() {
       const status = computeStatus();
       const submittedAt = new Date().toISOString();
@@ -1301,6 +1579,8 @@
       return {
         source: PAYLOAD_SOURCE,
         schema_version: SCHEMA_VERSION,
+        questionnaire_type: ACTIVE_QUESTIONNAIRE.type,
+        questionnaire_label: ACTIVE_QUESTIONNAIRE.title,
         submission_token: token,
         response_id: responseId(),
         submitted_at: submittedAt,
@@ -1343,7 +1623,8 @@
           open_note: fieldValue("note"),
           final_position: valueOf("final"),
           contact_request: valueOf("contact"),
-          support_needed: valueOf("supportNeed")
+          support_needed: valueOf("supportNeed"),
+          ...questionnaireSpecificAnswers()
         },
         triage: {
           status,
@@ -1366,6 +1647,8 @@
         meta: {
           source_app: "cfsb-suivi-client-coach",
           source_version: APP_VERSION,
+          questionnaire_type: ACTIVE_QUESTIONNAIRE.type,
+          questionnaire_label: ACTIVE_QUESTIONNAIRE.title,
           source_url: sourceUrl(),
           client_phone: fieldValue("phone"),
           client_phone_normalized: phoneNormalized,
@@ -1417,6 +1700,10 @@
 
     function renderSummary() {
       const status = computeStatus();
+      if (ACTIVE_QUESTIONNAIRE.type !== "suivi_global") {
+        renderQuestionnaireSpecificSummary(status);
+        return;
+      }
       const improve = valuesOf("improve").join(", ") || "Aucune sélection";
       const challenges = valuesOf("challenges").join(", ") || "Aucune sélection";
       const rows = [
@@ -1477,6 +1764,64 @@
             Refais le questionnaire avec un autre scénario: un client satisfait, un client démotivé, un client avec douleur, puis un client qui veut seulement de petits ajustements.
           </div>
         ` : ""}
+      `;
+    }
+
+    function renderQuestionnaireSpecificSummary(status) {
+      const rows = [
+        ["Statut", `<span class="status-pill ${status}">${labelFor(status)}</span>`, true],
+        ["Questionnaire", ACTIVE_QUESTIONNAIRE.title],
+        ["Action recommandée", actionFor(status)],
+        ["Client", fieldValue("name") || "Nom non indiqué"],
+        ["Téléphone", fieldValue("phone") || "Téléphone non indiqué"],
+        ["Coach", fieldValue("coach") || "Coach non indiqué"]
+      ];
+
+      if (ACTIVE_QUESTIONNAIRE.type === "habitudes_quotidiennes") {
+        rows.push(
+          ["Priorités", valueOf("habits_priorities") || "Non indiqué"],
+          ["Rythme quotidien", valueOf("habits_rhythm") || "Non indiqué"],
+          ["Eau", valueOf("habits_water") || "Non indiqué"],
+          ["Mouvement 30 min", valueOf("habits_movement30") || "Non indiqué"],
+          ["Dehors 15 min", valueOf("habits_outdoor15") || "Non indiqué"],
+          ["Sommeil 7 h", valueOf("habits_sleep7") || "Non indiqué"],
+          ["Digestion", valueOf("habits_bowel_daily") || "Non indiqué"],
+          ["Focus", valuesOf("habits_focus").join(", ") || "Non indiqué"],
+          ["Priorité demandée", fieldValue("habits_priority") || "Aucune précision"],
+          ["Support souhaité", valueOf("habits_support") || "Non indiqué"]
+        );
+      }
+
+      if (ACTIVE_QUESTIONNAIRE.type === "evaluation_habitudes_vie") {
+        rows.push(
+          ["Objectif", fieldValue("eval_main_goal") || "Non indiqué"],
+          ["Obstacles", valuesOf("eval_obstacles").join(", ") || "Non indiqué"],
+          ["Prêt à changer", valueOf("eval_readiness") || "Non indiqué"],
+          ["Repas", valueOf("eval_meals") || "Non indiqué"],
+          ["Protéines", valueOf("eval_protein") || "Non indiqué"],
+          ["Fruits/légumes", valueOf("eval_fruits_vegetables") || "Non indiqué"],
+          ["Hydratation", valueOf("eval_hydration") || "Non indiqué"],
+          ["Sommeil", valueOf("eval_sleep") || "Non indiqué"],
+          ["Qualité sommeil", valueOf("eval_sleep_quality") || "Non indiqué"],
+          ["Stress", valueOf("eval_stress") || "Non indiqué"],
+          ["Énergie", valueOf("eval_energy") || "Non indiqué"],
+          ["Mouvement hors entraînement", valueOf("eval_movement_outside_training") || "Non indiqué"],
+          ["Douleur/limitation", valueOf("eval_pain") || "Non indiqué"],
+          ["Focus", valuesOf("eval_next_focus").join(", ") || "Non indiqué"],
+          ["Action proposée", fieldValue("eval_commitment") || "Non indiqué"],
+          ["Contact souhaité", valueOf("eval_contact") || "Non indiqué"]
+        );
+      }
+
+      summary.innerHTML = rows.map(([label, value, html]) => (
+        `<div class="summary-row"><span>${escapeHtml(label)}</span><strong>${html ? value : escapeHtml(value)}</strong></div>`
+      )).join("") + `
+        <div class="integration-note">
+          <strong>${ENDPOINT_URL ? "Prêt à transmettre" : "Version pilote"}</strong><br>
+          ${ENDPOINT_URL
+            ? "Quand tu cliques sur Envoyer, tes réponses sont transmises à l'équipe."
+            : "Ce test sert à valider l'expérience. Tes réponses ne sont pas transmises à un coach pour le moment."}
+        </div>
       `;
     }
 
