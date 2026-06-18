@@ -754,6 +754,12 @@ select:focus {
   color: var(--ink);
 }
 
+.button:disabled,
+.button[aria-busy="true"] {
+  cursor: wait;
+  opacity: 0.72;
+}
+
 .button.warn {
   background: var(--accent-2);
 }
@@ -783,6 +789,13 @@ select:focus {
   border-color: #c6e9d3;
   background: #edf9f1;
   color: var(--good);
+}
+
+.notice.sending {
+  border-color: rgba(29, 127, 79, 0.34);
+  background: #edf7f2;
+  color: var(--accent);
+  font-weight: 700;
 }
 
 .modal-backdrop {
