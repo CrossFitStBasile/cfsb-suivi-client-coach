@@ -1,9 +1,52 @@
 {
   "ok": true,
   "project": "roadmap-trimestrielle-cfsb",
-  "syncedAt": "2026-06-20T19:48:17.908Z",
-  "count": 9,
+  "syncedAt": "2026-06-20T21:24:32.973Z",
+  "count": 10,
   "submissions": [
+    {
+      "id": "60a41bcb-53b4-4950-acc2-0bf9d2abf3b5",
+      "serverSubmissionId": "60a41bcb-53b4-4950-acc2-0bf9d2abf3b5",
+      "status": "submitted",
+      "submittedAt": "2026-06-20T20:16:23.235Z",
+      "quarter": "2026-Q2",
+      "selectedRoleId": "entretien_menager",
+      "selectedRoleLabel": "Entretien menager",
+      "configVersion": "Wed Jan 05 2000 00:00:00 GMT-0500 (Eastern Standard Time)",
+      "answers": {
+        "employee_name": "Gosselin, Lysanne ",
+        "employee_email": "liz_gosselin@hotmail.com",
+        "selected_role_confirmation": "Oui",
+        "selected_role_notes": "",
+        "why_joined_and_stays": "La communauté et demeurer en forme",
+        "most_aligned_moment": "Quand c'est propre et que les coachs sont contents. ",
+        "benefits_most_valuable": "L'abonnement et sentir que je fais parti de l'équipe. J'aime sentir que je fais une différence.",
+        "value_exchange_to_clarify": "Quel est le rôle des coachs et qui doit les aviser au besoin. La consigne change souvent.",
+        "quarter_pride": "On a réussi à garder ça organisé et propre malgré les changements et rénovations.",
+        "quarter_obstacle": "Pas grand chose mai je dirais, la récureuse qui perd sa roue. Et, le fait de pas pouvoir passer la récureuse aisément d'un côté et de l'autre du gym.",
+        "gwc_gets_it": "Oui",
+        "gwc_wants_it": "Oui",
+        "gwc_capacity": "Oui",
+        "gwc_comment": "",
+        "lever_support": "Adequat",
+        "leadership_comment": "",
+        "next_objectives": "Poursuivre la même qualité de travail et mon partenariat avec mon collègue.",
+        "direction_support": "",
+        "cleaning_space_quality_score": "3",
+        "cleaning_bathroom_locker_score": "3",
+        "cleaning_equipment_surfaces_score": "3",
+        "cleaning_detail_eye_score": "4",
+        "cleaning_reliability_schedule_score": "3",
+        "cleaning_checklist_autonomy_score": "3",
+        "cleaning_time_management_score": "3",
+        "cleaning_supplies_ownership_score": "3",
+        "cleaning_safety_signal_score": "3",
+        "cleaning_team_communication_score": "3",
+        "cleaning_respect_space_score": "3",
+        "cleaning_improvement_feedback_score": "3"
+      },
+      "ownerNotes": {}
+    },
     {
       "id": "13f95f61-6dfa-4c97-98f8-dd556931d4f4",
       "serverSubmissionId": "13f95f61-6dfa-4c97-98f8-dd556931d4f4",
@@ -856,6 +899,6 @@
     }
   ],
   "snapshot": true,
-  "snapshotGeneratedAt": "2026-06-20T19:48:18.399Z",
+  "snapshotGeneratedAt": "2026-06-20T21:24:33.693Z",
   "sourceEndpoint": "Apps Script list_roadmap_submissions active only"
 }
