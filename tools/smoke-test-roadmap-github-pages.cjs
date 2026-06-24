@@ -1,6 +1,6 @@
 const { chromium } = require("playwright");
 
-const baseUrl = process.env.ROADMAP_BASE_URL || "https://crossfitstbasile.github.io/cfsb-suivi-client-coach/roadmap/";
+const baseUrl = process.env.ROADMAP_BASE_URL || "https://crossfitstbasile.github.io/cfsb-suivi-client-coach/roadmap/web/";
 const endpointUrl = "https://script.google.com/macros/s/AKfycbxnhlehsj_NQU73k3csMQPj0NAm3QSQrpjk0Ar6VYOjXYZO-m9_GSxtmEqYw9y_9DSQEA/exec";
 const isLocalBaseUrl = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])/i.test(baseUrl);
 async function run() {
