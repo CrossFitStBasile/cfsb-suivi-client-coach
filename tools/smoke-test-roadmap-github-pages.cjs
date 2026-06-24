@@ -1,9 +1,8 @@
 const { chromium } = require("playwright");
 
-const baseUrl = "https://crossfitstbasile.github.io/cfsb-suivi-client-coach/roadmap/";
+const baseUrl = process.env.ROADMAP_BASE_URL || "https://crossfitstbasile.github.io/cfsb-suivi-client-coach/roadmap/";
 const endpointUrl = "https://script.google.com/macros/s/AKfycbxnhlehsj_NQU73k3csMQPj0NAm3QSQrpjk0Ar6VYOjXYZO-m9_GSxtmEqYw9y_9DSQEA/exec";
-const resumeTestId = "6ee62837-34fb-43d5-a6ff-f1f859d30bdc";
-
+const isLocalBaseUrl = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])/i.test(baseUrl);
 async function run() {
   const browser = await chromium.launch({ channel: "msedge", headless: true });
   try {
@@ -68,19 +67,9 @@ async function run() {
 
     await page.getByRole("button", { name: /Parametres/i }).click();
     const endpointValue = await page.locator("#endpointInput").inputValue();
-    if (endpointValue !== endpointUrl) {
+    if (!isLocalBaseUrl && endpointValue !== endpointUrl) {
       throw new Error(`Unexpected endpoint value: ${endpointValue}`);
     }
-
-    const resumePage = await browser.newPage({ viewport: { width: 1360, height: 920 } });
-    await resumePage.route("https://script.google.com/**", (route) => route.abort());
-    await resumePage.goto(`${baseUrl}web/index.html?resume=${resumeTestId}`, { waitUntil: "networkidle" });
-    await resumePage.getByText(/Reprise chargee depuis la copie GitHub/i).waitFor({ timeout: 15000 });
-    const resumedName = await resumePage.locator('[data-question-id="employee_name"]').inputValue();
-    if (!/Marc-Andr[eé] M[eé]nard/i.test(resumedName)) {
-      throw new Error(`Unexpected resumed employee name: ${resumedName}`);
-    }
-    await resumePage.close();
 
     await page.goto(`${baseUrl}owners.html`, { waitUntil: "networkidle" });
     await page.getByText("Acces reserve").waitFor({ timeout: 15000 });
@@ -89,19 +78,30 @@ async function run() {
     await page.getByRole("button", { name: /Importer JSON/i }).waitFor({ timeout: 15000 });
     await page.getByRole("button", { name: /Synchroniser/i }).waitFor({ timeout: 15000 });
     await page.getByRole("button", { name: /^Actifs$/i }).waitFor({ timeout: 15000 });
-    await page.getByRole("button", { name: /Archives/i }).waitFor({ timeout: 15000 });
-    await page.getByText(/soumission\(s\) (chargee|visible)\(s\) depuis (Google Sheets|le snapshot GitHub)/i).waitFor({ timeout: 30000 });
+    await page.locator("#archiveViewButton").waitFor({ timeout: 15000 });
+    await page.locator("#teamAdminViewButton").waitFor({ timeout: 15000 });
+    if (isLocalBaseUrl) {
+      await page.getByRole("button", { name: /Parametres/i }).click();
+      await page.locator("#endpointInput").fill(endpointUrl);
+      await page.locator("#saveSettingsButton").click();
+      await page.getByRole("button", { name: /Synchroniser/i }).click();
+    }
+    await page.getByText(/soumission\(s\) visible\(s\) depuis Google Sheets/i).waitFor({ timeout: 70000 });
     await page.locator("#submissionSelect").waitFor({ timeout: 15000 });
-    await page.locator("#submissionSelect").selectOption({ label: /Marc-Andr[eé]/i });
+    const marcAndreOption = await page.locator("#submissionSelect option").evaluateAll((options) => {
+      return options.find((option) => /Marc-Andr[eé]/i.test(option.textContent || ""))?.value || "";
+    });
+    if (!marcAndreOption) throw new Error("Marc-Andre submission option not found.");
+    await page.locator("#submissionSelect").selectOption(marcAndreOption);
     await page.getByText("Resume de rencontre").waitFor({ timeout: 15000 });
     await page.getByText("Note de rencontre").waitFor({ timeout: 15000 });
-    await page.getByText("Reponses employe").waitFor({ timeout: 15000 });
+    await page.getByRole("heading", { name: "Reponses employe" }).waitFor({ timeout: 15000 });
     await page.getByRole("button", { name: /Lien reprise/i }).waitFor({ timeout: 15000 });
     await page.getByRole("button", { name: /Message relance/i }).waitFor({ timeout: 15000 });
     await page.getByRole("button", { name: /^Archiver$/i }).waitFor({ timeout: 15000 });
     await page.getByRole("button", { name: /Parametres/i }).click();
     const ownerEndpointValue = await page.locator("#endpointInput").inputValue();
-    if (ownerEndpointValue !== endpointUrl) {
+    if (!isLocalBaseUrl && ownerEndpointValue !== endpointUrl) {
       throw new Error(`Unexpected owners endpoint value: ${ownerEndpointValue}`);
     }
 

@@ -1,5 +1,4 @@
 const CONFIG_URL = "../data/roadmap-config.json";
-const SUBMISSIONS_CACHE_URL = "../data/roadmap-submissions-cache.json";
 const DEFAULT_ENDPOINT_URL = "https://script.google.com/macros/s/AKfycbxnhlehsj_NQU73k3csMQPj0NAm3QSQrpjk0Ar6VYOjXYZO-m9_GSxtmEqYw9y_9DSQEA/exec";
 const IS_LOCAL_PREVIEW = ["", "localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
 const STORAGE_KEYS = {
@@ -7,7 +6,8 @@ const STORAGE_KEYS = {
   submissions: "cfsb-roadmap-submissions",
   ownerNotes: "cfsb-roadmap-owner-notes",
   ownerAccess: "cfsb-roadmap-owner-access",
-  archivedSubmissions: "cfsb-roadmap-archived-submissions"
+  archivedSubmissions: "cfsb-roadmap-archived-submissions",
+  teamMembers: "cfsb-roadmap-team-members"
 };
 const OWNER_PIN_HASH = "2c0e6aedc46934b8f4c0eff7cb21be678c5a35449ea3374b15f3a2f65259c3d7";
 const OWNER_STATUSES = [
@@ -17,9 +17,39 @@ const OWNER_STATUSES = [
   ["action_required", "Action requise"],
   ["archived", "Pret a archiver"]
 ];
+const TEAM_DEPARTMENTS = [
+  { id: "direction", label: "Direction", className: "owners", sortOrder: 10 },
+  { id: "operations", label: "Operations", className: "operations", sortOrder: 20 },
+  { id: "coaching", label: "Coaching", className: "coaching", sortOrder: 30 },
+  { id: "support", label: "Communaute et support", className: "support", sortOrder: 40 }
+];
+const DEFAULT_TEAM_MEMBERS = [
+  { memberId: "michael-grondin", name: "Michael Grondin", departmentId: "direction", roleIds: ["owner"], displayTitle: "Proprietaire - Ventes, marketing, vision", sortOrder: 10, active: true },
+  { memberId: "gabriel-mayer-bedard", name: "Gabriel Mayer Bedard", departmentId: "direction", roleIds: ["owner"], displayTitle: "Proprietaire - Operations, finances, RH, integration", sortOrder: 20, active: true },
+  { memberId: "caroline-martineau", name: "Caroline Martineau", departmentId: "operations", roleIds: ["coordinatrice"], displayTitle: "Chef d'equipe, coordination, ventes", sortOrder: 10, active: true },
+  { memberId: "tiffany-bolduc-brossier", name: "Tiffany Bolduc-Brossier", departmentId: "operations", roleIds: ["admin_autre"], displayTitle: "Conciliation de la paie", sortOrder: 20, active: true },
+  { memberId: "hugo-lelievre", name: "Hugo Lelievre", departmentId: "coaching", roleIds: ["head_coach"], displayTitle: "Coach en chef, formateur", sortOrder: 10, active: true },
+  { memberId: "marc-andre-menard", name: "Marc-Andre Menard", departmentId: "coaching", roleIds: ["coach_professionnel"], displayTitle: "Coach professionnel", sortOrder: 20, active: true },
+  { memberId: "raphael-samson", name: "Raphael Samson", departmentId: "coaching", roleIds: ["coach_professionnel"], displayTitle: "Coach professionnel", sortOrder: 30, active: true },
+  { memberId: "camille-proulx", name: "Camille Proulx", departmentId: "coaching", roleIds: ["coach_professionnel"], displayTitle: "Coach professionnel", sortOrder: 40, active: true },
+  { memberId: "david-olivier", name: "David Olivier", departmentId: "coaching", roleIds: ["coach_professionnel"], displayTitle: "Coach professionnel", sortOrder: 50, active: true },
+  { memberId: "iheb-yahyaoui", name: "Iheb Yahyaoui", departmentId: "coaching", roleIds: ["coach_professionnel"], displayTitle: "Coach professionnel", sortOrder: 60, active: true },
+  { memberId: "roxanne-vincent", name: "Roxanne Vincent", departmentId: "coaching", roleIds: ["coach_developpement"], displayTitle: "Coach developpement", sortOrder: 70, active: true },
+  { memberId: "nathan-goupil", name: "Nathan Goupil", departmentId: "coaching", roleIds: ["coach_developpement"], displayTitle: "Coach developpement", sortOrder: 80, active: true },
+  { memberId: "chloe-willis", name: "Chloe Willis", departmentId: "coaching", roleIds: ["coach_developpement"], displayTitle: "Coach developpement", sortOrder: 90, active: true },
+  { memberId: "serge-thibault", name: "Serge Thibault", departmentId: "coaching", roleIds: ["coach_communaute"], displayTitle: "Coach communaute", sortOrder: 100, active: true },
+  { memberId: "kim-theriault", name: "Kim Theriault", departmentId: "coaching", roleIds: ["coach_communaute"], displayTitle: "Coach communaute", sortOrder: 110, active: true },
+  { memberId: "jean-sylvain-cote", name: "Jean-Sylvain Cote", departmentId: "coaching", roleIds: ["coach_communaute"], displayTitle: "Coach communaute", sortOrder: 120, active: true },
+  { memberId: "karolina-milewska", name: "Karolina Milewska", departmentId: "support", roleIds: ["engagement_evenements"], displayTitle: "Gestionnaire Club Social", sortOrder: 10, active: true },
+  { memberId: "lysanne-gosselin", name: "Lysanne Gosselin", departmentId: "support", roleIds: ["entretien_menager"], displayTitle: "Entretien menager", sortOrder: 20, active: true },
+  { memberId: "michel-jasen-mallet", name: "Michel Jasen Mallet", departmentId: "support", roleIds: ["entretien_menager"], displayTitle: "Entretien menager", sortOrder: 30, active: true },
+  { memberId: "valerie-savard", name: "Valerie Savard", departmentId: "support", roleIds: ["admin_autre"], displayTitle: "Equipe CFSB", sortOrder: 40, active: true }
+];
 
 const state = {
   config: null,
+  teamMembers: DEFAULT_TEAM_MEMBERS,
+  teamDepartments: TEAM_DEPARTMENTS,
   submissions: [],
   selectedId: "",
   selectedArchiveId: "",
@@ -119,6 +149,7 @@ function loadLocalData() {
   state.submissions = JSON.parse(localStorage.getItem(STORAGE_KEYS.submissions) || "[]");
   state.ownerNotes = JSON.parse(localStorage.getItem(STORAGE_KEYS.ownerNotes) || "{}");
   state.archivedSubmissions = JSON.parse(localStorage.getItem(STORAGE_KEYS.archivedSubmissions) || "{}");
+  state.teamMembers = JSON.parse(localStorage.getItem(STORAGE_KEYS.teamMembers) || "null") || DEFAULT_TEAM_MEMBERS;
   $("#endpointInput").value = state.settings.endpointUrl || "";
 }
 
@@ -126,6 +157,7 @@ function saveLocalData() {
   localStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(state.submissions));
   localStorage.setItem(STORAGE_KEYS.ownerNotes, JSON.stringify(state.ownerNotes));
   localStorage.setItem(STORAGE_KEYS.archivedSubmissions, JSON.stringify(state.archivedSubmissions));
+  localStorage.setItem(STORAGE_KEYS.teamMembers, JSON.stringify(state.teamMembers));
 }
 
 function setSyncStatus(message, type = "") {
@@ -149,6 +181,44 @@ function normalizeName(value) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+}
+
+function activeTeamMembers() {
+  return (state.teamMembers || []).filter((member) => member.active !== false);
+}
+
+function teamDepartmentById(id) {
+  return (state.teamDepartments || TEAM_DEPARTMENTS).find((department) => department.id === id)
+    || TEAM_DEPARTMENTS[0];
+}
+
+function sortedTeamMembers({ includeInactive = false } = {}) {
+  return [...(state.teamMembers || [])]
+    .filter((member) => includeInactive || member.active !== false)
+    .sort((a, b) => {
+      const departmentA = teamDepartmentById(a.departmentId)?.sortOrder || 999;
+      const departmentB = teamDepartmentById(b.departmentId)?.sortOrder || 999;
+      if (departmentA !== departmentB) return departmentA - departmentB;
+      return Number(a.sortOrder || 999) - Number(b.sortOrder || 999)
+        || String(a.name || "").localeCompare(String(b.name || ""), "fr");
+    });
+}
+
+function roleLabelsForTeamMember(member) {
+  const labels = (member.roleIds || [])
+    .map((roleId) => state.config?.roles?.find((role) => role.id === roleId)?.label)
+    .filter(Boolean);
+  return labels.length ? labels.join(", ") : "Role non lie au formulaire";
+}
+
+function makeTeamMemberId(name) {
+  return String(name || "membre")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    || `membre-${Date.now()}`;
 }
 
 function roleById(roleId) {
@@ -382,13 +452,16 @@ function renderViewTabs() {
   const activeButton = $("#activeViewButton");
   const archiveButton = $("#archiveViewButton");
   const teamButton = $("#teamViewButton");
-  if (!activeButton || !archiveButton || !teamButton) return;
+  const teamAdminButton = $("#teamAdminViewButton");
+  if (!activeButton || !archiveButton || !teamButton || !teamAdminButton) return;
   activeButton.classList.toggle("active", state.view === "active");
   archiveButton.classList.toggle("active", state.view === "archive");
   teamButton.classList.toggle("active", state.view === "team");
+  teamAdminButton.classList.toggle("active", state.view === "org");
   const archiveCount = archivedEntries().length;
   archiveButton.textContent = archiveCount ? `Archives (${archiveCount})` : "Archives";
   teamButton.textContent = state.submissions.length ? `Portrait equipe (${state.submissions.length})` : "Portrait equipe";
+  teamAdminButton.textContent = `Equipe (${activeTeamMembers().length})`;
   renderPipelineBoard();
 }
 
@@ -411,10 +484,16 @@ function bindViewTabs() {
     renderList();
     renderDetail();
   });
+  $("#teamAdminViewButton")?.addEventListener("click", () => {
+    state.view = "org";
+    renderViewTabs();
+    renderList();
+    renderDetail();
+  });
 }
 
 function renderList() {
-  if (state.view === "team") return;
+  if (state.view === "team" || state.view === "org") return;
   if (state.view === "archive") {
     ensureSelectedArchiveVisible();
     return;
@@ -459,6 +538,25 @@ function renderList() {
 function renderPipelineBoard() {
   const board = $("#pipelineBoard");
   if (!board) return;
+  if (state.view === "org") {
+    board.innerHTML = `
+      <div class="pipeline-header">
+        <div>
+          <h2>Charte organisationnelle</h2>
+          <p>${activeTeamMembers().length} membre(s) actif(s). Les changements sauvegardes ici alimentent le rappel visible au debut du formulaire employe.</p>
+        </div>
+        <button class="button secondary" type="button" data-refresh-team>Recharger l'equipe</button>
+      </div>
+    `;
+    $("[data-refresh-team]", board)?.addEventListener("click", async () => {
+      try {
+        await syncTeamMembers();
+      } catch (error) {
+        setSyncStatus(`Sync equipe echouee: ${error.message}`, "error");
+      }
+    });
+    return;
+  }
   const counts = activeStatusCounts();
   const visibleCount = state.view === "archive" ? filteredArchivedEntries().length : filteredSubmissions().length;
   board.innerHTML = `
@@ -768,6 +866,241 @@ function renderTeamView() {
   });
 }
 
+function renderTeamOrgPreview() {
+  const departments = state.teamDepartments || TEAM_DEPARTMENTS;
+  const activeMembers = sortedTeamMembers();
+  return departments.map((department) => {
+    const members = activeMembers.filter((member) => member.departmentId === department.id);
+    return `
+      <div class="org-column ${escapeHtml(department.className || "")}">
+        <h3>${escapeHtml(department.label)}</h3>
+        <ul>
+          ${members.length ? members.map((member) => `
+            <li>
+              <strong>${escapeHtml(member.name)}</strong>
+              <span>${escapeHtml(member.displayTitle || roleLabelsForTeamMember(member))}</span>
+            </li>
+          `).join("") : `<li><span>Aucun membre actif.</span></li>`}
+        </ul>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderTeamMemberForm(member = null) {
+  const selectedRoles = new Set(member?.roleIds || []);
+  const nextOrder = Math.max(0, ...sortedTeamMembers({ includeInactive: true }).map((item) => Number(item.sortOrder || 0))) + 10;
+  return `
+    <form class="team-member-form" id="teamMemberForm">
+      <input type="hidden" name="memberId" value="${escapeHtml(member?.memberId || "")}">
+      <div class="form-grid two">
+        <label class="field">
+          <span>Nom</span>
+          <input name="name" type="text" value="${escapeHtml(member?.name || "")}" placeholder="Nom du membre" required>
+        </label>
+        <label class="field">
+          <span>Departement</span>
+          <select name="departmentId" required>
+            ${(state.teamDepartments || TEAM_DEPARTMENTS).map((department) => `
+              <option value="${escapeHtml(department.id)}" ${member?.departmentId === department.id ? "selected" : ""}>${escapeHtml(department.label)}</option>
+            `).join("")}
+          </select>
+        </label>
+      </div>
+      <label class="field">
+        <span>Titre visible dans la charte</span>
+        <input name="displayTitle" type="text" value="${escapeHtml(member?.displayTitle || "")}" placeholder="Ex.: Coach professionnel, Coach en chef, Entretien menager...">
+      </label>
+      <div class="form-grid two">
+        <label class="field">
+          <span>Ordre d'affichage</span>
+          <input name="sortOrder" type="number" min="0" step="1" value="${escapeHtml(String(member?.sortOrder ?? nextOrder))}">
+        </label>
+        <label class="field checkbox-field">
+          <input name="active" type="checkbox" ${member?.active === false ? "" : "checked"}>
+          <span>Membre actif dans l'organigramme</span>
+        </label>
+      </div>
+      <fieldset class="role-checks">
+        <legend>Roles lies au formulaire</legend>
+        ${state.config.roles.map((role) => `
+          <label class="checkbox-row">
+            <input name="teamRoleIds" type="checkbox" value="${escapeHtml(role.id)}" ${selectedRoles.has(role.id) ? "checked" : ""}>
+            <span>${escapeHtml(role.label)}</span>
+          </label>
+        `).join("")}
+      </fieldset>
+      <div class="actions">
+        <button class="button" type="submit">Sauvegarder membre</button>
+        <button class="button secondary" type="button" data-team-reset>Reinitialiser</button>
+      </div>
+    </form>
+  `;
+}
+
+function renderTeamAdminView() {
+  const area = $("#detailArea");
+  const members = sortedTeamMembers({ includeInactive: true });
+  area.innerHTML = `
+    <section class="section">
+      <div class="section-header owner-submission-header">
+        <div>
+          <h2>Equipe et organigramme</h2>
+          <p>Ajoute, modifie ou desactive les membres. Le formulaire employe reprend cette charte au debut de la roadmap.</p>
+        </div>
+        <button class="button secondary" type="button" data-team-new>Nouveau membre</button>
+      </div>
+      <div class="section-body">
+        <div class="team-admin-layout">
+          <div>
+            <h3 class="compact-title">Modifier un membre</h3>
+            ${renderTeamMemberForm()}
+          </div>
+          <div>
+            <h3 class="compact-title">Membres</h3>
+            <div class="team-member-list">
+              ${members.map((member) => `
+                <article class="team-member-card${member.active === false ? " inactive" : ""}">
+                  <div>
+                    <strong>${escapeHtml(member.name)}</strong>
+                    <span>${escapeHtml(teamDepartmentById(member.departmentId)?.label || "Departement inconnu")} - ${escapeHtml(member.displayTitle || roleLabelsForTeamMember(member))}</span>
+                    <small>${escapeHtml(roleLabelsForTeamMember(member))}</small>
+                  </div>
+                  <div class="team-member-actions">
+                    <button class="button secondary compact" type="button" data-team-edit="${escapeHtml(member.memberId)}">Modifier</button>
+                    <button class="button secondary compact" type="button" data-team-toggle="${escapeHtml(member.memberId)}" data-team-active="${member.active === false ? "true" : "false"}">
+                      ${member.active === false ? "Reactiver" : "Desactiver"}
+                    </button>
+                  </div>
+                </article>
+              `).join("")}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <h2>Apercu charte</h2>
+        <p>Voici ce que les membres de l'equipe verront au debut du formulaire.</p>
+      </div>
+      <div class="section-body">
+        <div class="org-grid org-preview">
+          ${renderTeamOrgPreview()}
+        </div>
+      </div>
+    </section>
+  `;
+
+  bindTeamAdminView();
+}
+
+function teamMemberFromForm(form) {
+  const data = new FormData(form);
+  const name = String(data.get("name") || "").trim();
+  const existingId = String(data.get("memberId") || "").trim();
+  const memberId = existingId || makeTeamMemberId(name);
+  return {
+    memberId,
+    name,
+    departmentId: String(data.get("departmentId") || TEAM_DEPARTMENTS[0].id),
+    roleIds: data.getAll("teamRoleIds").map(String),
+    displayTitle: String(data.get("displayTitle") || "").trim(),
+    sortOrder: Number(data.get("sortOrder") || 999),
+    active: data.get("active") === "on"
+  };
+}
+
+function persistTeamMember(member) {
+  const existing = state.teamMembers || [];
+  state.teamMembers = [
+    ...existing.filter((item) => item.memberId !== member.memberId),
+    member
+  ];
+  saveLocalData();
+  renderOwnerFilters();
+  renderViewTabs();
+  if (state.view === "org") renderDetail();
+}
+
+async function saveTeamMemberToServer(member) {
+  if (!state.settings.endpointUrl) return { ok: true, localOnly: true };
+  const response = await fetch(state.settings.endpointUrl, {
+    method: "POST",
+    mode: "no-cors",
+    credentials: "include",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify({
+      action: "save_team_member",
+      project: "roadmap-trimestrielle-cfsb",
+      teamMember: member
+    })
+  });
+  if (response.type === "opaque") return { ok: true, opaque: true };
+  return response.json();
+}
+
+async function saveTeamMemberFromForm(event) {
+  event.preventDefault();
+  const member = teamMemberFromForm(event.currentTarget);
+  if (!member.name) {
+    setSyncStatus("Impossible de sauvegarder un membre sans nom.", "error");
+    return;
+  }
+  persistTeamMember(member);
+  setSyncStatus("Membre sauvegarde localement. Sync Google Sheets en cours...");
+  try {
+    const result = await saveTeamMemberToServer(member);
+    if (result?.ok === false) throw new Error(result.error || "Sauvegarde refusee.");
+    setSyncStatus(`${member.name} est sauvegarde dans la charte.`, "success");
+  } catch (error) {
+    setSyncStatus(`Membre garde localement, sync serveur echouee: ${error.message}`, "error");
+  }
+}
+
+async function toggleTeamMemberActive(memberId, active) {
+  const member = (state.teamMembers || []).find((item) => item.memberId === memberId);
+  if (!member) return;
+  const updated = { ...member, active };
+  persistTeamMember(updated);
+  try {
+    const result = await saveTeamMemberToServer(updated);
+    if (result?.ok === false) throw new Error(result.error || "Sauvegarde refusee.");
+    setSyncStatus(`${updated.name} est ${active ? "actif" : "desactive"} dans la charte.`, "success");
+  } catch (error) {
+    setSyncStatus(`Changement garde localement, sync serveur echouee: ${error.message}`, "error");
+  }
+}
+
+function hydrateTeamForm(member = null) {
+  const holder = $("#teamMemberForm")?.parentElement;
+  if (!holder) return;
+  holder.innerHTML = `<h3 class="compact-title">Modifier un membre</h3>${renderTeamMemberForm(member)}`;
+  bindTeamAdminView();
+  $("#teamMemberForm")?.querySelector("input[name='name']")?.focus();
+}
+
+function bindTeamAdminView() {
+  const form = $("#teamMemberForm");
+  if (form) form.onsubmit = saveTeamMemberFromForm;
+  const resetButton = $("[data-team-reset]");
+  if (resetButton) resetButton.onclick = () => hydrateTeamForm();
+  const newButton = $("[data-team-new]");
+  if (newButton) newButton.onclick = () => hydrateTeamForm();
+  $$("[data-team-edit]").forEach((button) => {
+    button.onclick = () => {
+      const member = (state.teamMembers || []).find((item) => item.memberId === button.dataset.teamEdit);
+      hydrateTeamForm(member || null);
+    };
+  });
+  $$("[data-team-toggle]").forEach((button) => {
+    button.onclick = () => {
+      toggleTeamMemberActive(button.dataset.teamToggle, button.dataset.teamActive === "true");
+    };
+  });
+}
+
 function renderArchivedEntryDetail(entry) {
   const submission = entry.submission;
   if (!submission) {
@@ -892,7 +1225,7 @@ function mergeServerSubmissions(serverSubmissions = [], { replaceServerBacked = 
   }
 }
 
-function fetchJsonp(url, timeoutMs = 6000) {
+function fetchJsonp(url, params = {}, timeoutMs = 60000) {
   return new Promise((resolve, reject) => {
     const callbackName = `roadmapOwnersCallback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const script = document.createElement("script");
@@ -912,14 +1245,44 @@ function fetchJsonp(url, timeoutMs = 6000) {
       resolve(payload);
     };
 
+    const query = new URLSearchParams({
+      action: "list_roadmap_submissions",
+      project: "roadmap-trimestrielle-cfsb",
+      limit: "200",
+      ...params,
+      callback: callbackName,
+      _: String(Date.now())
+    });
     const separator = url.includes("?") ? "&" : "?";
-    script.src = `${url}${separator}action=list_roadmap_submissions&project=roadmap-trimestrielle-cfsb&limit=200&callback=${encodeURIComponent(callbackName)}&_=${Date.now()}`;
+    script.src = `${url}${separator}${query.toString()}`;
     script.onerror = () => {
       cleanup();
       reject(new Error("Impossible de rejoindre Apps Script."));
     };
     document.head.appendChild(script);
   });
+}
+
+async function syncTeamMembers({ silent = false } = {}) {
+  if (!state.settings.endpointUrl) {
+    state.teamMembers = JSON.parse(localStorage.getItem(STORAGE_KEYS.teamMembers) || "null") || DEFAULT_TEAM_MEMBERS;
+    state.teamDepartments = TEAM_DEPARTMENTS;
+    if (!silent) setSyncStatus("Mode local: l'equipe reste dans ce navigateur.");
+    return;
+  }
+
+  const result = await fetchJsonp(state.settings.endpointUrl, {
+    action: "list_team_members",
+    includeInactive: "true"
+  }, 60000);
+
+  if (!result.ok) throw new Error(result.error || "Synchronisation equipe refusee par Apps Script.");
+  state.teamMembers = result.members || [];
+  state.teamDepartments = result.departments?.length ? result.departments : TEAM_DEPARTMENTS;
+  saveLocalData();
+  renderViewTabs();
+  if (state.view === "org") renderDetail();
+  if (!silent) setSyncStatus(`${activeTeamMembers().length} membre(s) actif(s) dans la charte.`, "success");
 }
 
 function fetchIframeBridge(url, timeoutMs = 8000) {
@@ -980,15 +1343,6 @@ function fetchIframeBridge(url, timeoutMs = 8000) {
   });
 }
 
-async function fetchStaticSnapshot() {
-  const separator = SUBMISSIONS_CACHE_URL.includes("?") ? "&" : "?";
-  const response = await fetch(`${SUBMISSIONS_CACHE_URL}${separator}_=${Date.now()}`);
-  if (!response.ok) throw new Error(`Snapshot GitHub introuvable (${response.status}).`);
-  const payload = await response.json();
-  if (!payload.ok) throw new Error(payload.error || "Snapshot GitHub invalide.");
-  return payload;
-}
-
 async function syncServerSubmissions({ silent = false } = {}) {
   if (!state.settings.endpointUrl) {
     setSyncStatus("Mode local: ajoute l'URL Apps Script pour synchroniser Google Sheets.");
@@ -1004,12 +1358,7 @@ async function syncServerSubmissions({ silent = false } = {}) {
     try {
       result = await fetchIframeBridge(state.settings.endpointUrl);
     } catch (bridgeError) {
-      try {
-        result = await fetchStaticSnapshot();
-        result.liveSyncError = `${jsonpError.message} Pont iframe aussi echoue: ${bridgeError.message}`;
-      } catch (snapshotError) {
-        throw new Error(`${jsonpError.message} Pont iframe aussi echoue: ${bridgeError.message} Snapshot GitHub aussi echoue: ${snapshotError.message}`);
-      }
+      throw new Error(`${jsonpError.message} Pont iframe aussi echoue: ${bridgeError.message}`);
     }
   }
   if (!result.ok) {
@@ -1025,16 +1374,27 @@ async function syncServerSubmissions({ silent = false } = {}) {
   renderDetail();
 
   const date = new Date(state.lastSyncAt).toLocaleString("fr-CA");
-  if (result.snapshot) {
-    const snapshotDate = result.snapshotGeneratedAt ? new Date(result.snapshotGeneratedAt).toLocaleString("fr-CA") : date;
-    setSyncStatus(`${state.submissions.length} soumission(s) visible(s) depuis le snapshot GitHub du ${snapshotDate}. Sync live bloquee dans ce navigateur.`, "success");
-    return;
-  }
   setSyncStatus(`${state.submissions.length} soumission(s) visible(s) depuis Google Sheets. Derniere sync: ${date}.`, "success");
+}
+
+async function syncDashboardData({ silent = false } = {}) {
+  const [teamResult, submissionsResult] = await Promise.allSettled([
+    syncTeamMembers({ silent: true }),
+    syncServerSubmissions({ silent })
+  ]);
+
+  if (submissionsResult.status === "rejected") throw submissionsResult.reason;
+  if (teamResult.status === "rejected") {
+    setSyncStatus(`Soumissions synchronisees. Sync equipe echouee: ${teamResult.reason.message}`, "error");
+  }
 }
 
 function renderDetail() {
   const area = $("#detailArea");
+  if (state.view === "org") {
+    renderTeamAdminView();
+    return;
+  }
   if (state.view === "team") {
     renderTeamView();
     return;
@@ -1786,7 +2146,7 @@ async function startDashboard() {
     bindViewTabs();
     $("#syncButton").addEventListener("click", async () => {
       try {
-        await syncServerSubmissions();
+        await syncDashboardData();
       } catch (error) {
         setSyncStatus(`Synchronisation echouee: ${error.message}`, "error");
       }
@@ -1796,7 +2156,7 @@ async function startDashboard() {
     renderViewTabs();
     renderList();
     try {
-      await syncServerSubmissions({ silent: true });
+      await syncDashboardData({ silent: true });
     } catch (error) {
       setSyncStatus(`Lecture locale seulement. Sync serveur echouee: ${error.message}`, "error");
     }
