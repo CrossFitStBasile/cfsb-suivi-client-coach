@@ -1,5 +1,4 @@
 const CONFIG_URL = "../data/roadmap-config.json";
-const SUBMISSIONS_CACHE_URL = "../data/roadmap-submissions-cache.json";
 const DEFAULT_ENDPOINT_URL = "https://script.google.com/macros/s/AKfycbxnhlehsj_NQU73k3csMQPj0NAm3QSQrpjk0Ar6VYOjXYZO-m9_GSxtmEqYw9y_9DSQEA/exec";
 const IS_LOCAL_PREVIEW = ["", "localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
 const STORAGE_KEYS = {
@@ -8,9 +7,39 @@ const STORAGE_KEYS = {
   draft: "cfsb-roadmap-draft"
 };
 const AUTOSAVE_DELAY_MS = 800;
+const ORG_DEPARTMENTS = [
+  { id: "direction", label: "Direction", className: "owners", sortOrder: 10 },
+  { id: "operations", label: "Operations", className: "operations", sortOrder: 20 },
+  { id: "coaching", label: "Coaching", className: "coaching", sortOrder: 30 },
+  { id: "support", label: "Communaute et support", className: "support", sortOrder: 40 }
+];
+const DEFAULT_TEAM_MEMBERS = [
+  { memberId: "michael-grondin", name: "Michael Grondin", departmentId: "direction", displayTitle: "Proprietaire - Ventes, marketing, vision", sortOrder: 10, active: true },
+  { memberId: "gabriel-mayer-bedard", name: "Gabriel Mayer Bedard", departmentId: "direction", displayTitle: "Proprietaire - Operations, finances, RH, integration", sortOrder: 20, active: true },
+  { memberId: "caroline-martineau", name: "Caroline Martineau", departmentId: "operations", displayTitle: "Chef d'equipe, coordination, ventes", sortOrder: 10, active: true },
+  { memberId: "tiffany-bolduc-brossier", name: "Tiffany Bolduc-Brossier", departmentId: "operations", displayTitle: "Conciliation de la paie", sortOrder: 20, active: true },
+  { memberId: "hugo-lelievre", name: "Hugo Lelievre", departmentId: "coaching", displayTitle: "Coach en chef, formateur", sortOrder: 10, active: true },
+  { memberId: "marc-andre-menard", name: "Marc-Andre Menard", departmentId: "coaching", displayTitle: "Coach professionnel", sortOrder: 20, active: true },
+  { memberId: "raphael-samson", name: "Raphael Samson", departmentId: "coaching", displayTitle: "Coach professionnel", sortOrder: 30, active: true },
+  { memberId: "camille-proulx", name: "Camille Proulx", departmentId: "coaching", displayTitle: "Coach professionnel", sortOrder: 40, active: true },
+  { memberId: "david-olivier", name: "David Olivier", departmentId: "coaching", displayTitle: "Coach professionnel", sortOrder: 50, active: true },
+  { memberId: "iheb-yahyaoui", name: "Iheb Yahyaoui", departmentId: "coaching", displayTitle: "Coach professionnel", sortOrder: 60, active: true },
+  { memberId: "roxanne-vincent", name: "Roxanne Vincent", departmentId: "coaching", displayTitle: "Coach developpement", sortOrder: 70, active: true },
+  { memberId: "nathan-goupil", name: "Nathan Goupil", departmentId: "coaching", displayTitle: "Coach developpement", sortOrder: 80, active: true },
+  { memberId: "chloe-willis", name: "Chloe Willis", departmentId: "coaching", displayTitle: "Coach developpement", sortOrder: 90, active: true },
+  { memberId: "serge-thibault", name: "Serge Thibault", departmentId: "coaching", displayTitle: "Coach communaute", sortOrder: 100, active: true },
+  { memberId: "kim-theriault", name: "Kim Theriault", departmentId: "coaching", displayTitle: "Coach communaute", sortOrder: 110, active: true },
+  { memberId: "jean-sylvain-cote", name: "Jean-Sylvain Cote", departmentId: "coaching", displayTitle: "Coach communaute", sortOrder: 120, active: true },
+  { memberId: "karolina-milewska", name: "Karolina Milewska", departmentId: "support", displayTitle: "Gestionnaire Club Social", sortOrder: 10, active: true },
+  { memberId: "lysanne-gosselin", name: "Lysanne Gosselin", departmentId: "support", displayTitle: "Entretien menager", sortOrder: 20, active: true },
+  { memberId: "michel-jasen-mallet", name: "Michel Jasen Mallet", departmentId: "support", displayTitle: "Entretien menager", sortOrder: 30, active: true },
+  { memberId: "valerie-savard", name: "Valerie Savard", departmentId: "support", displayTitle: "Equipe CFSB", sortOrder: 40, active: true }
+];
 
 const state = {
   config: null,
+  teamMembers: DEFAULT_TEAM_MEMBERS,
+  teamDepartments: ORG_DEPARTMENTS,
   selectedRoleId: "",
   answers: {},
   clientSubmissionId: "",
@@ -62,6 +91,60 @@ async function loadConfig() {
     throw new Error(`Configuration introuvable (${response.status})`);
   }
   state.config = await response.json();
+}
+
+async function loadTeamMembers() {
+  if (!state.settings.endpointUrl) {
+    state.teamMembers = DEFAULT_TEAM_MEMBERS;
+    state.teamDepartments = ORG_DEPARTMENTS;
+    return;
+  }
+
+  try {
+    const result = await fetchJsonp(state.settings.endpointUrl, {
+      action: "list_team_members",
+      project: state.config?.meta?.project || "roadmap-trimestrielle-cfsb"
+    }, 15000);
+
+    if (!result.ok) throw new Error(result.error || "Charte organisationnelle indisponible.");
+    state.teamMembers = (result.members || []).filter((member) => member.active !== false);
+    state.teamDepartments = result.departments?.length ? result.departments : ORG_DEPARTMENTS;
+  } catch (error) {
+    state.teamMembers = DEFAULT_TEAM_MEMBERS;
+    state.teamDepartments = ORG_DEPARTMENTS;
+  }
+}
+
+function renderOrgChart() {
+  const grid = $("#orgGrid");
+  if (!grid) return;
+
+  const departments = [...state.teamDepartments].sort((a, b) => Number(a.sortOrder || 999) - Number(b.sortOrder || 999));
+  const members = [...state.teamMembers]
+    .filter((member) => member.active !== false)
+    .sort((a, b) => Number(a.sortOrder || 999) - Number(b.sortOrder || 999) || String(a.name || "").localeCompare(String(b.name || "")));
+
+  grid.innerHTML = departments.map((department) => {
+    const departmentMembers = members.filter((member) => member.departmentId === department.id);
+    return `
+      <article class="org-column ${escapeHtml(department.className || department.id)}">
+        <h3>${escapeHtml(department.label)}</h3>
+        <ul>
+          ${departmentMembers.length ? departmentMembers.map((member) => `
+            <li><strong>${escapeHtml(member.name)}</strong><span>${escapeHtml(member.displayTitle || roleLabelsForMember(member))}</span></li>
+          `).join("") : '<li><strong>Aucun membre actif</strong><span>A completer dans le dashboard owners.</span></li>'}
+        </ul>
+      </article>
+    `;
+  }).join("");
+}
+
+function roleLabelsForMember(member) {
+  const roleIds = member.roleIds || [];
+  return roleIds
+    .map((roleId) => state.config?.roles?.find((role) => role.id === roleId)?.label || roleId)
+    .filter(Boolean)
+    .join(", ");
 }
 
 function roleById(roleId) {
@@ -463,21 +546,15 @@ async function restoreResumeFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const resumeSubmissionId = params.get("resume") || params.get("resumeSubmissionId");
   if (!resumeSubmissionId) return false;
-  showNotice("Chargement de tes reponses precedentes...", "");
-  let result;
-  if (state.settings.endpointUrl) {
-    try {
-      result = await fetchJsonp(state.settings.endpointUrl, {
-        action: "get_roadmap_submission",
-        project: state.config.meta.project,
-        submissionId: resumeSubmissionId
-      });
-    } catch (error) {
-      result = await fetchResumeFromSnapshot(resumeSubmissionId);
-    }
-  } else {
-    result = await fetchResumeFromSnapshot(resumeSubmissionId);
+  if (!state.settings.endpointUrl) {
+    throw new Error("Le lien de reprise exige le backend Apps Script. Ouvre la version connectee ou demande un nouveau lien.");
   }
+  showNotice("Chargement de tes reponses precedentes...", "");
+  const result = await fetchJsonp(state.settings.endpointUrl, {
+    action: "get_roadmap_submission",
+    project: state.config.meta.project,
+    submissionId: resumeSubmissionId
+  });
 
   if (!result.ok || !result.submission) {
     throw new Error(result.error || "Impossible de charger cette soumission.");
@@ -497,29 +574,8 @@ async function restoreResumeFromUrl() {
   refreshConditionalFields();
   $("#formDot").classList.add("done");
   saveDraft({ silent: true });
-  showNotice(result.snapshot ? "Reprise chargee depuis la copie GitHub. Complete les champs manquants, puis soumets la version finale." : "Reprise chargee. Complete les champs manquants, puis soumets la version finale.", "success");
+  showNotice("Reprise chargee. Complete les champs manquants, puis soumets la version finale.", "success");
   return true;
-}
-
-async function fetchResumeFromSnapshot(submissionId) {
-  const separator = SUBMISSIONS_CACHE_URL.includes("?") ? "&" : "?";
-  const response = await fetch(`${SUBMISSIONS_CACHE_URL}${separator}_=${Date.now()}`);
-  if (!response.ok) throw new Error(`Impossible de charger la copie GitHub (${response.status}).`);
-  const snapshot = await response.json();
-  const submission = (snapshot.submissions || []).find((item) => {
-    return item.id === submissionId || item.serverSubmissionId === submissionId;
-  });
-  if (!submission) {
-    return {
-      ok: false,
-      error: "Cette soumission n'est pas disponible dans la copie GitHub. Demande un nouveau lien de reprise."
-    };
-  }
-  return {
-    ok: true,
-    snapshot: true,
-    submission
-  };
 }
 
 function renderPathwayPreview(pathwayId) {
@@ -756,6 +812,8 @@ async function init() {
 
   try {
     await loadConfig();
+    await loadTeamMembers();
+    renderOrgChart();
     renderRoles();
     const resumedFromLink = await restoreResumeFromUrl();
     if (!resumedFromLink) restoreDraftIfAvailable();

@@ -1014,6 +1014,117 @@ select:focus {
   margin-top: 16px;
 }
 
+.team-admin-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.compact-title {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+
+.team-member-form,
+.team-member-list {
+  display: grid;
+  gap: 12px;
+}
+
+.form-grid.two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.checkbox-field {
+  min-height: 62px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.checkbox-field input,
+.checkbox-row input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.role-checks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.role-checks legend {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.team-member-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.team-member-card.inactive {
+  opacity: 0.62;
+  background: #f5f2ec;
+}
+
+.team-member-card strong,
+.team-member-card span,
+.team-member-card small {
+  display: block;
+}
+
+.team-member-card span,
+.team-member-card small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.team-member-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.org-preview {
+  margin: 0;
+}
+
 .prep-block {
   min-width: 0;
   padding: 12px;
@@ -1571,6 +1682,9 @@ select:focus {
   .pipeline-lanes,
   .prep-panel,
   .team-grid,
+  .team-admin-layout,
+  .form-grid.two,
+  .role-checks,
   .revenue-hero,
   .revenue-status-grid,
   .revenue-journey,
