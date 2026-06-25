@@ -1,4 +1,5 @@
 const CONFIG_URL = "../data/roadmap-config.json";
+const SUBMISSIONS_CACHE_URL = "../data/roadmap-submissions-cache.json";
 const DEFAULT_ENDPOINT_URL = "https://script.google.com/macros/s/AKfycbxnhlehsj_NQU73k3csMQPj0NAm3QSQrpjk0Ar6VYOjXYZO-m9_GSxtmEqYw9y_9DSQEA/exec";
 const IS_LOCAL_PREVIEW = ["", "localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
 const STORAGE_KEYS = {
@@ -1271,14 +1272,21 @@ async function syncTeamMembers({ silent = false } = {}) {
     return;
   }
 
-  const result = await fetchJsonp(state.settings.endpointUrl, {
-    action: "list_team_members",
-    includeInactive: "true"
-  }, 60000);
-
-  if (!result.ok) throw new Error(result.error || "Synchronisation equipe refusee par Apps Script.");
-  state.teamMembers = result.members || [];
-  state.teamDepartments = result.departments?.length ? result.departments : TEAM_DEPARTMENTS;
+  let result;
+  try {
+    result = await fetchJsonp(state.settings.endpointUrl, {
+      action: "list_team_members",
+      includeInactive: "true"
+    }, 60000);
+    if (!result.ok) throw new Error(result.error || "Synchronisation equipe refusee par Apps Script.");
+    state.teamMembers = result.members || [];
+    state.teamDepartments = result.departments?.length ? result.departments : TEAM_DEPARTMENTS;
+  } catch (error) {
+    state.teamMembers = JSON.parse(localStorage.getItem(STORAGE_KEYS.teamMembers) || "null") || DEFAULT_TEAM_MEMBERS;
+    state.teamDepartments = TEAM_DEPARTMENTS;
+    if (!silent) setSyncStatus(`Equipe locale conservee. Sync equipe bloquee: ${error.message}`, "warning");
+    return;
+  }
   saveLocalData();
   renderViewTabs();
   if (state.view === "org") renderDetail();
@@ -1343,6 +1351,21 @@ function fetchIframeBridge(url, timeoutMs = 8000) {
   });
 }
 
+async function fetchSubmissionsSnapshot() {
+  const separator = SUBMISSIONS_CACHE_URL.includes("?") ? "&" : "?";
+  const response = await fetch(`${SUBMISSIONS_CACHE_URL}${separator}_=${Date.now()}`);
+  if (!response.ok) throw new Error(`Copie GitHub indisponible (${response.status}).`);
+  const snapshot = await response.json();
+  if (!snapshot || typeof snapshot !== "object") throw new Error("Copie GitHub invalide.");
+  if (snapshot.ok === false) throw new Error(snapshot.error || "Copie GitHub refusee.");
+  if (!Array.isArray(snapshot.submissions)) throw new Error("Copie GitHub sans submissions[].");
+  return {
+    ...snapshot,
+    ok: true,
+    snapshot: true
+  };
+}
+
 async function syncServerSubmissions({ silent = false } = {}) {
   if (!state.settings.endpointUrl) {
     setSyncStatus("Mode local: ajoute l'URL Apps Script pour synchroniser Google Sheets.");
@@ -1351,6 +1374,7 @@ async function syncServerSubmissions({ silent = false } = {}) {
 
   if (!silent) setSyncStatus("Synchronisation avec Google Sheets en cours...");
   let result;
+  let sourceLabel = "Google Sheets";
   try {
     result = await fetchJsonp(state.settings.endpointUrl);
   } catch (jsonpError) {
@@ -1358,7 +1382,13 @@ async function syncServerSubmissions({ silent = false } = {}) {
     try {
       result = await fetchIframeBridge(state.settings.endpointUrl);
     } catch (bridgeError) {
-      throw new Error(`${jsonpError.message} Pont iframe aussi echoue: ${bridgeError.message}`);
+      if (!silent) setSyncStatus("Apps Script bloque dans ce navigateur. Lecture de la derniere copie GitHub...");
+      try {
+        result = await fetchSubmissionsSnapshot();
+        sourceLabel = "copie GitHub";
+      } catch (snapshotError) {
+        throw new Error(`${jsonpError.message} Pont iframe aussi echoue: ${bridgeError.message}. Copie GitHub aussi echouee: ${snapshotError.message}`);
+      }
     }
   }
   if (!result.ok) {
@@ -1374,7 +1404,12 @@ async function syncServerSubmissions({ silent = false } = {}) {
   renderDetail();
 
   const date = new Date(state.lastSyncAt).toLocaleString("fr-CA");
-  setSyncStatus(`${state.submissions.length} soumission(s) visible(s) depuis Google Sheets. Derniere sync: ${date}.`, "success");
+  if (result.snapshot) {
+    const snapshotDate = result.snapshotGeneratedAt ? new Date(result.snapshotGeneratedAt).toLocaleString("fr-CA") : date;
+    setSyncStatus(`${state.submissions.length} soumission(s) visible(s) depuis la copie GitHub. Snapshot: ${snapshotDate}.`, "warning");
+  } else {
+    setSyncStatus(`${state.submissions.length} soumission(s) visible(s) depuis ${sourceLabel}. Derniere sync: ${date}.`, "success");
+  }
 }
 
 async function syncDashboardData({ silent = false } = {}) {

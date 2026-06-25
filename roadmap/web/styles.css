@@ -791,6 +791,12 @@ select:focus {
   color: var(--good);
 }
 
+.notice.warning {
+  border-color: #ead59f;
+  background: #fff8e6;
+  color: #735200;
+}
+
 .notice.sending {
   border-color: rgba(29, 127, 79, 0.34);
   background: #edf7f2;
