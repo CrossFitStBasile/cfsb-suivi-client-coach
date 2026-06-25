@@ -1,7 +1,7 @@
 {
   "ok": true,
   "project": "roadmap-trimestrielle-cfsb",
-  "syncedAt": "2026-06-25T18:27:33.934Z",
+  "syncedAt": "2026-06-25T20:33:53.521Z",
   "count": 14,
   "submissions": [
     {
@@ -340,7 +340,17 @@
         "cleaning_respect_space_score": "3",
         "cleaning_improvement_feedback_score": "3"
       },
-      "ownerNotes": {}
+      "ownerNotes": {
+        "owner_reviewer": "",
+        "owner_people_values": "",
+        "owner_gwc": "",
+        "owner_performance": "",
+        "owner_priority_topics": "",
+        "owner_questions": "",
+        "owner_meeting_format": "",
+        "owner_direction_commitments": "",
+        "owner_followup_notes": ""
+      }
     },
     {
       "id": "13f95f61-6dfa-4c97-98f8-dd556931d4f4",
@@ -510,7 +520,17 @@
         "coach_aspiration_select": "path_professionnel_to_superstar",
         "coach_aspiration_readiness": "3"
       },
-      "ownerNotes": {}
+      "ownerNotes": {
+        "owner_reviewer": "",
+        "owner_people_values": "",
+        "owner_gwc": "",
+        "owner_performance": "",
+        "owner_priority_topics": "",
+        "owner_questions": "",
+        "owner_meeting_format": "",
+        "owner_direction_commitments": "",
+        "owner_followup_notes": ""
+      }
     },
     {
       "id": "effacb93-60ac-4aa0-b6d7-65c376e071ea",
@@ -1204,6 +1224,6 @@
     }
   ],
   "snapshot": true,
-  "snapshotGeneratedAt": "2026-06-25T18:27:34.863Z",
+  "snapshotGeneratedAt": "2026-06-25T20:33:54.425Z",
   "sourceEndpoint": "Apps Script list_roadmap_submissions active only"
 }
