@@ -1,7 +1,7 @@
 {
   "ok": true,
   "project": "roadmap-trimestrielle-cfsb",
-  "syncedAt": "2026-06-26T16:01:38.457Z",
+  "syncedAt": "2026-06-26T18:04:32.905Z",
   "count": 14,
   "submissions": [
     {
@@ -153,7 +153,17 @@
         "event_impact_metrics_score": "2",
         "event_impact_metrics_example": "Je ne crois pas avoir accès ou je ne sais pas ou vérifier les statistiques. Encore ici j'ai le feeling que c'est une tâche qui revient plus de l'équipe de gestion, je me trompe peut-être. Je dois m'ameliorer definitvement sur les post-mortems et le sondages post event. "
       },
-      "ownerNotes": {}
+      "ownerNotes": {
+        "owner_reviewer": "",
+        "owner_people_values": "",
+        "owner_gwc": "",
+        "owner_performance": "",
+        "owner_priority_topics": "",
+        "owner_questions": "",
+        "owner_meeting_format": "",
+        "owner_direction_commitments": "",
+        "owner_followup_notes": ""
+      }
     },
     {
       "id": "832ff6b3-e37f-4b05-ae28-cb231fbb375b",
@@ -1244,6 +1254,6 @@
     }
   ],
   "snapshot": true,
-  "snapshotGeneratedAt": "2026-06-26T16:01:39.391Z",
+  "snapshotGeneratedAt": "2026-06-26T18:04:33.467Z",
   "sourceEndpoint": "Apps Script list_roadmap_submissions active only"
 }
