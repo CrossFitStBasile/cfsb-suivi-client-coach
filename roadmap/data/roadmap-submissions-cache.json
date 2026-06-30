@@ -1,7 +1,7 @@
 {
   "ok": true,
   "project": "roadmap-trimestrielle-cfsb",
-  "syncedAt": "2026-06-30T12:18:18.762Z",
+  "syncedAt": "2026-06-30T17:19:11.254Z",
   "count": 14,
   "submissions": [
     {
@@ -91,7 +91,17 @@
         "coach_dev_group_safety_example": "Gestion douleur et blessure",
         "coach_dev_foundation_first_experience_score": "3"
       },
-      "ownerNotes": {}
+      "ownerNotes": {
+        "owner_reviewer": "",
+        "owner_people_values": "",
+        "owner_gwc": "",
+        "owner_performance": "",
+        "owner_priority_topics": "",
+        "owner_questions": "",
+        "owner_meeting_format": "",
+        "owner_direction_commitments": "",
+        "owner_followup_notes": ""
+      }
     },
     {
       "id": "f94329aa-0ed4-47bb-a28d-8a2bf8be9467",
@@ -1254,6 +1264,6 @@
     }
   ],
   "snapshot": true,
-  "snapshotGeneratedAt": "2026-06-30T12:18:19.942Z",
+  "snapshotGeneratedAt": "2026-06-30T17:19:12.336Z",
   "sourceEndpoint": "Apps Script list_roadmap_submissions active only"
 }
