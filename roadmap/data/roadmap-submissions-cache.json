@@ -1,7 +1,7 @@
 {
   "ok": true,
   "project": "roadmap-trimestrielle-cfsb",
-  "syncedAt": "2026-07-10T17:51:19.024Z",
+  "syncedAt": "2026-07-10T18:48:20.403Z",
   "count": 18,
   "submissions": [
     {
@@ -99,7 +99,17 @@
         "coach_dev_pedagogy_adaptation_score": "1",
         "coach_dev_pedagogy_adaptation_example": "Pas encore d'expérience à donner les fondations"
       },
-      "ownerNotes": {}
+      "ownerNotes": {
+        "owner_reviewer": "",
+        "owner_people_values": "",
+        "owner_gwc": "",
+        "owner_performance": "",
+        "owner_priority_topics": "",
+        "owner_questions": "",
+        "owner_meeting_format": "",
+        "owner_direction_commitments": "",
+        "owner_followup_notes": ""
+      }
     },
     {
       "id": "04a3a436-6f8b-4da0-9d2e-e61d2b6828b5",
@@ -185,7 +195,17 @@
         "cleaning_respect_space_score": "4",
         "cleaning_improvement_feedback_score": "4"
       },
-      "ownerNotes": {}
+      "ownerNotes": {
+        "owner_reviewer": "",
+        "owner_people_values": "",
+        "owner_gwc": "",
+        "owner_performance": "",
+        "owner_priority_topics": "",
+        "owner_questions": "",
+        "owner_meeting_format": "",
+        "owner_direction_commitments": "",
+        "owner_followup_notes": ""
+      }
     },
     {
       "id": "c5c91560-6177-4821-a0bd-196b3086ab3a",
@@ -1532,6 +1552,6 @@
     }
   ],
   "snapshot": true,
-  "snapshotGeneratedAt": "2026-07-10T17:51:20.583Z",
+  "snapshotGeneratedAt": "2026-07-10T18:48:21.398Z",
   "sourceEndpoint": "Apps Script list_roadmap_submissions active only"
 }
