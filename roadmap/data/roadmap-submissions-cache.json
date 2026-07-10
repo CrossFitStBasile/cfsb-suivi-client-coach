@@ -1,7 +1,7 @@
 {
   "ok": true,
   "project": "roadmap-trimestrielle-cfsb",
-  "syncedAt": "2026-07-10T18:48:20.403Z",
+  "syncedAt": "2026-07-10T20:37:44.674Z",
   "count": 18,
   "submissions": [
     {
@@ -152,7 +152,17 @@
         "cleaning_bathroom_locker_score": "4",
         "cleaning_space_quality_score": "4"
       },
-      "ownerNotes": {}
+      "ownerNotes": {
+        "owner_reviewer": "",
+        "owner_people_values": "",
+        "owner_gwc": "",
+        "owner_performance": "",
+        "owner_priority_topics": "",
+        "owner_questions": "",
+        "owner_meeting_format": "",
+        "owner_direction_commitments": "",
+        "owner_followup_notes": ""
+      }
     },
     {
       "id": "1db6cb20-f69b-4f52-8c47-f8005487a858",
@@ -1552,6 +1562,6 @@
     }
   ],
   "snapshot": true,
-  "snapshotGeneratedAt": "2026-07-10T18:48:21.398Z",
+  "snapshotGeneratedAt": "2026-07-10T20:37:45.313Z",
   "sourceEndpoint": "Apps Script list_roadmap_submissions active only"
 }
