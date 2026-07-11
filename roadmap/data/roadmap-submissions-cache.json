@@ -1,7 +1,7 @@
 {
   "ok": true,
   "project": "roadmap-trimestrielle-cfsb",
-  "syncedAt": "2026-07-11T15:26:02.988Z",
+  "syncedAt": "2026-07-11T16:28:26.116Z",
   "count": 18,
   "submissions": [
     {
@@ -1562,6 +1562,6 @@
     }
   ],
   "snapshot": true,
-  "snapshotGeneratedAt": "2026-07-11T15:26:03.366Z",
+  "snapshotGeneratedAt": "2026-07-11T16:28:26.928Z",
   "sourceEndpoint": "Apps Script list_roadmap_submissions active only"
 }
