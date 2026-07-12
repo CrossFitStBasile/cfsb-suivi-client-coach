@@ -1,0 +1,108 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function profile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function activeUser() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && profile().data.active == true;
+    }
+
+    function isOwner() {
+      return activeUser() && profile().data.role in ['owner', 'admin'];
+    }
+
+    function ownsDocument(uid) {
+      return signedIn() && uid == request.auth.uid;
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow create, update, delete: if isOwner();
+    }
+
+    match /roadmapForms/{formVersion} {
+      allow read: if true;
+      allow create, update, delete: if isOwner();
+    }
+
+    match /roadmapCycles/{cycleId} {
+      allow read: if resource.data.public == true || isOwner();
+      allow create, update, delete: if isOwner();
+    }
+
+    match /orgDepartments/{departmentId} {
+      allow read: if true;
+      allow create, update, delete: if isOwner();
+    }
+
+    match /teamMembers/{memberId} {
+      allow read: if resource.data.active == true || isOwner();
+      allow create, update, delete: if isOwner();
+    }
+
+    match /roadmapDrafts/{draftId} {
+      allow create: if signedIn()
+        && request.resource.data.authorUid == request.auth.uid
+        && request.resource.data.status == 'draft';
+      allow read: if isOwner() || ownsDocument(resource.data.authorUid);
+      allow update: if isOwner() || (
+        ownsDocument(resource.data.authorUid)
+        && resource.data.status == 'draft'
+        && request.resource.data.authorUid == resource.data.authorUid
+        && request.resource.data.status in ['draft', 'submitted']
+      );
+      allow delete: if isOwner() || (
+        ownsDocument(resource.data.authorUid)
+        && resource.data.status == 'draft'
+      );
+    }
+
+    match /roadmapSubmissions/{submissionId} {
+      allow create: if signedIn()
+        && request.resource.data.authorUid == request.auth.uid
+        && request.resource.data.status == 'submitted';
+      allow read: if isOwner() || ownsDocument(resource.data.authorUid);
+      allow update, delete: if isOwner();
+
+      match /events/{eventId} {
+        allow read: if isOwner();
+        allow create: if isOwner();
+        allow update, delete: if false;
+      }
+    }
+
+    match /ownerNotes/{submissionId} {
+      allow read, create, update, delete: if isOwner();
+    }
+
+    match /revenueScenarios/{scenarioId} {
+      allow create: if signedIn()
+        && request.resource.data.authorUid == request.auth.uid;
+      allow read, update, delete: if isOwner() || ownsDocument(resource.data.authorUid);
+    }
+
+    match /notificationJobs/{jobId} {
+      allow read: if isOwner();
+      allow create, update, delete: if false;
+    }
+
+    match /auditLogs/{logId} {
+      allow read: if isOwner();
+      allow create: if activeUser();
+      allow update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

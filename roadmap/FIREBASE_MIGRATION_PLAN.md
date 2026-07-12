@@ -1,0 +1,197 @@
+# Migration Firebase - Roadmap trimestrielle CFSB
+
+Project: Roadmap trimestrielle CFSB vers Firebase
+Created: 2026-07-12
+Last updated: 2026-07-12
+Primary owner: Michael Grondin
+Status: Preparation parallele - aucune bascule de production
+Source of truth: ce document, le dossier `firebase-roadmap/` et la console Firebase du projet `cfsb-roadmap-trimestrielle`
+
+## 1. Context
+
+Roadmap fonctionne actuellement avec une interface GitHub Pages, un backend Apps Script et une Google Sheet. Cette architecture a permis de lancer les roadmaps, mais elle cree des delais et des modes de secours difficiles a expliquer: synchronisation Apps Script, pont iframe, copie GitHub, donnees locales du navigateur et actions manuelles.
+
+Le dashboard coach utilise deja Firebase avec succes. La migration Roadmap doit toutefois rester separee au debut pour proteger le dashboard coach et permettre une validation complete avant toute bascule.
+
+## 2. Objective
+
+Creer une application Roadmap interactive et fiable dans un projet Firebase distinct, avec:
+
+- sauvegarde automatique des brouillons;
+- soumissions visibles en temps reel;
+- dashboard owners pour Michael et Gabriel;
+- notes de rencontre et statut de traitement;
+- archives durables par membre et par trimestre;
+- gestion de l'equipe et de l'organigramme;
+- historique des versions du formulaire;
+- Laboratoire revenus coach conserve comme module distinct;
+- notifications Google Chat apres une soumission finale;
+- possibilite future d'un portail administratif commun avec le dashboard coach.
+
+## 3. Source Of Truth
+
+- Production actuelle: GitHub Pages `roadmap/`, Apps Script Roadmap et Google Sheet Roadmap.
+- Configuration du questionnaire: `roadmap/data/roadmap-config.json`.
+- Copie active connue: `roadmap/data/roadmap-submissions-cache.json`.
+- Nouveau projet Firebase: `cfsb-roadmap-trimestrielle`.
+- Preparation locale Firebase: `firebase-roadmap/`.
+- Dashboard coach existant, volontairement non modifie: `cfsb-dashboard-coach-aa9a4`.
+
+## 4. Current State
+
+- Le formulaire contient 8 roles, 28 modules et environ 120 questions.
+- Les brouillons sont sauvegardes dans le navigateur et peuvent etre repris par un identifiant Apps Script.
+- Le dashboard owners gere les soumissions, filtres, notes, statuts, archives, portrait d'equipe et organigramme.
+- Les donnees owners utilisent un melange de stockage local et de synchronisation Apps Script.
+- La copie GitHub du 2026-07-10 contient 18 soumissions actives.
+- Le dashboard coach Firebase est actif avec Auth, Firestore, Hosting et 9 Cloud Functions. La presence de Functions de deuxieme generation et de taches planifiees confirme que ce projet utilise deja la facturation Blaze.
+- Le nouveau projet `cfsb-roadmap-trimestrielle` et son application Web ont ete crees sans liaison de facturation.
+- La base Firestore Standard a ete creee en region `nam5`; Google la confirme comme base gratuite `freeTier: true`.
+- Les regles Firestore et les index initiaux sont deployes. Hosting et Cloud Functions ne sont pas deployes.
+- Une copie complete de la Google Sheet a ete importee: 28 soumissions, 18 notes owners, 10 archives, 20 membres et 194 evenements d'audit.
+- Une deuxieme importation avec la meme cle a conserve exactement les memes compteurs.
+
+## 5. Decisions Made
+
+| Date | Decision | Reason | Impact | Decided by |
+| --- | --- | --- | --- | --- |
+| 2026-07-12 | Garder Roadmap et Dashboard Coach dans deux projets Firebase distincts | Reduire le risque sur le dashboard coach actif | Migration et regles independantes | Michael + Codex |
+| 2026-07-12 | Ne pas changer les liens de production pendant la preparation | Les roadmaps actuelles doivent rester accessibles | Ancien systeme conserve jusqu'a la recette | Michael + Codex |
+| 2026-07-12 | Creer d'abord le projet Roadmap sans facturation | Valider l'architecture et les couts avant Blaze | Functions et notifications restent en attente | Michael + Codex |
+| 2026-07-12 | Conserver chaque version du formulaire comme document immuable | Les archives restent lisibles sans dupliquer 200 Ko dans chaque soumission | Historique durable avec chargement plus rapide | Codex |
+| 2026-07-12 | Utiliser des imports idempotents | Eviter les doublons lors des reprises de migration | Meme identifiant source = meme document cible | Codex |
+
+## 6. Phased Plan
+
+### Phase 0 - Audit et environnement isole
+
+Objective: connaitre l'existant et preparer un projet sans impact production.
+
+Deliverables:
+
+- inventaire des fonctions et donnees;
+- projet Firebase Roadmap distinct;
+- configuration locale, modele de donnees et regles initiales;
+- outil de preparation d'un lot d'importation.
+
+Completion criteria: aucun lien de production modifie, aucun cout Roadmap active, lot d'importation valide localement.
+
+### Phase 1 - Prototype Firebase prive
+
+Objective: reproduire le dashboard owners et l'archivage dans Firebase.
+
+Deliverables:
+
+- connexion Google pour Michael et Gabriel;
+- lecture temps reel des soumissions;
+- notes owners, statuts, archives et dossiers membres;
+- gestion de l'equipe et de l'organigramme;
+- import d'une copie des donnees existantes.
+
+Completion criteria: Michael et Gabriel retrouvent les memes informations que dans la production actuelle et peuvent les modifier dans l'environnement de test.
+
+### Phase 2 - Formulaire employe Firebase
+
+Objective: remplacer la sauvegarde locale et Apps Script par un parcours fiable.
+
+Deliverables:
+
+- brouillon automatique;
+- reprise apres fermeture;
+- soumission idempotente;
+- confirmation immediate;
+- formulaire adapte au role;
+- schema de formulaire versionne.
+
+Completion criteria: tests complets des 8 roles, fermeture/reprise, double-clic et perte de reseau.
+
+### Phase 3 - Automatisations serveur
+
+Objective: ajouter les fonctions qui exigent un backend prive.
+
+Deliverables:
+
+- lien de reprise interappareils securise;
+- notification Google Chat;
+- journal d'audit;
+- export de secours;
+- surveillance des erreurs.
+
+Completion criteria: validation de la facturation Blaze, alertes budgetaires actives et secrets stockes dans Secret Manager.
+
+### Phase 4 - Recette et bascule
+
+Objective: remplacer les liens officiels sans perte de donnees.
+
+Deliverables:
+
+- comparaison ancien/nouveau systeme;
+- import final;
+- plan de retour arriere;
+- nouveaux liens;
+- ancien systeme en lecture seule pendant une periode definie.
+
+Completion criteria: approbation Michael et Gabriel, aucun ecart de soumission ou d'archive, tests mobiles et desktop reussis.
+
+### Phase 5 - Portail administratif commun
+
+Objective: donner un point d'entree commun aux outils de gestion sans fusionner prematurement les donnees.
+
+Deliverables:
+
+- navigation partagee;
+- authentification coherente;
+- acces selon le role;
+- liens vers Dashboard Coach, Roadmap et Laboratoire revenus.
+
+Completion criteria: portail utile sans dependance forte entre les deux bases Firebase.
+
+## 7. Deliverables
+
+| Deliverable | Type | Owner | Status | Link |
+| --- | --- | --- | --- | --- |
+| Audit Firebase Dashboard Coach | Audit | Codex | Complete | `cfsb-dashboard-coach-aa9a4` |
+| Projet Firebase Roadmap | Infrastructure | Codex | Cree, Firestore gratuit actif | `cfsb-roadmap-trimestrielle` |
+| Modele de donnees cible | Documentation | Codex | Prepare | `firebase-roadmap/DATA_MODEL.md` |
+| Regles Firestore initiales | Code | Codex | Preparees, non deployees | `firebase-roadmap/firestore.rules` |
+| Lot d'importation local | Outil | Codex | Prepare et importe | `firebase-roadmap/scripts/build-import-bundle.mjs` |
+| Prototype owners Firebase | Application | Codex | A faire | - |
+| Formulaire employe Firebase | Application | Codex | A faire | - |
+| Recette | Validation | Michael et Gabriel | A faire | - |
+
+## 8. Owners
+
+| Role | Person | Responsibility |
+| --- | --- | --- |
+| Proprietaire produit | Michael | Priorites, validation finale, couts et bascule |
+| Proprietaire operations | Gabriel | Validation des contenus, roles et experience rencontre |
+| Implementation | Codex | Architecture, migration, code, tests et documentation |
+| Google Workspace | Bob Operator, au besoin | Apps Script, Google Chat et inventaire des donnees sources |
+
+## 9. Risks And Unknowns
+
+| Risk or unknown | Impact | Mitigation |
+| --- | --- | --- |
+| Les archives et notes owners ne sont pas toutes dans la copie GitHub | Import incomplet | Ajouter un export complet Apps Script avant l'import final |
+| Le formulaire est accessible sans compte obligatoire | Reprise interappareils plus complexe | Auth anonyme pour le brouillon, puis fonction securisee pour les liens de reprise |
+| Le webhook Google Chat est un secret | Il ne peut pas etre place dans le navigateur | Secret Manager + Cloud Function apres approbation Blaze |
+| Des changements de formulaire surviennent pendant la migration | Archives incoherentes | Versionner la configuration et stocker son snapshot avec chaque soumission |
+| Double import ou double soumission | Doublons | Identifiants deterministes et ecritures idempotentes |
+| Facturation Firebase | Cout imprevu | Projet separe, quotas, alertes de budget et limites de requetes |
+
+## 10. Next Actions
+
+| Priority | Action | Owner | Due date | Status |
+| --- | --- | --- | --- | --- |
+| P1 | Activer Google Auth pour Michael et Gabriel dans le projet Roadmap | Michael/Codex | Avant prototype owners | A valider |
+| P1 | Obtenir un export complet des soumissions, archives, notes owners et equipe | Codex/Bob Operator | Avant import pilote | Complete |
+| P1 | Construire le prototype owners Firebase | Codex | Phase 1 | A faire |
+| P2 | Choisir le parcours de reprise employe | Michael + Gabriel | Avant Phase 2 | A valider |
+| P2 | Valider le passage Blaze et les alertes budgetaires | Michael | Avant Phase 3 | A valider |
+
+## 11. Follow-up Log
+
+| Date | Update | Done by | Next action |
+| --- | --- | --- | --- |
+| 2026-07-12 | Audit du projet coach et creation du projet Roadmap separe | Codex | Preparer Firestore |
+| 2026-07-12 | Firestore gratuit cree, regles/index deployes et copie complete importee de facon idempotente | Codex + Bob Operator | Valider les acces Michael/Gabriel et construire le prototype owners |
