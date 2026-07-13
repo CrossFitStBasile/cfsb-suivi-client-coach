@@ -81,6 +81,9 @@ Soumission finale et dossier durable.
 - `archivedAt`
 - `createdAt`
 - `updatedAt`
+- `deletedAt`: date de mise a la corbeille, absente sinon
+- `deletedByUid`
+- `deletedByName`
 
 Sous-collection `events/{eventId}`:
 
@@ -96,12 +99,18 @@ Sous-collection `events/{eventId}`:
 - `reviewerName`
 - `ownerStatus`
 - `meetingFormat`
+- `meetingDate`
+- `meetingSummary`: compte rendu principal utilise par la nouvelle interface
 - `priorityTopics`
 - `questions`
 - `memberCommitments`
 - `directionCommitments`
 - `followupNotes`
+- `nextAction`
+- `followupDate`
 - `updatedAt`
+
+Les anciens champs structures et `followupNotes` sont conserves pour ne perdre aucune note de rencontre importee. La nouvelle interface les presente dans un bloc historique replie et utilise `meetingSummary` comme champ principal.
 
 ## `orgDepartments/{departmentId}`
 
@@ -114,6 +123,8 @@ Sous-collection `events/{eventId}`:
 
 - `name`
 - `normalizedName`
+- `email`
+- `aliases`: autres orthographes reconnues pendant le rapprochement des anciennes soumissions
 - `departmentId`
 - `displayTitle`
 - `roleIds`
@@ -121,6 +132,15 @@ Sous-collection `events/{eventId}`:
 - `active`
 - `createdAt`
 - `updatedAt`
+
+L'identifiant du document est permanent. Un changement de nom ne doit jamais creer un nouveau dossier. Chaque soumission est reliee par `teamMemberId`; le nom et le courriel ne servent qu'au rapprochement initial ou a la correction manuelle.
+
+## Suppression et restauration
+
+- Archiver conserve la roadmap dans le dossier longitudinal du membre.
+- Mettre a la corbeille ajoute `deletedAt` et masque la roadmap de tous les compteurs et dossiers.
+- Restaurer depuis la corbeille remet la roadmap dans Archives.
+- La suppression definitive efface `roadmapSubmissions/{submissionId}` et `ownerNotes/{submissionId}` apres une confirmation explicite, tout en conservant une entree minimale sans nom dans `auditLogs`.
 
 ## `revenueScenarios/{scenarioId}`
 

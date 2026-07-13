@@ -17,6 +17,16 @@ Il ne remplace pas la production GitHub Pages + Apps Script. Aucun deploiement p
 - Hosting: prototype owners deploye pour la recette privee.
 - Donnees reelles: copie de migration importee; la Google Sheet reste la production officielle.
 
+## Fonctions du prototype owners
+
+- pipeline cliquable par statut et filtres par role, trimestre et recherche;
+- compte rendu de rencontre simplifie avec prochaine action et date de suivi;
+- dossier longitudinal par membre avec toutes ses roadmaps actives et archivees;
+- association ou reassignation manuelle d'une soumission au bon membre;
+- archivage, corbeille reversible et suppression definitive confirmee;
+- conservation des anciennes notes owners dans un bloc historique;
+- impression du dossier de rencontre et affichage de la version du formulaire.
+
 ## Configuration Web
 
 La configuration Firebase Web est publique par conception et se trouve dans `public/firebase-config.js`. Les secrets Google Chat, Apps Script et autres integrations serveur ne doivent jamais etre ajoutes ici.

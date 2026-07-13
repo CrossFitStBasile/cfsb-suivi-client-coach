@@ -6,6 +6,6 @@
     "build:import": "node scripts/build-import-bundle.mjs",
     "import:dry-run": "node scripts/import-bundle-to-firestore.mjs",
     "import:apply": "node scripts/import-bundle-to-firestore.mjs --apply",
-    "check": "node --check scripts/build-import-bundle.mjs && node --check scripts/import-bundle-to-firestore.mjs"
+    "check": "node --check public/app.js && node --check scripts/build-import-bundle.mjs && node --check scripts/import-bundle-to-firestore.mjs"
   }
 }

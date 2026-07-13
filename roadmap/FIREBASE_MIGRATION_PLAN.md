@@ -52,6 +52,7 @@ Creer une application Roadmap interactive et fiable dans un projet Firebase dist
 - Une deuxieme importation avec la meme cle a conserve exactement les memes compteurs.
 - Google Authentication est active et deux profils owners actifs sont configures.
 - Le prototype owners est deploye sur Firebase Hosting pour une recette privee, sans modifier les liens de production.
+- Le dashboard owners interactif ajoute un pipeline cliquable, une corbeille reversible, un dossier longitudinal par membre, une reassignation manuelle des soumissions et un compte rendu simplifie.
 
 ## 5. Decisions Made
 
@@ -200,3 +201,4 @@ Completion criteria: portail utile sans dependance forte entre les deux bases Fi
 | 2026-07-12 | Audit du projet coach et creation du projet Roadmap separe | Codex | Preparer Firestore |
 | 2026-07-12 | Firestore gratuit cree, regles/index deployes et copie complete importee de facon idempotente | Codex + Bob Operator | Valider les acces Michael/Gabriel et construire le prototype owners |
 | 2026-07-12 | Auth Google activee, deux profils owners crees et prototype owners deploye sur Firebase Hosting | Codex | Michael et Gabriel valident leur connexion et les donnees importees |
+| 2026-07-13 | Prototype owners enrichi et redeploye: dossiers membres, pipeline interactif, compte rendu simplifie, corbeille et suppression controlee | Codex | Michael et Gabriel valident les actions sur quelques dossiers avant le nettoyage en lot |
