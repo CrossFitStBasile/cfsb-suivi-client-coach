@@ -5,11 +5,13 @@ import {
   entityVersionToken,
   effectiveWorkflowStatus,
   hasVersionConflict,
+  isArchivedTeamMember,
   isHistoricalManagementTask,
   isOpenManagementTask,
   roadmapActionDefinition,
   roadmapCreatesTask,
-  submissionBucket
+  submissionBucket,
+  teamMemberBucket
 } from "../public/workflow.js";
 
 test("legacy message status behaves like a read roadmap", () => {
@@ -67,4 +69,12 @@ test("version conflicts only trigger when a loaded entity changed", () => {
   assert.equal(hasVersionConflict({ updatedAt: "2026-07-13T12:00:00Z" }, baseline), false);
   assert.equal(hasVersionConflict({ updatedAt: "2026-07-13T12:05:00Z" }, baseline), true);
   assert.equal(hasVersionConflict({ updatedAt: "2026-07-13T12:05:00Z" }, ""), false);
+});
+
+test("team members are separated into active and archived dossiers", () => {
+  assert.equal(isArchivedTeamMember({ active: true }), false);
+  assert.equal(isArchivedTeamMember({ active: false }), true);
+  assert.equal(isArchivedTeamMember({ active: true, archivedAt: "2026-07-13" }), true);
+  assert.equal(teamMemberBucket({ active: true }), "active");
+  assert.equal(teamMemberBucket({ active: false }), "archived");
 });

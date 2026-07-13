@@ -24,11 +24,13 @@ import {
   entityVersionToken,
   effectiveWorkflowStatus,
   hasVersionConflict,
+  isArchivedTeamMember,
   isHistoricalManagementTask,
   isOpenManagementTask,
   roadmapActionDefinition,
   roadmapCreatesTask,
-  submissionBucket
+  submissionBucket,
+  teamMemberBucket
 } from "./workflow.js";
 
 const firebaseApp = initializeApp(firebaseConfig);
@@ -127,6 +129,7 @@ const state = {
   taskFilter: "all",
   taskOwnerFilter: "all",
   teamSearch: "",
+  teamRosterView: "active",
   activitySearch: "",
   activityActor: "all",
   activityEntity: "all",
@@ -338,7 +341,7 @@ function renderCommandSidebar() {
       </div>
       <nav class="command-nav" aria-label="Navigation principale">
         ${commandNavButton("todo", "list-checks", "A faire", openTasks)}
-        ${commandNavButton("team", "users-round", "Equipe", state.teamMembers.filter((item) => item.active !== false).length)}
+        ${commandNavButton("team", "users-round", "Equipe", state.teamMembers.filter((item) => !isArchivedTeamMember(item)).length)}
         ${commandNavButton("roadmaps", "clipboard-list", "Roadmaps", queueCount)}
         ${commandNavButton("activity", "history", "Activite", unresolvedErrors)}
       </nav>
@@ -423,7 +426,7 @@ function renderTodoView() {
         <form id="managementTaskForm" class="quick-task-form">
           <label class="field">Action<input name="title" required maxlength="180" placeholder="Ex.: Confirmer la formation de Chloe"></label>
           <label class="field">Membre concerne
-            <select name="teamMemberId"><option value="">Aucun membre</option>${state.teamMembers.filter((item) => item.active !== false).map((member) => `<option value="${escapeAttr(member.id)}">${escapeHtml(member.name)}</option>`).join("")}</select>
+            <select name="teamMemberId"><option value="">Aucun membre</option>${state.teamMembers.filter((item) => !isArchivedTeamMember(item)).map((member) => `<option value="${escapeAttr(member.id)}">${escapeHtml(member.name)}</option>`).join("")}</select>
           </label>
           <div class="quick-task-fields">
             <label class="field">Responsable<select name="ownerName">${OWNER_OPTIONS.map((owner) => `<option value="${escapeAttr(owner)}">${escapeHtml(owner)}</option>`).join("")}</select></label>
@@ -533,6 +536,8 @@ function activityActionMeta(action) {
     management_task_reopened: ["Action rouverte", "rotate-ccw", "amber"],
     management_task_postponed: ["Action reportee", "calendar-clock", "amber"],
     team_member_saved: ["Dossier membre enregistre", "user-round-check", "green"],
+    team_member_archived: ["Dossier membre archive", "archive", "neutral"],
+    team_member_restored: ["Dossier membre restaure", "rotate-ccw", "green"],
     career_milestone_saved: ["Etape de parcours enregistree", "route", "blue"],
     career_update_added: ["Note d'evolution ajoutee", "message-square-plus", "green"],
     career_milestone_archived: ["Etape de parcours archivee", "archive", "neutral"],
@@ -741,7 +746,7 @@ function renderRoadmapActionBar(submission, notes, member) {
       <label class="roadmap-member-assignment">Dossier membre
         <select id="memberAssignment" ${inTrash ? "disabled" : ""}>
           <option value="">Non associe</option>
-          ${state.teamMembers.map((item) => `<option value="${escapeAttr(item.id)}" ${member?.id === item.id ? "selected" : ""}>${escapeHtml(item.name)}${item.active === false ? " (inactif)" : ""}</option>`).join("")}
+          ${state.teamMembers.map((item) => `<option value="${escapeAttr(item.id)}" ${member?.id === item.id ? "selected" : ""}>${escapeHtml(item.name)}${isArchivedTeamMember(item) ? " (archive)" : ""}</option>`).join("")}
         </select>
       </label>
       <div class="roadmap-action-controls">
@@ -806,19 +811,29 @@ function renderTeamView() {
   const editing = state.teamMembers.find((item) => item.id === state.editingMemberId) || null;
   const unlinked = unlinkedSubmissions();
   const search = normalize(state.teamSearch);
-  const visibleMembers = state.teamMembers.filter((member) => !search || normalize([member.name, member.displayTitle, member.email].join(" ")).includes(search));
+  const activeCount = state.teamMembers.filter((member) => teamMemberBucket(member) === "active").length;
+  const archivedCount = state.teamMembers.length - activeCount;
+  const viewingArchived = state.teamRosterView === "archived";
+  const rosterMembers = state.teamMembers.filter((member) => teamMemberBucket(member) === state.teamRosterView);
+  const visibleMembers = rosterMembers.filter((member) => !search || normalize([member.name, member.displayTitle, member.email].join(" ")).includes(search));
   return `
     <section class="panel team-toolbar">
       <div>
-        <h2>Dossiers de l'equipe</h2>
-        <p>${visibleMembers.length} membre(s) visible(s). Chaque dossier rassemble les actions, roadmaps et le parcours.</p>
+        <h2>${viewingArchived ? "Dossiers archives" : "Equipe active"}</h2>
+        <p>${visibleMembers.length} membre(s) visible(s). ${viewingArchived ? "Les historiques restent complets et restaurables." : "Chaque dossier rassemble les actions, roadmaps et le parcours."}</p>
       </div>
-      <button class="button primary" id="addMemberButton" type="button"><i data-lucide="user-plus"></i> Ajouter un membre</button>
+      <div class="team-toolbar-actions">
+        <nav class="team-roster-tabs" aria-label="Etat des dossiers equipe">
+          <button class="tab-button ${viewingArchived ? "" : "active"}" data-team-roster="active" type="button"><i data-lucide="users-round"></i> Actifs <span>${activeCount}</span></button>
+          <button class="tab-button ${viewingArchived ? "active" : ""}" data-team-roster="archived" type="button"><i data-lucide="archive"></i> Archives <span>${archivedCount}</span></button>
+        </nav>
+        <button class="button primary" id="addMemberButton" type="button"><i data-lucide="user-plus"></i> Ajouter un membre</button>
+      </div>
     </section>
     <section class="panel team-search-bar">
       <label class="field"><span class="visually-hidden">Rechercher un membre</span><input id="teamSearchInput" value="${escapeAttr(state.teamSearch)}" placeholder="Rechercher par nom, role ou courriel..."></label>
     </section>
-    ${unlinked.length ? `
+    ${unlinked.length && !viewingArchived ? `
       <button class="data-warning" id="openUnlinkedButton" type="button">
         <i data-lucide="unlink"></i>
         <span><strong>${unlinked.length} roadmap(s) a associer</strong>Un nom ne correspond pas encore a un dossier equipe.</span>
@@ -837,7 +852,7 @@ function renderTeamView() {
             </article>
           `;
         }).join("")}
-        ${visibleMembers.length ? "" : `<section class="panel empty-state"><i data-lucide="search-x"></i><div>Aucun membre ne correspond a cette recherche.</div></section>`}
+        ${visibleMembers.length ? "" : `<section class="panel empty-state"><i data-lucide="${viewingArchived ? "archive" : "search-x"}"></i><div>${viewingArchived && !search ? "Aucun dossier archive." : "Aucun membre ne correspond a cette recherche."}</div></section>`}
       </section>
       ${state.editingMemberId ? renderMemberForm(editing, isCreating) : ""}
     </div>
@@ -845,16 +860,17 @@ function renderTeamView() {
 }
 
 function renderTeamMemberCard(member) {
+  const archived = isArchivedTeamMember(member);
   const submissions = submissionsForMember(member).filter((item) => !isDeleted(item));
   const tasks = tasksForMember(member.id);
   const milestones = milestonesForMember(member).filter((item) => ["planned", "in_progress", "blocked"].includes(item.status));
   const latest = submissions[0] || null;
   return `
-    <div class="member-card ${member.active === false ? "inactive" : ""}">
+    <div class="member-card ${archived ? "inactive" : ""}">
       <button class="member-card-main" data-open-member="${escapeAttr(member.id)}" type="button">
         <span class="member-avatar">${escapeHtml(initials(member.name))}</span>
         <span class="member-card-copy">
-          <strong>${escapeHtml(member.name || "Sans nom")}</strong>
+          <strong>${escapeHtml(member.name || "Sans nom")}${archived ? `<span class="member-archive-badge">Archive</span>` : ""}</strong>
           <small>${escapeHtml(member.displayTitle || "Role a preciser")}</small>
           <span class="member-card-stats">
             <span class="${tasks.length ? "needs-attention" : ""}">${tasks.length} action(s)</span>
@@ -865,16 +881,20 @@ function renderTeamMemberCard(member) {
         </span>
         <i data-lucide="chevron-right"></i>
       </button>
-      <button class="member-edit member-action" data-create-member-action="${escapeAttr(member.id)}" type="button" title="Creer une action pour ${escapeAttr(member.name || "ce membre")}"><i data-lucide="plus"></i></button>
+      ${archived
+        ? `<span class="member-archive-icon" title="Dossier archive"><i data-lucide="archive"></i></span>`
+        : `<button class="member-edit member-action" data-create-member-action="${escapeAttr(member.id)}" type="button" title="Creer une action pour ${escapeAttr(member.name || "ce membre")}"><i data-lucide="plus"></i></button>`}
     </div>
   `;
 }
 
 function renderMemberForm(editing, isCreating = false) {
+  const archived = editing ? isArchivedTeamMember(editing) : false;
   return `
     <form class="panel member-form" id="memberForm">
       <h2>${editing ? "Modifier le membre" : "Ajouter un membre"}</h2>
       <input type="hidden" name="memberId" value="${escapeAttr(editing?.id || "")}">
+      <input type="hidden" name="active" value="${archived ? "false" : "true"}">
       <label class="field">Nom<input name="name" required value="${escapeAttr(editing?.name || "")}"></label>
       <label class="field">Courriel<input name="email" type="email" value="${escapeAttr(editing?.email || "")}" placeholder="nom@exemple.com"></label>
       <label class="field">Departement
@@ -887,7 +907,7 @@ function renderMemberForm(editing, isCreating = false) {
       <label class="field">Roles du formulaire<input name="roleIds" value="${escapeAttr((editing?.roleIds || []).join(", "))}" placeholder="coach_professionnel"></label>
       <label class="field">Autres noms reconnus<input name="aliases" value="${escapeAttr((editing?.aliases || []).join(", "))}" placeholder="Nom sans accent, ancien nom"></label>
       <label class="field">Ordre<input name="sortOrder" type="number" min="0" step="1" value="${escapeAttr(editing?.sortOrder ?? 100)}"></label>
-      <label class="checkbox-line"><input name="active" type="checkbox" ${editing?.active === false ? "" : "checked"}> Membre actif</label>
+      <div class="member-form-status ${archived ? "archived" : "active"}"><i data-lucide="${archived ? "archive" : "circle-check-big"}"></i><span><strong>${archived ? "Dossier archive" : "Dossier actif"}</strong><small>${archived ? "Utilise Restaurer dans le dossier pour le remettre dans l'equipe active." : "Utilise Archiver dans le dossier pour le retirer de l'equipe active."}</small></span></div>
       <div class="notes-actions">
         <button class="button primary" type="submit"><i data-lucide="save"></i> Enregistrer</button>
         <button class="button" id="cancelMemberEdit" type="button">Annuler</button>
@@ -909,6 +929,7 @@ function renderMemberProfile() {
   const completedMilestones = milestones.filter((item) => item.status === "completed");
   const nextMilestone = nextCareerMilestone(milestones);
   const tasks = tasksForMember(member.id);
+  const archived = isArchivedTeamMember(member);
   return `
     <section class="member-profile">
       <header class="panel member-profile-header">
@@ -917,12 +938,15 @@ function renderMemberProfile() {
           <div>
             <p class="eyebrow">Dossier longitudinal</p>
             <h2>${escapeHtml(member.name || "Sans nom")}</h2>
-            <p>${escapeHtml(member.displayTitle || "Role a preciser")}${member.careerTarget ? ` · Vise: ${escapeHtml(member.careerTarget)}` : ""}${member.active === false ? " · Membre inactif" : ""}</p>
+            <p>${escapeHtml(member.displayTitle || "Role a preciser")}${member.careerTarget ? ` · Vise: ${escapeHtml(member.careerTarget)}` : ""}${archived ? ` · Dossier archive${member.archivedAt ? ` le ${formatShortDate(member.archivedAt)}` : ""}` : ""}</p>
           </div>
         </div>
         <div class="member-profile-actions">
-          <button class="button primary" data-create-member-action="${escapeAttr(member.id)}" type="button"><i data-lucide="plus"></i> Creer une action</button>
+          ${archived ? "" : `<button class="button primary" data-create-member-action="${escapeAttr(member.id)}" type="button"><i data-lucide="plus"></i> Creer une action</button>`}
           <button class="button" data-edit-member="${escapeAttr(member.id)}" type="button"><i data-lucide="pencil"></i> Modifier</button>
+          ${archived
+            ? `<button class="button" data-restore-member="${escapeAttr(member.id)}" type="button"><i data-lucide="rotate-ccw"></i> Restaurer le dossier</button>`
+            : `<button class="button danger" data-archive-member="${escapeAttr(member.id)}" type="button"><i data-lucide="archive"></i> Archiver le dossier</button>`}
         </div>
       </header>
       <section class="member-metrics">
@@ -1251,7 +1275,7 @@ function renderTaskEditorModal() {
             <label class="field">Membre concerne
               <select name="teamMemberId">
                 <option value="">Aucun membre</option>
-                ${state.teamMembers.map((member) => `<option value="${escapeAttr(member.id)}" ${value.teamMemberId === member.id ? "selected" : ""}>${escapeHtml(member.name)}${member.active === false ? " (inactif)" : ""}</option>`).join("")}
+                ${state.teamMembers.filter((member) => !isArchivedTeamMember(member) || value.teamMemberId === member.id).map((member) => `<option value="${escapeAttr(member.id)}" ${value.teamMemberId === member.id ? "selected" : ""}>${escapeHtml(member.name)}${isArchivedTeamMember(member) ? " (archive)" : ""}</option>`).join("")}
               </select>
             </label>
             <label class="field">Type
@@ -1417,9 +1441,18 @@ function bindAppEvents() {
   document.querySelector("#restoreTrashButton")?.addEventListener("click", restoreSelectedFromTrash);
   document.querySelector("#deleteForeverButton")?.addEventListener("click", deleteSelectedForever);
   document.querySelector("#memberAssignment")?.addEventListener("change", assignSelectedMember);
+  document.querySelectorAll("[data-team-roster]").forEach((button) => button.addEventListener("click", () => {
+    state.teamRosterView = button.dataset.teamRoster;
+    state.selectedMemberId = "";
+    state.editingMemberId = "";
+    state.memberEditorVersion = "";
+    state.teamSearch = "";
+    renderApp();
+  }));
   document.querySelectorAll("[data-open-member]").forEach((button) => button.addEventListener("click", () => {
     state.view = "team";
     state.selectedMemberId = button.dataset.openMember;
+    state.teamRosterView = teamMemberBucket(state.teamMembers.find((item) => item.id === state.selectedMemberId));
     state.editingMemberId = "";
     state.memberProfileSection = "overview";
     state.memberActionView = "open";
@@ -1430,7 +1463,9 @@ function bindAppEvents() {
     state.view = "team";
     state.selectedMemberId = "";
     state.editingMemberId = button.dataset.editMember;
-    state.memberEditorVersion = entityVersionToken(state.teamMembers.find((item) => item.id === state.editingMemberId));
+    const member = state.teamMembers.find((item) => item.id === state.editingMemberId);
+    state.teamRosterView = teamMemberBucket(member);
+    state.memberEditorVersion = entityVersionToken(member);
     renderApp();
   }));
   document.querySelectorAll("[data-create-member-action]").forEach((button) => button.addEventListener("click", () => {
@@ -1441,6 +1476,7 @@ function bindAppEvents() {
     state.selectedMemberId = "";
     state.editingMemberId = "__new__";
     state.memberEditorVersion = "";
+    state.teamRosterView = "active";
     renderApp();
   });
   document.querySelector("#teamSearchInput")?.addEventListener("input", (event) => {
@@ -1500,6 +1536,8 @@ function bindAppEvents() {
     renderApp();
   });
   document.querySelector("#memberForm")?.addEventListener("submit", saveTeamMember);
+  document.querySelectorAll("[data-archive-member]").forEach((button) => button.addEventListener("click", () => archiveTeamMember(button.dataset.archiveMember)));
+  document.querySelectorAll("[data-restore-member]").forEach((button) => button.addEventListener("click", () => restoreTeamMember(button.dataset.restoreMember)));
   document.querySelectorAll("[data-close-roadmap-completion]").forEach((button) => button.addEventListener("click", () => closeRoadmapCompletion()));
   document.querySelector("#roadmapCompletionForm")?.addEventListener("submit", completeRoadmapMeeting);
   document.querySelectorAll("[data-close-team-action]").forEach((button) => button.addEventListener("click", () => closeTeamAction()));
@@ -1617,6 +1655,7 @@ function openCareerFromNextAction() {
   const notes = state.ownerNotes[submission.id] || {};
   state.view = "team";
   state.selectedMemberId = member.id;
+  state.teamRosterView = teamMemberBucket(member);
   state.editingMemberId = "";
   state.memberProfileSection = "career";
   state.showArchivedCareer = false;
@@ -2187,7 +2226,7 @@ async function saveTeamMember(event) {
       roleIds: String(data.get("roleIds") || "").split(/[,;]+/).map((item) => item.trim()).filter(Boolean),
       aliases: String(data.get("aliases") || "").split(/[,;]+/).map((item) => item.trim()).filter(Boolean),
       sortOrder: Number(data.get("sortOrder") || 100),
-      active: data.get("active") === "on",
+      active: String(data.get("active") || "true") !== "false",
       updatedAt: serverTimestamp(),
       updatedByUid: state.user.uid,
       updatedByName: actorName()
@@ -2223,6 +2262,87 @@ async function saveTeamMember(event) {
     renderApp();
   } catch (error) {
     showToast(`Membre non enregistre: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function archiveTeamMember(memberId) {
+  const member = state.teamMembers.find((item) => item.id === memberId);
+  if (!member || isArchivedTeamMember(member) || state.busy) return;
+  const openTaskCount = tasksForMember(member.id).length;
+  const taskMessage = openTaskCount ? `\n\n${openTaskCount} action(s) ouverte(s) resteront dans A faire jusqu'a leur traitement.` : "";
+  const confirmed = window.confirm(`Archiver le dossier de ${member.name}?\n\nSes roadmaps, actions et son parcours resteront consultables. Il disparaitra de l'equipe active et de l'organigramme.${taskMessage}`);
+  if (!confirmed) return;
+  state.busy = true;
+  try {
+    const memberRef = doc(db, "teamMembers", member.id);
+    const auditRef = doc(collection(db, "auditLogs"));
+    const memberUpdate = {
+      active: false,
+      archivedAt: serverTimestamp(),
+      archivedByUid: state.user.uid,
+      archivedByName: actorName(),
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    };
+    const saved = await runVersionedWrite({
+      reference: memberRef,
+      baseline: entityVersionToken(member),
+      label: "ce dossier membre",
+      write(transaction) {
+        transaction.update(memberRef, memberUpdate);
+        transaction.set(auditRef, auditPayload("team_member_archived", member.id, { openTaskCount }));
+      }
+    });
+    if (!saved) return;
+    Object.assign(member, memberUpdate, { archivedAt: new Date(), updatedAt: new Date() });
+    state.teamRosterView = "archived";
+    showToast(`Dossier de ${member.name} archive.`);
+    renderApp();
+  } catch (error) {
+    showToast(`Dossier non archive: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function restoreTeamMember(memberId) {
+  const member = state.teamMembers.find((item) => item.id === memberId);
+  if (!member || !isArchivedTeamMember(member) || state.busy) return;
+  state.busy = true;
+  try {
+    const memberRef = doc(db, "teamMembers", member.id);
+    const auditRef = doc(collection(db, "auditLogs"));
+    const memberUpdate = {
+      active: true,
+      archivedAt: null,
+      archivedByUid: null,
+      archivedByName: null,
+      restoredAt: serverTimestamp(),
+      restoredByUid: state.user.uid,
+      restoredByName: actorName(),
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    };
+    const saved = await runVersionedWrite({
+      reference: memberRef,
+      baseline: entityVersionToken(member),
+      label: "ce dossier membre",
+      write(transaction) {
+        transaction.update(memberRef, memberUpdate);
+        transaction.set(auditRef, auditPayload("team_member_restored", member.id));
+      }
+    });
+    if (!saved) return;
+    Object.assign(member, memberUpdate, { updatedAt: new Date() });
+    state.teamRosterView = "active";
+    showToast(`Dossier de ${member.name} restaure.`);
+    renderApp();
+  } catch (error) {
+    showToast(`Dossier non restaure: ${friendlyError(error)}`);
   } finally {
     state.busy = false;
   }
@@ -2615,8 +2735,10 @@ function openTaskSource(taskId) {
     return;
   }
   if (task.teamMemberId) {
+    const member = state.teamMembers.find((item) => item.id === task.teamMemberId);
     state.view = "team";
     state.selectedMemberId = task.teamMemberId;
+    state.teamRosterView = teamMemberBucket(member);
     state.editingMemberId = "";
     state.memberProfileSection = task.sourceType === "career" ? "career" : "actions";
     if (task.sourceType === "career") {
@@ -2699,9 +2821,11 @@ function openAuditEntity(logId) {
     return;
   }
   if (log.entityType === "teamMember") {
-    if (!state.teamMembers.some((item) => item.id === log.entityId)) return showToast("Ce dossier membre n'est plus disponible.");
+    const member = state.teamMembers.find((item) => item.id === log.entityId);
+    if (!member) return showToast("Ce dossier membre n'est plus disponible.");
     state.view = "team";
     state.selectedMemberId = log.entityId;
+    state.teamRosterView = teamMemberBucket(member);
     state.memberProfileSection = "overview";
     renderApp();
     return;
@@ -2712,6 +2836,7 @@ function openAuditEntity(logId) {
     if (!memberId) return showToast("Cette etape n'est plus disponible.");
     state.view = "team";
     state.selectedMemberId = memberId;
+    state.teamRosterView = teamMemberBucket(state.teamMembers.find((item) => item.id === memberId));
     state.memberProfileSection = "career";
     if (milestone) {
       state.careerEditorId = milestone.id;

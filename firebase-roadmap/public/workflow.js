@@ -32,6 +32,14 @@ export function isHistoricalManagementTask(task) {
   return ["completed", "cancelled"].includes(task?.status);
 }
 
+export function isArchivedTeamMember(member) {
+  return member?.active === false || Boolean(member?.archivedAt);
+}
+
+export function teamMemberBucket(member) {
+  return isArchivedTeamMember(member) ? "archived" : "active";
+}
+
 export function entityVersionToken(entity) {
   const value = entity?.updatedAt || entity?.createdAt || entity?.submittedAt;
   if (!value) return "";

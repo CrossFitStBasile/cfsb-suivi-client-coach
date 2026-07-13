@@ -33,6 +33,7 @@ Le Dashboard Equipe est deploye sur Firebase Hosting avec connexion Google owner
 - menus de soumissions enrichis du statut, de la date et de l'heure pour distinguer les doublons;
 - fin de rencontre simplifiee: une action de suivi facultative, sans date de rencontre a saisir;
 - dossier longitudinal par membre avec vue d'ensemble, actions, roadmaps et parcours;
+- separation de l'equipe active et des dossiers archives, avec archivage et restauration sans perte d'historique;
 - ligne du temps `Parcours CFSB` avec objectifs, echeances, responsables, progression et notes d'evolution datees;
 - conversion d'une prochaine action de roadmap en etape de parcours, sans double saisie;
 - association ou reassignation manuelle d'une soumission au bon membre;
