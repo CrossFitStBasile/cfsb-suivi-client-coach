@@ -125,6 +125,7 @@ svg { width: 18px; height: 18px; flex: 0 0 auto; }
   display: grid;
   grid-template-columns: 238px minmax(0, 1fr);
 }
+body.modal-open { overflow: hidden; }
 
 .command-sidebar {
   position: sticky;
@@ -347,6 +348,10 @@ svg { width: 18px; height: 18px; flex: 0 0 auto; }
 }
 .task-card.urgent,
 .task-card.overdue { border-left-color: var(--red); }
+.task-card-history { min-height: 102px; border-left-color: #6c897b; }
+.task-card-history.cancelled { border-left-color: #9a8273; }
+.task-card-history .task-source { color: #597367; }
+.task-card-history.cancelled .task-source { color: #7a6558; }
 .task-card:hover { border-color: #aab5b0; box-shadow: 0 8px 22px rgba(35, 46, 41, 0.07); }
 .task-card-main { display: grid; align-content: center; gap: 6px; min-width: 0; padding: 13px 15px; border: 0; background: transparent; color: var(--ink); text-align: left; }
 .task-card-main > strong { overflow-wrap: anywhere; font-size: 15px; }
@@ -365,6 +370,10 @@ svg { width: 18px; height: 18px; flex: 0 0 auto; }
 .priority-pill { padding: 4px 6px; border-radius: 4px; background: #eef1ef; color: #596760; font-size: 10px; font-weight: 850; }
 .priority-pill.p1 { background: #fff0ed; color: var(--red); }
 .priority-pill.p3 { background: #edf5f9; color: var(--blue); }
+.task-status-pill { display: inline-flex; align-items: center; width: fit-content; padding: 4px 7px; border: 1px solid var(--line); border-radius: 4px; background: #f2f5f3; color: #52615b; font-size: 10px; font-weight: 850; }
+.task-status-pill.open { border-color: #b9d3ca; background: #edf7f3; color: var(--green-dark); }
+.task-status-pill.completed { border-color: #b9d3ca; background: #edf7f3; color: var(--green-dark); }
+.task-status-pill.cancelled { border-color: #d5c8c0; background: #f7f3f1; color: #715e52; }
 .quick-task-panel { position: sticky; top: 78px; padding: 16px; }
 .quick-task-heading { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 14px; }
 .quick-task-heading > svg { margin-top: 1px; color: var(--green); }
@@ -575,6 +584,11 @@ svg { width: 18px; height: 18px; flex: 0 0 auto; }
 .profile-metric span { display: block; margin-top: 5px; color: var(--muted); font-size: 12px; }
 .member-section-tabs { display: flex; gap: 8px; }
 .member-section-tabs .tab-button { display: inline-flex; align-items: center; gap: 8px; }
+.member-action-heading { align-items: center; }
+.member-action-tabs { display: flex; gap: 7px; padding: 12px 18px 4px; border-bottom: 1px solid var(--line); background: #fbfcfb; }
+.member-action-tabs .tab-button { min-height: 36px; padding: 7px 10px; }
+.member-action-tabs .tab-button span { min-width: 22px; padding: 2px 5px; border-radius: 4px; background: #e9eeeb; color: var(--muted); font-size: 10px; text-align: center; }
+.member-action-tabs .tab-button.active span { background: #d7ebe4; color: var(--green-dark); }
 .timeline-panel { overflow: hidden; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 18px; border-bottom: 1px solid var(--line); }
 .section-heading h3 { margin: 0; font-size: 17px; }
@@ -645,6 +659,8 @@ svg { width: 18px; height: 18px; flex: 0 0 auto; }
 .action-form textarea.compact-textarea { min-height: 76px; }
 .action-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .action-form-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.task-editor-state { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 34px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 5px; background: #fbfcfb; }
+.task-editor-state small { color: var(--muted); font-size: 11px; }
 .action-kind-fieldset { margin: 0; padding: 0; border: 0; }
 .action-kind-fieldset legend { margin-bottom: 7px; font-size: 13px; font-weight: 800; }
 .action-kind-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
@@ -816,6 +832,9 @@ svg { width: 18px; height: 18px; flex: 0 0 auto; }
   .member-profile-title { align-items: flex-start; }
   .member-section-tabs { overflow-x: auto; }
   .member-section-tabs .tab-button { white-space: nowrap; }
+  .member-action-heading .button { width: 100%; }
+  .member-action-tabs { overflow-x: auto; padding-inline: 12px; }
+  .member-action-tabs .tab-button { white-space: nowrap; }
   .career-summary-actions .button { width: 100%; }
   .career-timeline-panel { padding: 14px 10px; }
   .career-timeline-panel::before { left: 26px; }
@@ -831,6 +850,7 @@ svg { width: 18px; height: 18px; flex: 0 0 auto; }
   .action-kind-options,
   .action-form-grid { grid-template-columns: 1fr; }
   .action-form-actions .button { width: 100%; }
+  .task-editor-state { align-items: flex-start; flex-direction: column; }
   .career-editor { max-height: calc(100vh - 14px); }
   #careerForm { grid-template-columns: 1fr; padding: 14px; }
   #careerForm .field-wide { grid-column: 1; }

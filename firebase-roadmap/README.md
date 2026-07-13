@@ -4,7 +4,7 @@ Ce dossier prepare la migration de Roadmap vers le projet Firebase distinct:
 
 `cfsb-roadmap-trimestrielle`
 
-Il ne remplace pas la production GitHub Pages + Apps Script. Aucun deploiement public ne doit etre fait avant la recette de Michael et Gabriel.
+Le Dashboard Equipe est deploye sur Firebase Hosting avec connexion Google owner. Les anciens liens GitHub Pages + Apps Script restent separes tant que leur retrait n'a pas ete approuve.
 
 ## Etat
 
@@ -22,10 +22,12 @@ Il ne remplace pas la production GitHub Pages + Apps Script. Aucun deploiement p
 - vue `A faire` inspiree du Dashboard Coach, avec actions de Michael et Gabriel;
 - actions automatiquement projetees depuis les roadmaps a traiter et les etapes de carriere bloquees ou proches de leur echeance;
 - actions manuelles avec membre, responsable et priorite, sans imposer un calendrier dans le dashboard;
+- modification, fin, annulation et reouverture des actions manuelles, avec historique par membre;
 - creation rapide d'une rencontre a prevoir, d'un suivi ou d'une discussion de developpement depuis chaque dossier membre;
 - module Roadmaps separe en `En cours`, `Historique` et une corbeille secondaire;
 - pipeline cliquable dont les compteurs respectent les filtres par role, trimestre et recherche;
 - parcours explicite `A lire` -> `Lue / rencontre a faire` -> `Suivi a faire` ou `Terminee`;
+- retour possible de `Lue / rencontre a faire` vers `A lire` lorsqu'une roadmap a ete marquee par erreur;
 - seules les roadmaps a lire et les suivis concrets generent une action; la messagerie et la reservation restent dans les outils habituels;
 - boutons d'action immediate dans `A faire` et dans chaque roadmap, sans passer par un menu de statuts;
 - menus de soumissions enrichis du statut, de la date et de l'heure pour distinguer les doublons;
@@ -37,6 +39,15 @@ Il ne remplace pas la production GitHub Pages + Apps Script. Aucun deploiement p
 - historique consultable, corbeille reversible et suppression definitive confirmee;
 - conservation des anciennes notes owners dans un bloc historique;
 - impression du dossier de rencontre et affichage de la version du formulaire.
+- formulaires modaux proteges contre les rafraichissements Firestore pendant une saisie, avec fermeture par `Echap` et focus clavier contenu.
+
+## Verification locale
+
+Executer les controles de syntaxe et les tests de flux avant chaque deploiement:
+
+```powershell
+npm run check
+```
 
 ## Configuration Web
 

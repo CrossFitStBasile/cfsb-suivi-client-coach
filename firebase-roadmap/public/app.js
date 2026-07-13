@@ -16,6 +16,14 @@ import {
   writeBatch
 } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
+import {
+  effectiveWorkflowStatus,
+  isHistoricalManagementTask,
+  isOpenManagementTask,
+  roadmapActionDefinition,
+  roadmapCreatesTask,
+  submissionBucket
+} from "./workflow.js";
 
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
@@ -40,6 +48,17 @@ const TASK_PRIORITY_OPTIONS = [
   ["P2", "Normal"],
   ["P3", "Faible"]
 ];
+const TASK_KIND_OPTIONS = [
+  ["general", "Action generale"],
+  ["meeting", "Prevoir une rencontre"],
+  ["followup", "Faire un suivi"],
+  ["development", "Parler developpement"]
+];
+const TASK_STATUS_LABELS = {
+  open: "Ouverte",
+  completed: "Terminee",
+  cancelled: "Annulee"
+};
 const TASK_FILTER_OPTIONS = [
   ["all", "Toutes"],
   ["urgent", "Priorite haute"],
@@ -88,6 +107,8 @@ const state = {
   careerDraft: null,
   roadmapCompletionId: "",
   teamActionMemberId: "",
+  taskEditorId: "",
+  memberActionView: "open",
   showArchivedCareer: false,
   taskFilter: "all",
   taskOwnerFilter: "all",
@@ -101,6 +122,7 @@ const state = {
 const appRoot = document.querySelector("#app");
 const toastRoot = document.querySelector("#toast");
 let toastTimer = null;
+document.addEventListener("keydown", handleGlobalKeydown);
 
 onAuthStateChanged(auth, async (user) => {
   cleanupSubscriptions();
@@ -131,6 +153,7 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 function renderLogin() {
+  document.body.classList.remove("modal-open");
   appRoot.innerHTML = `
     <main class="auth-shell">
       <section class="auth-panel">
@@ -151,6 +174,7 @@ function renderLogin() {
 }
 
 function renderAccessDenied(message) {
+  document.body.classList.remove("modal-open");
   appRoot.innerHTML = `
     <main class="auth-shell">
       <section class="auth-panel">
@@ -185,35 +209,35 @@ function subscribeData() {
   state.unsubscribers.push(onSnapshot(collection(db, "roadmapSubmissions"), (snapshot) => {
     state.submissions = snapshot.docs.map(fromDoc).sort((a, b) => dateValue(b.submittedAt) - dateValue(a.submittedAt));
     ensureSelection();
-    renderApp();
+    renderFromData();
   }, dataError));
   state.unsubscribers.push(onSnapshot(collection(db, "ownerNotes"), (snapshot) => {
     state.ownerNotes = Object.fromEntries(snapshot.docs.map((item) => [item.id, item.data()]));
-    renderApp();
+    renderFromData();
   }, dataError));
   state.unsubscribers.push(onSnapshot(collection(db, "teamMembers"), (snapshot) => {
     state.teamMembers = snapshot.docs.map(fromDoc).sort(sortTeamMembers);
-    renderApp();
+    renderFromData();
   }, dataError));
   state.unsubscribers.push(onSnapshot(collection(db, "orgDepartments"), (snapshot) => {
     state.departments = snapshot.docs.map(fromDoc).sort((a, b) => Number(a.sortOrder || 999) - Number(b.sortOrder || 999));
-    renderApp();
+    renderFromData();
   }, dataError));
   state.unsubscribers.push(onSnapshot(collection(db, "roadmapForms"), (snapshot) => {
     state.forms = Object.fromEntries(snapshot.docs.map((item) => [item.data().version || item.id, item.data()]));
-    renderApp();
+    renderFromData();
   }, dataError));
   state.unsubscribers.push(onSnapshot(collection(db, "careerMilestones"), (snapshot) => {
     state.careerMilestones = snapshot.docs.map(fromDoc).sort(sortCareerMilestones);
-    renderApp();
+    renderFromData();
   }, dataError));
   state.unsubscribers.push(onSnapshot(collection(db, "careerUpdates"), (snapshot) => {
     state.careerUpdates = snapshot.docs.map(fromDoc).sort((a, b) => dateValue(b.createdAt) - dateValue(a.createdAt));
-    renderApp();
+    renderFromData();
   }, dataError));
   state.unsubscribers.push(onSnapshot(collection(db, "managementTasks"), (snapshot) => {
     state.managementTasks = snapshot.docs.map(fromDoc).sort(sortManagementTasks);
-    renderApp();
+    renderFromData();
   }, dataError));
 }
 
@@ -224,11 +248,17 @@ function cleanupSubscriptions() {
 
 function dataError(error) {
   state.loadError = friendlyError(error);
+  renderFromData();
+}
+
+function renderFromData() {
+  if (hasOpenModal()) return;
   renderApp();
 }
 
 function renderApp() {
   if (!state.user || !state.profile) return;
+  if (state.taskEditorId && !state.managementTasks.some((item) => item.id === state.taskEditorId)) state.taskEditorId = "";
   const viewMeta = {
     todo: ["Pilotage quotidien", "A faire", "Les prochaines actions de Michael et Gabriel, rassemblees au meme endroit."],
     team: ["Dossiers longitudinaux", state.selectedMemberId ? "Dossier membre" : "Equipe", state.selectedMemberId ? "Roadmaps, actions et evolution de carriere dans un seul dossier." : "Une vue claire de chaque membre et de ce qui demande votre attention."],
@@ -242,8 +272,8 @@ function renderApp() {
           <div class="mobile-brand"><span class="brand-mark">CF</span><strong>Dashboard Equipe</strong></div>
           <div class="top-actions">
             <div class="realtime">Temps reel Firestore</div>
-            <button class="button icon-only" id="reloadButton" type="button" title="Recharger les donnees"><i data-lucide="refresh-cw"></i></button>
-            <button class="button icon-only" id="logoutButton" type="button" title="Deconnexion"><i data-lucide="log-out"></i></button>
+            <button class="button icon-only" id="reloadButton" type="button" title="Recharger les donnees" aria-label="Recharger les donnees"><i data-lucide="refresh-cw"></i></button>
+            <button class="button icon-only" id="logoutButton" type="button" title="Deconnexion" aria-label="Deconnexion"><i data-lucide="log-out"></i></button>
           </div>
         </header>
         <main class="command-content">
@@ -258,10 +288,12 @@ function renderApp() {
       ${state.careerEditorId ? renderCareerEditor() : ""}
       ${state.roadmapCompletionId ? renderRoadmapCompletionModal() : ""}
       ${state.teamActionMemberId ? renderTeamActionModal() : ""}
+      ${state.taskEditorId ? renderTaskEditorModal() : ""}
     </div>
   `;
   bindAppEvents();
   refreshIcons();
+  syncModalState();
 }
 
 function renderCommandSidebar() {
@@ -386,9 +418,10 @@ function renderTaskCard(task) {
   const sourceLabel = task.sourceType === "roadmap" ? "Roadmap" : task.sourceType === "career" ? "Parcours" : "Action manuelle";
   const sourceIcon = task.sourceType === "roadmap" ? "clipboard-list" : task.sourceType === "career" ? "route" : "check-square";
   const overdue = taskIsOverdue(task);
+  const openAttribute = task.persisted ? `data-edit-task="${escapeAttr(task.id)}"` : `data-open-task-source="${escapeAttr(task.id)}"`;
   return `
     <article class="task-card ${task.priority === "P1" ? "urgent" : ""} ${overdue ? "overdue" : ""}">
-      <button class="task-card-main" data-open-task-source="${escapeAttr(task.id)}" type="button">
+      <button class="task-card-main" ${openAttribute} type="button" aria-label="Ouvrir ${escapeAttr(task.title || "cette action")}">
         <span class="task-source"><i data-lucide="${sourceIcon}"></i>${escapeHtml(sourceLabel)}</span>
         <strong>${escapeHtml(task.title || "Action sans titre")}</strong>
         ${task.description ? `<p>${escapeHtml(truncate(task.description, 180))}</p>` : ""}
@@ -401,7 +434,8 @@ function renderTaskCard(task) {
       <div class="task-card-actions">
         <span class="priority-pill ${String(task.priority || "P2").toLowerCase()}">${escapeHtml(task.priority || "P2")}</span>
         ${task.persisted ? `
-          <button class="button icon-only task-complete" data-complete-task="${escapeAttr(task.id)}" type="button" title="Marquer comme terminee"><i data-lucide="check"></i></button>
+          <button class="button icon-only" data-edit-task="${escapeAttr(task.id)}" type="button" title="Modifier l'action" aria-label="Modifier l'action"><i data-lucide="pencil"></i></button>
+          <button class="button icon-only task-complete" data-complete-task="${escapeAttr(task.id)}" type="button" title="Marquer comme terminee" aria-label="Marquer comme terminee"><i data-lucide="check"></i></button>
         ` : task.sourceType === "roadmap" ? renderRoadmapTaskActions(task) : `<button class="button task-source-button" data-open-task-source="${escapeAttr(task.id)}" type="button">Ouvrir <i data-lucide="arrow-right"></i></button>`}
       </div>
     </article>
@@ -455,17 +489,6 @@ function roadmapBucketCounts() {
     counts[submissionBucket(item)] += 1;
     return counts;
   }, { queue: 0, history: 0, trash: 0 });
-}
-
-function submissionBucket(submission) {
-  if (isDeleted(submission)) return "trash";
-  if (["meeting_done", "ready_to_archive", "archived"].includes(submission.status)) return "history";
-  return "queue";
-}
-
-function effectiveWorkflowStatus(submission) {
-  const status = submission?.status || "to_read";
-  return status === "message_to_send" ? "meeting_planned" : status;
 }
 
 function contextualStatusCounts() {
@@ -567,6 +590,7 @@ function renderRoadmapActionBar(submission, notes, member) {
       </label>
       <div class="roadmap-action-controls">
         ${action ? `<button class="button primary" data-roadmap-action="${action.id}" data-submission-id="${escapeAttr(submission.id)}" type="button">${escapeHtml(action.label)} <i data-lucide="${action.icon}"></i></button>` : ""}
+        ${bucket === "queue" && effectiveWorkflowStatus(submission) === "meeting_planned" ? `<button class="button" data-roadmap-action="mark_unread" data-submission-id="${escapeAttr(submission.id)}" type="button"><i data-lucide="undo-2"></i> Marquer non lue</button>` : ""}
         ${bucket === "history" ? `
           <button class="button" id="restoreButton" type="button"><i data-lucide="rotate-ccw"></i> Rouvrir</button>
           <button class="button danger" id="trashButton" type="button"><i data-lucide="trash-2"></i> Corbeille</button>
@@ -578,15 +602,6 @@ function renderRoadmapActionBar(submission, notes, member) {
       </div>
     </section>
   `;
-}
-
-function roadmapActionDefinition(status) {
-  return {
-    to_read: { id: "mark_read", label: "Marquer comme lue", icon: "check" },
-    message_to_send: { id: "meeting_done", label: "Rencontre faite", icon: "circle-check-big" },
-    meeting_planned: { id: "meeting_done", label: "Rencontre faite", icon: "circle-check-big" },
-    action_required: { id: "followup_done", label: "Suivi fait", icon: "check-check" }
-  }[status] || null;
 }
 
 function roadmapStepInstruction(submission, notes) {
@@ -802,11 +817,48 @@ function renderMemberOverview(member, submissions, tasks, milestones, nextMilest
 }
 
 function renderMemberActions(member, tasks) {
+  const history = historicalTasksForMember(member.id);
+  const showingHistory = state.memberActionView === "history";
   return `
     <section class="panel timeline-panel">
-      <div class="section-heading"><div><h3>Actions pour ${escapeHtml(member.name)}</h3><p>Actions manuelles et suivis generes par les roadmaps ou le parcours.</p></div></div>
-      <div class="task-list member-task-list">${tasks.length ? tasks.map(renderTaskCard).join("") : `<div class="empty-state"><i data-lucide="circle-check-big"></i><div>Aucune action ouverte pour ce membre.</div></div>`}</div>
+      <div class="section-heading member-action-heading">
+        <div><h3>Actions pour ${escapeHtml(member.name)}</h3><p>Le travail ouvert et les actions deja traitees, sans perdre le fil.</p></div>
+        <button class="button primary" data-create-member-action="${escapeAttr(member.id)}" type="button"><i data-lucide="plus"></i> Creer une action</button>
+      </div>
+      <nav class="member-action-tabs" aria-label="Etat des actions">
+        <button class="tab-button ${showingHistory ? "" : "active"}" data-member-action-view="open" type="button">Ouvertes <span>${tasks.length}</span></button>
+        <button class="tab-button ${showingHistory ? "active" : ""}" data-member-action-view="history" type="button">Historique <span>${history.length}</span></button>
+      </nav>
+      <div class="task-list member-task-list">
+        ${showingHistory
+          ? history.length ? history.map(renderHistoricalTaskCard).join("") : `<div class="empty-state"><i data-lucide="history"></i><div>Aucune action terminee ou annulee.</div></div>`
+          : tasks.length ? tasks.map(renderTaskCard).join("") : `<div class="empty-state"><i data-lucide="circle-check-big"></i><div>Aucune action ouverte pour ce membre.</div></div>`}
+      </div>
     </section>
+  `;
+}
+
+function renderHistoricalTaskCard(task) {
+  const cancelled = task.status === "cancelled";
+  const statusLabel = TASK_STATUS_LABELS[task.status] || "Traitee";
+  const finishedAt = task.completedAt || task.cancelledAt || task.updatedAt;
+  return `
+    <article class="task-card task-card-history ${cancelled ? "cancelled" : "completed"}">
+      <button class="task-card-main" data-edit-task="${escapeAttr(task.id)}" type="button" aria-label="Consulter ${escapeAttr(task.title || "cette action")}">
+        <span class="task-source"><i data-lucide="${cancelled ? "circle-slash-2" : "circle-check-big"}"></i>${escapeHtml(statusLabel)}</span>
+        <strong>${escapeHtml(task.title || "Action sans titre")}</strong>
+        ${task.description ? `<p>${escapeHtml(truncate(task.description, 180))}</p>` : ""}
+        <span class="task-meta">
+          <span><i data-lucide="user-check"></i>${escapeHtml(task.ownerName || "Non assigne")}</span>
+          <span><i data-lucide="clock-3"></i>${finishedAt ? formatDate(finishedAt) : "Date inconnue"}</span>
+        </span>
+      </button>
+      <div class="task-card-actions">
+        <span class="task-status-pill ${cancelled ? "cancelled" : "completed"}">${escapeHtml(statusLabel)}</span>
+        <button class="button icon-only" data-reopen-task="${escapeAttr(task.id)}" type="button" title="Rouvrir l'action" aria-label="Rouvrir l'action"><i data-lucide="rotate-ccw"></i></button>
+        <button class="button icon-only" data-edit-task="${escapeAttr(task.id)}" type="button" title="Consulter ou modifier" aria-label="Consulter ou modifier"><i data-lucide="pencil"></i></button>
+      </div>
+    </article>
   `;
 }
 
@@ -903,16 +955,16 @@ function renderCareerEditor() {
   const progress = clampProgress(value.progress);
   return `
     <div class="career-modal" role="dialog" aria-modal="true" aria-labelledby="careerEditorTitle">
-      <button class="career-modal-backdrop" data-close-career type="button" aria-label="Fermer"></button>
+      <div class="career-modal-backdrop" data-close-career aria-hidden="true"></div>
       <section class="career-editor panel">
         <header class="career-editor-header">
           <div><p class="eyebrow">${escapeHtml(member.name)}</p><h2 id="careerEditorTitle">${milestone ? "Modifier l'etape" : "Nouvelle etape"}</h2></div>
-          <button class="button icon-only" data-close-career type="button" title="Fermer"><i data-lucide="x"></i></button>
+          <button class="button icon-only" data-close-career type="button" title="Fermer" aria-label="Fermer"><i data-lucide="x"></i></button>
         </header>
         <div class="career-editor-scroll">
           <form id="careerForm">
             <input type="hidden" name="milestoneId" value="${escapeAttr(milestone?.id || "")}">
-            <label class="field field-wide">Titre<input name="title" required value="${escapeAttr(value.title || "")}" placeholder="Ex.: Devenir autonome sur les fondations"></label>
+            <label class="field field-wide">Titre<input name="title" required value="${escapeAttr(value.title || "")}" placeholder="Ex.: Devenir autonome sur les fondations" autofocus></label>
             <label class="field">Categorie<select name="category">${CAREER_CATEGORY_OPTIONS.map(([id, label]) => `<option value="${id}" ${(value.category || "skill") === id ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label>
             <label class="field">Statut<select name="status">${CAREER_STATUS_OPTIONS.map(([id, label]) => `<option value="${id}" ${(value.status || "planned") === id ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label>
             <label class="field">Date cible<input name="targetDate" type="date" value="${escapeAttr(dateInputValue(value.targetDate))}"></label>
@@ -952,11 +1004,11 @@ function renderRoadmapCompletionModal() {
   const name = submission.employeeName || submission.answers?.employee_name || "ce membre";
   return `
     <div class="career-modal action-modal" role="dialog" aria-modal="true" aria-labelledby="roadmapCompletionTitle">
-      <button class="career-modal-backdrop" data-close-roadmap-completion type="button" aria-label="Fermer"></button>
+      <div class="career-modal-backdrop" data-close-roadmap-completion aria-hidden="true"></div>
       <section class="action-editor panel">
         <header class="career-editor-header">
           <div><p class="eyebrow">Roadmap de ${escapeHtml(name)}</p><h2 id="roadmapCompletionTitle">Terminer la rencontre</h2></div>
-          <button class="button icon-only" data-close-roadmap-completion type="button" title="Fermer"><i data-lucide="x"></i></button>
+          <button class="button icon-only" data-close-roadmap-completion type="button" title="Fermer" aria-label="Fermer"><i data-lucide="x"></i></button>
         </header>
         <form id="roadmapCompletionForm" class="action-form">
           <div class="action-modal-intro"><i data-lucide="calendar-check"></i><p>La date et la reservation restent dans votre logiciel habituel. Ici, indique seulement s'il reste une action a faire.</p></div>
@@ -964,7 +1016,7 @@ function renderRoadmapCompletionModal() {
             <select name="reviewerName">${OWNER_OPTIONS.map((owner) => `<option value="${escapeAttr(owner)}" ${(notes.reviewerName || "Michael + Gabriel") === owner ? "selected" : ""}>${escapeHtml(owner)}</option>`).join("")}</select>
           </label>
           <label class="field">Action de suivi <span class="field-optional">facultatif</span>
-            <textarea name="nextAction" placeholder="Ex.: Valider son plan de suivis clients. Laisse vide si la rencontre est completement terminee.">${escapeHtml(notes.nextAction || "")}</textarea>
+            <textarea name="nextAction" placeholder="Ex.: Valider son plan de suivis clients. Laisse vide si la rencontre est completement terminee." autofocus>${escapeHtml(notes.nextAction || "")}</textarea>
           </label>
           <div class="action-form-actions">
             <button class="button primary" type="submit"><i data-lucide="check"></i> Confirmer la rencontre</button>
@@ -981,11 +1033,11 @@ function renderTeamActionModal() {
   if (!member) return "";
   return `
     <div class="career-modal action-modal" role="dialog" aria-modal="true" aria-labelledby="teamActionTitle">
-      <button class="career-modal-backdrop" data-close-team-action type="button" aria-label="Fermer"></button>
+      <div class="career-modal-backdrop" data-close-team-action aria-hidden="true"></div>
       <section class="action-editor panel">
         <header class="career-editor-header">
           <div><p class="eyebrow">${escapeHtml(member.name)}</p><h2 id="teamActionTitle">Creer une action</h2></div>
-          <button class="button icon-only" data-close-team-action type="button" title="Fermer"><i data-lucide="x"></i></button>
+          <button class="button icon-only" data-close-team-action type="button" title="Fermer" aria-label="Fermer"><i data-lucide="x"></i></button>
         </header>
         <form id="teamActionForm" class="action-form">
           <fieldset class="action-kind-fieldset">
@@ -996,7 +1048,7 @@ function renderTeamActionModal() {
               <label><input type="radio" name="taskKind" value="development"><span><i data-lucide="route"></i><strong>Parler developpement</strong><small>Un sujet lie au role ou au parcours CFSB.</small></span></label>
             </div>
           </fieldset>
-          <label class="field">Action<input name="title" required maxlength="180" value="${escapeAttr(defaultMemberActionTitle("meeting", member.name))}"></label>
+          <label class="field">Action<input name="title" required maxlength="180" value="${escapeAttr(defaultMemberActionTitle("meeting", member.name))}" autofocus></label>
           <div class="action-form-grid">
             <label class="field">Responsable<select name="ownerName">${OWNER_OPTIONS.map((owner) => `<option value="${escapeAttr(owner)}">${escapeHtml(owner)}</option>`).join("")}</select></label>
             <label class="field">Priorite<select name="priority">${TASK_PRIORITY_OPTIONS.map(([id, label]) => `<option value="${id}" ${id === "P2" ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label>
@@ -1005,6 +1057,57 @@ function renderTeamActionModal() {
           <div class="action-form-actions">
             <button class="button primary" type="submit"><i data-lucide="plus"></i> Ajouter a A faire</button>
             <button class="button" data-close-team-action type="button">Annuler</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  `;
+}
+
+function renderTaskEditorModal() {
+  const task = state.managementTasks.find((item) => item.id === state.taskEditorId);
+  if (!task) return "";
+  const status = task.status || "open";
+  const isOpen = !["completed", "cancelled"].includes(status);
+  const statusLabel = TASK_STATUS_LABELS[status] || "Ouverte";
+  return `
+    <div class="career-modal action-modal" role="dialog" aria-modal="true" aria-labelledby="taskEditorTitle">
+      <div class="career-modal-backdrop" data-close-task-editor aria-hidden="true"></div>
+      <section class="action-editor panel">
+        <header class="career-editor-header">
+          <div><p class="eyebrow">Action ${escapeHtml(statusLabel.toLowerCase())}</p><h2 id="taskEditorTitle">Modifier l'action</h2></div>
+          <button class="button icon-only" data-close-task-editor type="button" title="Fermer" aria-label="Fermer"><i data-lucide="x"></i></button>
+        </header>
+        <form id="taskEditorForm" class="action-form">
+          <label class="field">Action<input name="title" required maxlength="180" value="${escapeAttr(task.title || "")}" autofocus></label>
+          <div class="action-form-grid">
+            <label class="field">Membre concerne
+              <select name="teamMemberId">
+                <option value="">Aucun membre</option>
+                ${state.teamMembers.map((member) => `<option value="${escapeAttr(member.id)}" ${task.teamMemberId === member.id ? "selected" : ""}>${escapeHtml(member.name)}${member.active === false ? " (inactif)" : ""}</option>`).join("")}
+              </select>
+            </label>
+            <label class="field">Type
+              <select name="taskKind">${TASK_KIND_OPTIONS.map(([id, label]) => `<option value="${id}" ${(task.taskKind || "general") === id ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select>
+            </label>
+            <label class="field">Responsable
+              <select name="ownerName">${OWNER_OPTIONS.map((owner) => `<option value="${escapeAttr(owner)}" ${task.ownerName === owner ? "selected" : ""}>${escapeHtml(owner)}</option>`).join("")}</select>
+            </label>
+            <label class="field">Priorite
+              <select name="priority">${TASK_PRIORITY_OPTIONS.map(([id, label]) => `<option value="${id}" ${(task.priority || "P2") === id ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select>
+            </label>
+          </div>
+          <label class="field">Details <span class="field-optional">facultatif</span><textarea class="compact-textarea" name="description" placeholder="Contexte utile pour agir sans rouvrir tout le dossier.">${escapeHtml(task.description || "")}</textarea></label>
+          <div class="task-editor-state"><span class="task-status-pill ${escapeAttr(status)}">${escapeHtml(statusLabel)}</span>${task.updatedAt ? `<small>Derniere modification: ${formatDate(task.updatedAt)}</small>` : ""}</div>
+          <div class="action-form-actions">
+            <button class="button primary" type="submit"><i data-lucide="save"></i> Enregistrer</button>
+            ${isOpen ? `
+              <button class="button" data-complete-task="${escapeAttr(task.id)}" type="button"><i data-lucide="check"></i> Terminer</button>
+              <button class="button danger push-right" data-cancel-task="${escapeAttr(task.id)}" type="button" title="Conserver cette action dans l'historique"><i data-lucide="circle-slash-2"></i> Annuler et conserver</button>
+            ` : `
+              <button class="button" data-reopen-task="${escapeAttr(task.id)}" type="button"><i data-lucide="rotate-ccw"></i> Rouvrir</button>
+              <button class="button push-right" data-close-task-editor type="button">Fermer</button>
+            `}
           </div>
         </form>
       </section>
@@ -1050,6 +1153,7 @@ function bindAppEvents() {
     closeCareerEditor(false);
     closeRoadmapCompletion(false);
     closeTeamAction(false);
+    closeTaskEditor(false);
     state.view = button.dataset.view;
     state.selectedMemberId = "";
     state.editingMemberId = "";
@@ -1117,6 +1221,9 @@ function bindAppEvents() {
   }));
   document.querySelector("#managementTaskForm")?.addEventListener("submit", saveManagementTask);
   document.querySelectorAll("[data-complete-task]").forEach((button) => button.addEventListener("click", () => completeManagementTask(button.dataset.completeTask)));
+  document.querySelectorAll("[data-edit-task]").forEach((button) => button.addEventListener("click", () => openTaskEditor(button.dataset.editTask)));
+  document.querySelectorAll("[data-reopen-task]").forEach((button) => button.addEventListener("click", () => reopenManagementTask(button.dataset.reopenTask)));
+  document.querySelectorAll("[data-cancel-task]").forEach((button) => button.addEventListener("click", () => cancelManagementTask(button.dataset.cancelTask)));
   document.querySelectorAll("[data-open-task-source]").forEach((button) => button.addEventListener("click", () => openTaskSource(button.dataset.openTaskSource)));
   document.querySelectorAll("[data-roadmap-action]").forEach((button) => button.addEventListener("click", () => handleRoadmapAction(button.dataset.roadmapAction, button.dataset.submissionId)));
   document.querySelector("#printButton")?.addEventListener("click", () => window.print());
@@ -1130,6 +1237,7 @@ function bindAppEvents() {
     state.selectedMemberId = button.dataset.openMember;
     state.editingMemberId = "";
     state.memberProfileSection = "overview";
+    state.memberActionView = "open";
     state.showArchivedCareer = false;
     renderApp();
   }));
@@ -1158,11 +1266,16 @@ function bindAppEvents() {
   });
   document.querySelector("#backToTeamButton")?.addEventListener("click", () => {
     state.selectedMemberId = "";
+    state.memberActionView = "open";
     closeCareerEditor(false);
     renderApp();
   });
   document.querySelectorAll("[data-member-section]").forEach((button) => button.addEventListener("click", () => {
     state.memberProfileSection = button.dataset.memberSection;
+    renderApp();
+  }));
+  document.querySelectorAll("[data-member-action-view]").forEach((button) => button.addEventListener("click", () => {
+    state.memberActionView = button.dataset.memberActionView;
     renderApp();
   }));
   document.querySelector("#addCareerMilestone")?.addEventListener("click", () => {
@@ -1202,6 +1315,8 @@ function bindAppEvents() {
   document.querySelectorAll("[data-close-team-action]").forEach((button) => button.addEventListener("click", () => closeTeamAction()));
   document.querySelector("#teamActionForm")?.addEventListener("submit", saveTeamAction);
   document.querySelectorAll('#teamActionForm input[name="taskKind"]').forEach((input) => input.addEventListener("change", updateTeamActionTitle));
+  document.querySelectorAll("[data-close-task-editor]").forEach((button) => button.addEventListener("click", () => closeTaskEditor()));
+  document.querySelector("#taskEditorForm")?.addEventListener("submit", saveManagementTaskEdit);
 }
 
 function closeCareerEditor(shouldRender = true) {
@@ -1218,6 +1333,65 @@ function closeRoadmapCompletion(shouldRender = true) {
 function closeTeamAction(shouldRender = true) {
   state.teamActionMemberId = "";
   if (shouldRender) renderApp();
+}
+
+function openTaskEditor(taskId) {
+  if (!state.managementTasks.some((item) => item.id === taskId)) return;
+  closeCareerEditor(false);
+  closeRoadmapCompletion(false);
+  closeTeamAction(false);
+  state.taskEditorId = taskId;
+  renderApp();
+}
+
+function closeTaskEditor(shouldRender = true) {
+  state.taskEditorId = "";
+  if (shouldRender) renderApp();
+}
+
+function hasOpenModal() {
+  return Boolean(state.taskEditorId || state.teamActionMemberId || state.roadmapCompletionId || state.careerEditorId);
+}
+
+function syncModalState() {
+  const dialog = [...document.querySelectorAll('[role="dialog"]')].at(-1) || null;
+  document.body.classList.toggle("modal-open", Boolean(dialog));
+  if (!dialog) return;
+  window.requestAnimationFrame(() => {
+    const preferred = dialog.querySelector("[autofocus]") || firstFocusable(dialog);
+    preferred?.focus();
+  });
+}
+
+function handleGlobalKeydown(event) {
+  const dialogs = [...document.querySelectorAll('[role="dialog"]')];
+  const dialog = dialogs.at(-1) || null;
+  if (event.key === "Escape" && hasOpenModal()) {
+    event.preventDefault();
+    if (state.taskEditorId) closeTaskEditor();
+    else if (state.teamActionMemberId) closeTeamAction();
+    else if (state.roadmapCompletionId) closeRoadmapCompletion();
+    else closeCareerEditor();
+    return;
+  }
+  if (event.key !== "Tab" || !dialog) return;
+  const focusable = [...dialog.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')]
+    .filter((element) => !element.classList.contains("career-modal-backdrop") && element.getClientRects().length > 0);
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+function firstFocusable(container) {
+  return [...container.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')]
+    .find((element) => !element.classList.contains("career-modal-backdrop") && element.getClientRects().length > 0) || null;
 }
 
 function updateTeamActionTitle(event) {
@@ -1445,6 +1619,7 @@ async function handleRoadmapAction(action, submissionId) {
   }
   const transitions = {
     mark_read: ["meeting_planned", "Roadmap marquee comme lue."],
+    mark_unread: ["to_read", "Roadmap replacee dans A lire."],
     followup_done: ["meeting_done", "Suivi termine. La roadmap est maintenant dans l'historique."]
   };
   const transition = transitions[action];
@@ -1759,7 +1934,7 @@ async function saveTeamMember(event) {
 
 function allOpenManagementTasks() {
   const manual = state.managementTasks
-    .filter((item) => !["completed", "cancelled"].includes(item.status))
+    .filter(isOpenManagementTask)
     .map((item) => ({ ...item, sourceType: item.sourceType || "manual", persisted: true }));
   return [...manual, ...derivedRoadmapTasks(), ...derivedCareerTasks()].sort(sortManagementTasks);
 }
@@ -1770,7 +1945,7 @@ function derivedRoadmapTasks() {
     action_required: (name) => `Faire le suivi avec ${name}`
   };
   return state.submissions
-    .filter((submission) => submissionBucket(submission) === "queue" && ["to_read", "action_required"].includes(effectiveWorkflowStatus(submission)))
+    .filter((submission) => submissionBucket(submission) === "queue" && roadmapCreatesTask(submission))
     .map((submission) => {
       const status = effectiveWorkflowStatus(submission);
       const notes = state.ownerNotes[submission.id] || {};
@@ -1836,6 +2011,12 @@ function filteredManagementTasks() {
 
 function tasksForMember(memberId) {
   return allOpenManagementTasks().filter((task) => task.teamMemberId === memberId);
+}
+
+function historicalTasksForMember(memberId) {
+  return state.managementTasks
+    .filter((task) => task.teamMemberId === memberId && isHistoricalManagementTask(task))
+    .sort((a, b) => dateValue(b.completedAt || b.cancelledAt || b.updatedAt) - dateValue(a.completedAt || a.cancelledAt || a.updatedAt));
 }
 
 function taskById(taskId) {
@@ -1945,6 +2126,48 @@ async function saveTeamAction(event) {
   }
 }
 
+async function saveManagementTaskEdit(event) {
+  event.preventDefault();
+  const task = state.managementTasks.find((item) => item.id === state.taskEditorId);
+  if (!task || state.busy) return;
+  const data = new FormData(event.currentTarget);
+  const title = String(data.get("title") || "").trim();
+  if (!title) return;
+  const memberId = String(data.get("teamMemberId") || "");
+  const member = state.teamMembers.find((item) => item.id === memberId) || null;
+  const taskKind = TASK_KIND_OPTIONS.some(([id]) => id === data.get("taskKind")) ? String(data.get("taskKind")) : "general";
+  const payload = {
+    title,
+    description: String(data.get("description") || "").trim(),
+    teamMemberId: member?.id || "",
+    teamMemberName: member?.name || "",
+    ownerName: OWNER_OPTIONS.includes(String(data.get("ownerName"))) ? String(data.get("ownerName")) : "Michael + Gabriel",
+    priority: TASK_PRIORITY_OPTIONS.some(([id]) => id === data.get("priority")) ? String(data.get("priority")) : "P2",
+    taskKind,
+    updatedAt: serverTimestamp(),
+    updatedByUid: state.user.uid,
+    updatedByName: actorName()
+  };
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, "managementTasks", task.id), payload);
+    batch.set(doc(collection(db, "auditLogs")), auditPayload("management_task_updated", task.id, {
+      teamMemberId: member?.id || "",
+      taskKind
+    }));
+    await batch.commit();
+    Object.assign(task, payload, { updatedAt: new Date() });
+    closeTaskEditor(false);
+    showToast("Action mise a jour.");
+    renderApp();
+  } catch (error) {
+    showToast(`Action non enregistree: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
 async function completeManagementTask(taskId) {
   const task = state.managementTasks.find((item) => item.id === taskId);
   if (!task || state.busy) return;
@@ -1956,13 +2179,74 @@ async function completeManagementTask(taskId) {
       completedAt: serverTimestamp(),
       completedByUid: state.user.uid,
       completedByName: actorName(),
-      updatedAt: serverTimestamp()
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
     });
     batch.set(doc(collection(db, "auditLogs")), auditPayload("management_task_completed", task.id));
     await batch.commit();
+    Object.assign(task, { status: "completed", completedAt: new Date(), updatedAt: new Date() });
+    if (state.taskEditorId === task.id) closeTaskEditor(false);
     showToast("Action terminee.");
+    renderApp();
   } catch (error) {
     showToast(`Action non modifiee: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function cancelManagementTask(taskId) {
+  const task = state.managementTasks.find((item) => item.id === taskId);
+  if (!task || state.busy) return;
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, "managementTasks", task.id), {
+      status: "cancelled",
+      cancelledAt: serverTimestamp(),
+      cancelledByUid: state.user.uid,
+      cancelledByName: actorName(),
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload("management_task_cancelled", task.id));
+    await batch.commit();
+    Object.assign(task, { status: "cancelled", cancelledAt: new Date(), updatedAt: new Date() });
+    if (state.taskEditorId === task.id) closeTaskEditor(false);
+    showToast("Action annulee et conservee dans l'historique.");
+    renderApp();
+  } catch (error) {
+    showToast(`Action non annulee: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function reopenManagementTask(taskId) {
+  const task = state.managementTasks.find((item) => item.id === taskId);
+  if (!task || state.busy) return;
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, "managementTasks", task.id), {
+      status: "open",
+      completedAt: null,
+      cancelledAt: null,
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload("management_task_reopened", task.id));
+    await batch.commit();
+    Object.assign(task, { status: "open", completedAt: null, cancelledAt: null, updatedAt: new Date() });
+    if (state.taskEditorId === task.id) closeTaskEditor(false);
+    state.memberActionView = "open";
+    showToast("Action rouverte et replacee dans A faire.");
+    renderApp();
+  } catch (error) {
+    showToast(`Action non rouverte: ${friendlyError(error)}`);
   } finally {
     state.busy = false;
   }
@@ -1992,6 +2276,10 @@ async function postponeManagementTask(taskId) {
 function openTaskSource(taskId) {
   const task = taskById(taskId);
   if (!task) return;
+  if (task.persisted) {
+    openTaskEditor(task.id);
+    return;
+  }
   if (task.sourceType === "roadmap") {
     openSubmission(task.sourceId);
     return;
@@ -2041,6 +2329,7 @@ function openSubmission(submissionId) {
   closeCareerEditor(false);
   closeRoadmapCompletion(false);
   closeTeamAction(false);
+  closeTaskEditor(false);
   state.view = "roadmaps";
   state.roadmapView = submissionBucket(submission);
   state.selectedMemberId = "";

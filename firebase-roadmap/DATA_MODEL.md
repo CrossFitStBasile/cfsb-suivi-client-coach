@@ -204,8 +204,15 @@ Action de gestion creee manuellement par Michael ou Gabriel. Les actions directe
 - `createdByName`
 - `updatedAt`
 - `updatedByUid`
+- `updatedByName`
 - `completedAt`
 - `completedByUid`
+- `completedByName`
+- `cancelledAt`
+- `cancelledByUid`
+- `cancelledByName`
+
+Les actions `completed` et `cancelled` quittent la liste ouverte, mais restent consultables dans l'historique du membre. Une reouverture remet le statut a `open` et efface les dates de fin ou d'annulation.
 
 ## `revenueScenarios/{scenarioId}`
 
