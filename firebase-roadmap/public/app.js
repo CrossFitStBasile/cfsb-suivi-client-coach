@@ -25,8 +25,8 @@ provider.setCustomParameters({ prompt: "select_account" });
 
 const STATUS_OPTIONS = [
   ["to_read", "A lire"],
-  ["message_to_send", "Message a envoyer"],
-  ["meeting_planned", "Rencontre a faire"],
+  ["message_to_send", "Lue / rencontre a faire"],
+  ["meeting_planned", "Lue / rencontre a faire"],
   ["action_required", "Suivi a faire"],
   ["meeting_done", "Terminee"],
   ["ready_to_archive", "Terminee"],
@@ -34,8 +34,7 @@ const STATUS_OPTIONS = [
 ];
 const OWNER_OPTIONS = ["Michael", "Gabriel", "Michael + Gabriel"];
 const STATUS_LABELS = Object.fromEntries(STATUS_OPTIONS);
-const WORKFLOW_STATUS_OPTIONS = STATUS_OPTIONS.filter(([id]) => ["to_read", "message_to_send", "meeting_planned", "action_required"].includes(id));
-const WORKFLOW_STATUS_IDS = WORKFLOW_STATUS_OPTIONS.map(([id]) => id);
+const WORKFLOW_STATUS_OPTIONS = STATUS_OPTIONS.filter(([id]) => ["to_read", "meeting_planned", "action_required"].includes(id));
 const TASK_PRIORITY_OPTIONS = [
   ["P1", "Urgent"],
   ["P2", "Normal"],
@@ -313,8 +312,7 @@ function renderRoadmapModule() {
     ${state.roadmapView === "queue" ? `
       <section class="pipeline roadmap-pipeline" aria-label="Filtrer les roadmaps a traiter par statut">
         ${metric(counts.to_read, "A lire", "green", "to_read")}
-        ${metric(counts.message_to_send, "Message a envoyer", "amber", "message_to_send")}
-        ${metric(counts.meeting_planned, "Rencontre a faire", "blue", "meeting_planned")}
+        ${metric(counts.meeting_planned, "Lues / rencontre a faire", "blue", "meeting_planned")}
         ${metric(counts.action_required, "Suivi a faire", "red", "action_required")}
       </section>
     ` : ""}
@@ -465,11 +463,16 @@ function submissionBucket(submission) {
   return "queue";
 }
 
+function effectiveWorkflowStatus(submission) {
+  const status = submission?.status || "to_read";
+  return status === "message_to_send" ? "meeting_planned" : status;
+}
+
 function contextualStatusCounts() {
   const counts = Object.fromEntries(WORKFLOW_STATUS_OPTIONS.map(([id]) => [id, 0]));
   state.submissions.forEach((item) => {
     if (submissionBucket(item) !== "queue" || !matchesRoadmapFilters(item, false)) return;
-    const status = item.status || "to_read";
+    const status = effectiveWorkflowStatus(item);
     counts[status] = (counts[status] || 0) + 1;
   });
   return counts;
@@ -479,7 +482,7 @@ function matchesRoadmapFilters(submission, includeStatus = true) {
   const search = normalize(state.filters.search);
   if (state.filters.role !== "all" && submission.selectedRoleLabel !== state.filters.role) return false;
   if (state.filters.cycle !== "all" && submission.cycleId !== state.filters.cycle) return false;
-  if (includeStatus && state.roadmapView === "queue" && state.filters.status !== "all" && submission.status !== state.filters.status) return false;
+  if (includeStatus && state.roadmapView === "queue" && state.filters.status !== "all" && effectiveWorkflowStatus(submission) !== state.filters.status) return false;
   if (!search) return true;
   return normalize([
     submission.employeeName,
@@ -580,7 +583,7 @@ function renderRoadmapActionBar(submission, notes, member) {
 function roadmapActionDefinition(status) {
   return {
     to_read: { id: "mark_read", label: "Marquer comme lue", icon: "check" },
-    message_to_send: { id: "message_sent", label: "Message envoye", icon: "send" },
+    message_to_send: { id: "meeting_done", label: "Rencontre faite", icon: "circle-check-big" },
     meeting_planned: { id: "meeting_done", label: "Rencontre faite", icon: "circle-check-big" },
     action_required: { id: "followup_done", label: "Suivi fait", icon: "check-check" }
   }[status] || null;
@@ -589,8 +592,7 @@ function roadmapActionDefinition(status) {
 function roadmapStepInstruction(submission, notes) {
   if (isDeleted(submission)) return "Restaurer cette roadmap ou la supprimer definitivement.";
   if (submissionBucket(submission) === "history") return "Cette roadmap est terminee et reste consultable dans l'historique.";
-  if (submission.status === "message_to_send") return "Envoyer manuellement le message dans Google Chat, puis confirmer ici.";
-  if (submission.status === "meeting_planned") return "Faire la rencontre reservee dans votre logiciel habituel.";
+  if (["message_to_send", "meeting_planned"].includes(submission.status)) return "Cette roadmap est lue. Reviens ici apres la rencontre.";
   if (submission.status === "action_required") return notes.nextAction || "Completer le suivi convenu pendant la rencontre.";
   return "Lire les reponses et reperer les points a discuter.";
 }
@@ -1442,8 +1444,7 @@ async function handleRoadmapAction(action, submissionId) {
     return;
   }
   const transitions = {
-    mark_read: ["message_to_send", "Roadmap lue. Le message Google Chat est maintenant a envoyer."],
-    message_sent: ["meeting_planned", "Message envoye. La rencontre peut etre reservee dans votre logiciel habituel."],
+    mark_read: ["meeting_planned", "Roadmap marquee comme lue."],
     followup_done: ["meeting_done", "Suivi termine. La roadmap est maintenant dans l'historique."]
   };
   const transition = transitions[action];
@@ -1766,14 +1767,12 @@ function allOpenManagementTasks() {
 function derivedRoadmapTasks() {
   const titleByStatus = {
     to_read: (name) => `Lire la roadmap de ${name}`,
-    message_to_send: (name) => `Envoyer le message a ${name}`,
-    meeting_planned: (name) => `Faire la rencontre avec ${name}`,
     action_required: (name) => `Faire le suivi avec ${name}`
   };
   return state.submissions
-    .filter((submission) => submissionBucket(submission) === "queue" && WORKFLOW_STATUS_IDS.includes(submission.status || "to_read"))
+    .filter((submission) => submissionBucket(submission) === "queue" && ["to_read", "action_required"].includes(effectiveWorkflowStatus(submission)))
     .map((submission) => {
-      const status = submission.status || "to_read";
+      const status = effectiveWorkflowStatus(submission);
       const notes = state.ownerNotes[submission.id] || {};
       const member = memberForSubmission(submission);
       const name = member?.name || submission.employeeName || submission.answers?.employee_name || "un membre";
@@ -1785,7 +1784,7 @@ function derivedRoadmapTasks() {
         teamMemberId: member?.id || submission.teamMemberId || "",
         teamMemberName: name,
         title: titleByStatus[status](name),
-        description: status === "action_required" ? notes.nextAction || "Un suivi a ete identifie pendant la rencontre." : status === "message_to_send" ? "Envoyer manuellement le message dans Google Chat." : `${STATUS_LABELS[status]} · ${submission.cycleId || "Trimestre a preciser"}`,
+        description: status === "action_required" ? notes.nextAction || "Un suivi a ete identifie pendant la rencontre." : `${STATUS_LABELS[status]} · ${submission.cycleId || "Trimestre a preciser"}`,
         ownerName: notes.reviewerName || "Michael + Gabriel",
         priority: status === "action_required" ? "P1" : "P2",
         dueDate: "",
@@ -2202,7 +2201,7 @@ function careerStatusTone(status) {
 
 function statusTone(status) {
   if (status === "to_read") return "green";
-  if (status === "message_to_send") return "amber";
+  if (status === "message_to_send") return "blue";
   if (status === "meeting_planned") return "blue";
   if (status === "action_required" || status === "deleted") return "red";
   if (status === "ready_to_archive") return "amber";

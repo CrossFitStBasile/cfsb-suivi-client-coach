@@ -25,7 +25,8 @@ Il ne remplace pas la production GitHub Pages + Apps Script. Aucun deploiement p
 - creation rapide d'une rencontre a prevoir, d'un suivi ou d'une discussion de developpement depuis chaque dossier membre;
 - module Roadmaps separe en `En cours`, `Historique` et une corbeille secondaire;
 - pipeline cliquable dont les compteurs respectent les filtres par role, trimestre et recherche;
-- parcours explicite `A lire` -> `Message a envoyer` -> `Rencontre a faire` -> `Suivi a faire` ou `Terminee`;
+- parcours explicite `A lire` -> `Lue / rencontre a faire` -> `Suivi a faire` ou `Terminee`;
+- seules les roadmaps a lire et les suivis concrets generent une action; la messagerie et la reservation restent dans les outils habituels;
 - boutons d'action immediate dans `A faire` et dans chaque roadmap, sans passer par un menu de statuts;
 - menus de soumissions enrichis du statut, de la date et de l'heure pour distinguer les doublons;
 - fin de rencontre simplifiee: une action de suivi facultative, sans date de rencontre a saisir;

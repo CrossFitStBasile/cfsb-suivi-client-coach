@@ -86,7 +86,7 @@ Soumission finale et dossier durable.
 - `deletedByName`
 - `statusBeforeDelete`: statut historique conserve pendant un passage dans la corbeille
 
-Les statuts `ready_to_archive` et `archived` restent supportes pour les donnees historiques. Le flux courant se termine directement a `meeting_done` lorsqu'aucun suivi n'est requis.
+Les statuts `message_to_send`, `ready_to_archive` et `archived` restent supportes pour les donnees historiques. Dans l'interface, `message_to_send` est traite comme `meeting_planned`; aucune tache de messagerie n'est generee. Le flux courant se termine directement a `meeting_done` lorsqu'aucun suivi n'est requis.
 
 Sous-collection `events/{eventId}`:
 

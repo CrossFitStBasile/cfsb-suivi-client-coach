@@ -284,7 +284,7 @@ svg { width: 18px; height: 18px; flex: 0 0 auto; }
   text-align: left;
   transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
 }
-.roadmap-pipeline { grid-template-columns: repeat(4, minmax(150px, 1fr)); }
+.roadmap-pipeline { grid-template-columns: repeat(3, minmax(150px, 1fr)); }
 .module-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
 .module-actions { display: flex; align-items: center; gap: 7px; }
 .roadmap-tabs { display: flex; flex-wrap: wrap; gap: 7px; }
