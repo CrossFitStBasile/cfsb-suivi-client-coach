@@ -47,9 +47,11 @@ Creer une application Roadmap interactive et fiable dans un projet Firebase dist
 - Le dashboard coach Firebase est actif avec Auth, Firestore, Hosting et 9 Cloud Functions. La presence de Functions de deuxieme generation et de taches planifiees confirme que ce projet utilise deja la facturation Blaze.
 - Le nouveau projet `cfsb-roadmap-trimestrielle` et son application Web ont ete crees sans liaison de facturation.
 - La base Firestore Standard a ete creee en region `nam5`; Google la confirme comme base gratuite `freeTier: true`.
-- Les regles Firestore et les index initiaux sont deployes. Hosting et Cloud Functions ne sont pas deployes.
+- Les regles Firestore et les index initiaux sont deployes. Cloud Functions n'est pas deploye.
 - Une copie complete de la Google Sheet a ete importee: 28 soumissions, 18 notes owners, 10 archives, 20 membres et 194 evenements d'audit.
 - Une deuxieme importation avec la meme cle a conserve exactement les memes compteurs.
+- Google Authentication est active et deux profils owners actifs sont configures.
+- Le prototype owners est deploye sur Firebase Hosting pour une recette privee, sans modifier les liens de production.
 
 ## 5. Decisions Made
 
@@ -60,6 +62,7 @@ Creer une application Roadmap interactive et fiable dans un projet Firebase dist
 | 2026-07-12 | Creer d'abord le projet Roadmap sans facturation | Valider l'architecture et les couts avant Blaze | Functions et notifications restent en attente | Michael + Codex |
 | 2026-07-12 | Conserver chaque version du formulaire comme document immuable | Les archives restent lisibles sans dupliquer 200 Ko dans chaque soumission | Historique durable avec chargement plus rapide | Codex |
 | 2026-07-12 | Utiliser des imports idempotents | Eviter les doublons lors des reprises de migration | Meme identifiant source = meme document cible | Codex |
+| 2026-07-12 | Limiter le prototype a deux profils owners actifs | Proteger les donnees pendant la recette | Connexion Google et autorisation Firestore requises | Michael + Codex |
 
 ## 6. Phased Plan
 
@@ -153,9 +156,9 @@ Completion criteria: portail utile sans dependance forte entre les deux bases Fi
 | Audit Firebase Dashboard Coach | Audit | Codex | Complete | `cfsb-dashboard-coach-aa9a4` |
 | Projet Firebase Roadmap | Infrastructure | Codex | Cree, Firestore gratuit actif | `cfsb-roadmap-trimestrielle` |
 | Modele de donnees cible | Documentation | Codex | Prepare | `firebase-roadmap/DATA_MODEL.md` |
-| Regles Firestore initiales | Code | Codex | Preparees, non deployees | `firebase-roadmap/firestore.rules` |
+| Regles Firestore initiales | Code | Codex | Deployees | `firebase-roadmap/firestore.rules` |
 | Lot d'importation local | Outil | Codex | Prepare et importe | `firebase-roadmap/scripts/build-import-bundle.mjs` |
-| Prototype owners Firebase | Application | Codex | A faire | - |
+| Prototype owners Firebase | Application | Codex | Deploye pour recette | `https://cfsb-roadmap-trimestrielle.web.app` |
 | Formulaire employe Firebase | Application | Codex | A faire | - |
 | Recette | Validation | Michael et Gabriel | A faire | - |
 
@@ -183,9 +186,10 @@ Completion criteria: portail utile sans dependance forte entre les deux bases Fi
 
 | Priority | Action | Owner | Due date | Status |
 | --- | --- | --- | --- | --- |
-| P1 | Activer Google Auth pour Michael et Gabriel dans le projet Roadmap | Michael/Codex | Avant prototype owners | A valider |
+| P1 | Activer Google Auth et les deux profils owners | Michael/Codex | Avant prototype owners | Complete |
+| P1 | Valider une premiere connexion reelle avec chaque compte owner | Michael/Gabriel | Recette Phase 1 | A valider |
 | P1 | Obtenir un export complet des soumissions, archives, notes owners et equipe | Codex/Bob Operator | Avant import pilote | Complete |
-| P1 | Construire le prototype owners Firebase | Codex | Phase 1 | A faire |
+| P1 | Construire le prototype owners Firebase | Codex | Phase 1 | Complete |
 | P2 | Choisir le parcours de reprise employe | Michael + Gabriel | Avant Phase 2 | A valider |
 | P2 | Valider le passage Blaze et les alertes budgetaires | Michael | Avant Phase 3 | A valider |
 
@@ -195,3 +199,4 @@ Completion criteria: portail utile sans dependance forte entre les deux bases Fi
 | --- | --- | --- | --- |
 | 2026-07-12 | Audit du projet coach et creation du projet Roadmap separe | Codex | Preparer Firestore |
 | 2026-07-12 | Firestore gratuit cree, regles/index deployes et copie complete importee de facon idempotente | Codex + Bob Operator | Valider les acces Michael/Gabriel et construire le prototype owners |
+| 2026-07-12 | Auth Google activee, deux profils owners crees et prototype owners deploye sur Firebase Hosting | Codex | Michael et Gabriel valident leur connexion et les donnees importees |

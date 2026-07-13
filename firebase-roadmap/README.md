@@ -13,7 +13,8 @@ Il ne remplace pas la production GitHub Pages + Apps Script. Aucun deploiement p
 - Facturation: non liee pendant la phase preparatoire.
 - Firestore: base Standard gratuite active en region `nam5`.
 - Regles et index: deployes.
-- Hosting: non deploye.
+- Authentication: connexion Google active; deux profils owners actifs.
+- Hosting: prototype owners deploye pour la recette privee.
 - Donnees reelles: copie de migration importee; la Google Sheet reste la production officielle.
 
 ## Configuration Web
@@ -46,10 +47,10 @@ Les identifiants Firestore sont derives des identifiants Apps Script. Une relanc
 
 ## Prochaine activation
 
-1. Configurer Firebase Authentication pour Michael et Gabriel.
-2. Construire et tester le dashboard owners avant le formulaire employe.
-3. Valider les regles avec les comptes owners reels.
-4. Refaire un export/import de copie juste avant la recette.
+1. Valider la connexion Google avec les deux comptes owners reels.
+2. Comparer les soumissions, notes et archives avec la production actuelle.
+3. Tester les modifications de notes, statuts, archives et membres d'equipe.
+4. Refaire un export/import de copie juste avant la recette finale.
 5. Garder la Google Sheet et GitHub Pages comme production jusqu'a l'approbation finale.
 
 ## Garde-fous
