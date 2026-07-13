@@ -2,7 +2,7 @@
 
 Project: Roadmap trimestrielle CFSB vers Firebase
 Created: 2026-07-12
-Last updated: 2026-07-12
+Last updated: 2026-07-13
 Primary owner: Michael Grondin
 Status: Preparation parallele - aucune bascule de production
 Source of truth: ce document, le dossier `firebase-roadmap/` et la console Firebase du projet `cfsb-roadmap-trimestrielle`
@@ -53,6 +53,7 @@ Creer une application Roadmap interactive et fiable dans un projet Firebase dist
 - Google Authentication est active et deux profils owners actifs sont configures.
 - Le prototype owners est deploye sur Firebase Hosting pour une recette privee, sans modifier les liens de production.
 - Le dashboard owners interactif ajoute un pipeline cliquable, une corbeille reversible, un dossier longitudinal par membre, une reassignation manuelle des soumissions et un compte rendu simplifie.
+- Chaque dossier membre comprend maintenant un `Parcours CFSB`: etapes de carriere modifiables, dates cibles, responsables, progression, criteres de reussite et journal d'evolution date.
 
 ## 5. Decisions Made
 
@@ -90,6 +91,7 @@ Deliverables:
 - lecture temps reel des soumissions;
 - notes owners, statuts, archives et dossiers membres;
 - gestion de l'equipe et de l'organigramme;
+- parcours professionnel longitudinal par membre;
 - import d'une copie des donnees existantes.
 
 Completion criteria: Michael et Gabriel retrouvent les memes informations que dans la production actuelle et peuvent les modifier dans l'environnement de test.
@@ -202,3 +204,4 @@ Completion criteria: portail utile sans dependance forte entre les deux bases Fi
 | 2026-07-12 | Firestore gratuit cree, regles/index deployes et copie complete importee de facon idempotente | Codex + Bob Operator | Valider les acces Michael/Gabriel et construire le prototype owners |
 | 2026-07-12 | Auth Google activee, deux profils owners crees et prototype owners deploye sur Firebase Hosting | Codex | Michael et Gabriel valident leur connexion et les donnees importees |
 | 2026-07-13 | Prototype owners enrichi et redeploye: dossiers membres, pipeline interactif, compte rendu simplifie, corbeille et suppression controlee | Codex | Michael et Gabriel valident les actions sur quelques dossiers avant le nettoyage en lot |
+| 2026-07-13 | Ajout du Parcours CFSB interactif dans les dossiers membres: etapes, progression, notes datees et lien avec les roadmaps | Codex | Valider le parcours sur un dossier pilote avant de le generaliser a toute l'equipe |

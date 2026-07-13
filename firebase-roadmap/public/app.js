@@ -33,6 +33,25 @@ const STATUS_OPTIONS = [
 ];
 const OWNER_OPTIONS = ["Michael", "Gabriel", "Michael + Gabriel"];
 const STATUS_LABELS = Object.fromEntries(STATUS_OPTIONS);
+const CAREER_STATUS_OPTIONS = [
+  ["planned", "Planifiee"],
+  ["in_progress", "En cours"],
+  ["blocked", "Bloquee"],
+  ["completed", "Realisee"],
+  ["abandoned", "Abandonnee"]
+];
+const CAREER_CATEGORY_OPTIONS = [
+  ["role", "Evolution de role"],
+  ["certification", "Certification"],
+  ["skill", "Competence"],
+  ["clientele", "Clientele et services"],
+  ["income", "Revenus"],
+  ["leadership", "Leadership"],
+  ["other", "Autre"]
+];
+const CAREER_OWNER_OPTIONS = ["Membre", "Michael", "Gabriel", "Membre + direction"];
+const CAREER_STATUS_LABELS = Object.fromEntries(CAREER_STATUS_OPTIONS);
+const CAREER_CATEGORY_LABELS = Object.fromEntries(CAREER_CATEGORY_OPTIONS);
 
 const state = {
   user: null,
@@ -42,10 +61,16 @@ const state = {
   teamMembers: [],
   departments: [],
   forms: {},
+  careerMilestones: [],
+  careerUpdates: [],
   view: "active",
   selectedId: "",
   selectedMemberId: "",
   editingMemberId: "",
+  memberProfileSection: "career",
+  careerEditorId: "",
+  careerDraft: null,
+  showArchivedCareer: false,
   filters: { search: "", role: "all", cycle: "all", status: "all" },
   unsubscribers: [],
   busy: false,
@@ -157,6 +182,14 @@ function subscribeData() {
     state.forms = Object.fromEntries(snapshot.docs.map((item) => [item.data().version || item.id, item.data()]));
     renderApp();
   }, dataError));
+  state.unsubscribers.push(onSnapshot(collection(db, "careerMilestones"), (snapshot) => {
+    state.careerMilestones = snapshot.docs.map(fromDoc).sort(sortCareerMilestones);
+    renderApp();
+  }, dataError));
+  state.unsubscribers.push(onSnapshot(collection(db, "careerUpdates"), (snapshot) => {
+    state.careerUpdates = snapshot.docs.map(fromDoc).sort((a, b) => dateValue(b.createdAt) - dateValue(a.createdAt));
+    renderApp();
+  }, dataError));
 }
 
 function cleanupSubscriptions() {
@@ -215,6 +248,7 @@ function renderApp() {
           ${renderSubmissionWorkspace()}
         `}
       </main>
+      ${state.careerEditorId ? renderCareerEditor() : ""}
     </div>
   `;
   bindAppEvents();
@@ -325,6 +359,7 @@ function renderNotesPanel(submission, notes) {
   const inTrash = isDeleted(submission);
   const member = memberForSubmission(submission);
   const mainNote = notes.meetingSummary || notes.followupNotes || "";
+  const linkedCareer = state.careerMilestones.find((item) => item.sourceSubmissionId === submission.id && !item.archivedAt) || null;
   return `
     <aside class="panel notes-panel ${inTrash ? "is-trash" : ""}">
       <h2>${inTrash ? "Soumission supprimee" : "Compte rendu"}</h2>
@@ -360,6 +395,12 @@ function renderNotesPanel(submission, notes) {
       <label class="field">Prochaine action
         <textarea class="compact-textarea" id="nextAction" placeholder="Ce qui doit arriver ensuite...">${escapeHtml(notes.nextAction || "")}</textarea>
       </label>
+      ${member && notes.nextAction && !inTrash ? `
+        <button class="career-convert" id="convertNextActionButton" type="button">
+          <i data-lucide="${linkedCareer ? "route" : "git-branch-plus"}"></i>
+          <span><strong>${linkedCareer ? "Voir dans Parcours CFSB" : "Ajouter au parcours"}</strong>${linkedCareer ? "Cette action est deja reliee a une etape." : "Transforme la prochaine action en etape suivie."}</span>
+        </button>
+      ` : ""}
       <label class="field">Date de suivi
         <input id="followupDate" type="date" value="${escapeAttr(dateInputValue(notes.followupDate))}">
       </label>
@@ -457,6 +498,7 @@ function renderMemberForm(editing, isCreating = false) {
         </select>
       </label>
       <label class="field">Titre affiche<input name="displayTitle" required value="${escapeAttr(editing?.displayTitle || "")}"></label>
+      <label class="field">Direction de carriere visee<input name="careerTarget" value="${escapeAttr(editing?.careerTarget || "")}" placeholder="Coach professionnel, leadership, specialite..."></label>
       <label class="field">Roles du formulaire<input name="roleIds" value="${escapeAttr((editing?.roleIds || []).join(", "))}" placeholder="coach_professionnel"></label>
       <label class="field">Autres noms reconnus<input name="aliases" value="${escapeAttr((editing?.aliases || []).join(", "))}" placeholder="Nom sans accent, ancien nom"></label>
       <label class="field">Ordre<input name="sortOrder" type="number" min="0" step="1" value="${escapeAttr(editing?.sortOrder ?? 100)}"></label>
@@ -477,10 +519,10 @@ function renderMemberProfile() {
     return renderTeamView();
   }
   const submissions = submissionsForMember(member).filter((item) => !isDeleted(item));
-  const active = submissions.filter((item) => item.status !== "archived");
-  const archived = submissions.filter((item) => item.status === "archived");
-  const latest = submissions[0] || null;
-  const nextActions = submissions.filter((item) => state.ownerNotes[item.id]?.nextAction).length;
+  const milestones = milestonesForMember(member, true).filter((item) => !item.archivedAt);
+  const activeMilestones = milestones.filter((item) => ["in_progress", "blocked"].includes(item.status));
+  const completedMilestones = milestones.filter((item) => item.status === "completed");
+  const nextMilestone = nextCareerMilestone(milestones);
   return `
     <section class="member-profile">
       <header class="panel member-profile-header">
@@ -489,27 +531,162 @@ function renderMemberProfile() {
           <div>
             <p class="eyebrow">Dossier longitudinal</p>
             <h2>${escapeHtml(member.name || "Sans nom")}</h2>
-            <p>${escapeHtml(member.displayTitle || "Role a preciser")}${member.active === false ? " · Membre inactif" : ""}</p>
+            <p>${escapeHtml(member.displayTitle || "Role a preciser")}${member.careerTarget ? ` · Vise: ${escapeHtml(member.careerTarget)}` : ""}${member.active === false ? " · Membre inactif" : ""}</p>
           </div>
         </div>
         <button class="button" data-edit-member="${escapeAttr(member.id)}" type="button"><i data-lucide="pencil"></i> Modifier</button>
       </header>
       <section class="member-metrics">
         ${profileMetric(submissions.length, "Roadmaps au dossier")}
-        ${profileMetric(active.length, "Roadmaps actives")}
-        ${profileMetric(archived.length, "Rencontres archivees")}
-        ${profileMetric(nextActions, "Prochaines actions notees")}
+        ${profileMetric(activeMilestones.length, "Etapes en cours")}
+        ${profileMetric(completedMilestones.length, "Etapes realisees")}
+        ${profileMetric(nextMilestone ? formatDateOnly(nextMilestone.targetDate) : "Aucune", "Prochaine echeance")}
       </section>
-      <section class="panel timeline-panel">
-        <div class="section-heading">
-          <div><h3>Historique des roadmaps</h3><p>Du plus recent au plus ancien.</p></div>
-          ${latest ? `<span class="last-roadmap">Derniere: ${formatShortDate(latest.submittedAt)}</span>` : ""}
+      <nav class="member-section-tabs" aria-label="Sections du dossier membre">
+        <button class="tab-button ${state.memberProfileSection === "career" ? "active" : ""}" data-member-section="career" type="button"><i data-lucide="route"></i> Parcours CFSB (${milestones.length})</button>
+        <button class="tab-button ${state.memberProfileSection === "roadmaps" ? "active" : ""}" data-member-section="roadmaps" type="button"><i data-lucide="clipboard-list"></i> Roadmaps (${submissions.length})</button>
+      </nav>
+      ${state.memberProfileSection === "roadmaps" ? renderRoadmapHistory(submissions) : renderCareerTimeline(member)}
+    </section>
+  `;
+}
+
+function renderRoadmapHistory(submissions) {
+  const latest = submissions[0] || null;
+  return `
+    <section class="panel timeline-panel">
+      <div class="section-heading">
+        <div><h3>Historique des roadmaps</h3><p>Du plus recent au plus ancien.</p></div>
+        ${latest ? `<span class="last-roadmap">Derniere: ${formatShortDate(latest.submittedAt)}</span>` : ""}
+      </div>
+      ${submissions.length ? `<div class="timeline">${submissions.map(renderTimelineItem).join("")}</div>` : `
+        <div class="empty-state"><i data-lucide="calendar-x"></i><div>Aucune roadmap associee a ce membre.</div></div>
+      `}
+    </section>
+  `;
+}
+
+function renderCareerTimeline(member) {
+  const allMilestones = milestonesForMember(member, true);
+  const archived = allMilestones.filter((item) => item.archivedAt);
+  const milestones = allMilestones.filter((item) => !item.archivedAt);
+  const next = nextCareerMilestone(milestones);
+  const groups = [
+    ["En cours", milestones.filter((item) => ["in_progress", "blocked"].includes(item.status)), "activity"],
+    ["A venir", milestones.filter((item) => item.status === "planned"), "calendar-clock"],
+    ["Realise", milestones.filter((item) => ["completed", "abandoned"].includes(item.status)), "circle-check-big"]
+  ];
+  if (state.showArchivedCareer && archived.length) groups.push(["Archive", archived, "archive"]);
+  return `
+    <section class="career-view">
+      <header class="panel career-summary">
+        <div>
+          <p class="eyebrow">Parcours CFSB</p>
+          <h3>${next ? escapeHtml(next.title) : "Aucune prochaine etape planifiee"}</h3>
+          <p>${next ? `${CAREER_CATEGORY_LABELS[next.category] || "Etape"}${next.targetDate ? ` · Cible: ${formatDateOnly(next.targetDate)}` : ""}` : "Ajoute une premiere etape pour rendre le plan de developpement visible."}</p>
         </div>
-        ${submissions.length ? `<div class="timeline">${submissions.map(renderTimelineItem).join("")}</div>` : `
-          <div class="empty-state"><i data-lucide="calendar-x"></i><div>Aucune roadmap associee a ce membre.</div></div>
+        <div class="career-summary-actions">
+          ${archived.length ? `<button class="button" id="toggleArchivedCareer" type="button"><i data-lucide="archive"></i>${state.showArchivedCareer ? "Masquer" : "Afficher"} archivees (${archived.length})</button>` : ""}
+          <button class="button primary" id="addCareerMilestone" type="button"><i data-lucide="plus"></i> Ajouter une etape</button>
+        </div>
+      </header>
+      <section class="panel career-timeline-panel">
+        <div class="career-now"><span>Aujourd'hui</span></div>
+        ${milestones.length || archived.length ? groups.map(([label, items, icon]) => renderCareerGroup(label, items, icon)).join("") : `
+          <div class="empty-state"><i data-lucide="route"></i><div>Le parcours de ${escapeHtml(member.name)} ne contient encore aucune etape.</div></div>
         `}
       </section>
     </section>
+  `;
+}
+
+function renderCareerGroup(label, milestones, icon) {
+  if (!milestones.length) return "";
+  return `
+    <section class="career-group">
+      <header><i data-lucide="${icon}"></i><h3>${escapeHtml(label)}</h3><span>${milestones.length}</span></header>
+      <div class="career-items">${milestones.map(renderCareerMilestone).join("")}</div>
+    </section>
+  `;
+}
+
+function renderCareerMilestone(milestone) {
+  const latestUpdate = careerUpdatesForMilestone(milestone.id)[0] || null;
+  const progress = clampProgress(milestone.progress);
+  return `
+    <button class="career-item ${milestone.status} ${milestone.archivedAt ? "archived" : ""}" data-open-career="${escapeAttr(milestone.id)}" type="button">
+      <span class="career-marker"></span>
+      <span class="career-item-date">${milestone.targetDate ? formatDateOnly(milestone.targetDate) : "Sans echeance"}</span>
+      <span class="career-item-main">
+        <span class="career-item-labels"><span class="career-category">${escapeHtml(CAREER_CATEGORY_LABELS[milestone.category] || "Autre")}</span>${careerStatusPill(milestone.status)}</span>
+        <strong>${escapeHtml(milestone.title || "Etape sans titre")}</strong>
+        <small>${latestUpdate ? escapeHtml(truncate(latestUpdate.note, 150)) : milestone.successCriteria ? escapeHtml(truncate(milestone.successCriteria, 150)) : "Aucune note d'evolution"}</small>
+        <span class="career-progress"><span style="width:${progress}%"></span></span>
+      </span>
+      <span class="career-item-owner">${escapeHtml(milestone.ownerName || "Responsable a definir")}<small>${progress}%</small></span>
+      <i data-lucide="chevron-right"></i>
+    </button>
+  `;
+}
+
+function renderCareerEditor() {
+  const member = state.teamMembers.find((item) => item.id === state.selectedMemberId);
+  if (!member) return "";
+  const milestone = state.careerMilestones.find((item) => item.id === state.careerEditorId) || null;
+  const value = milestone || state.careerDraft || {};
+  const updates = milestone ? careerUpdatesForMilestone(milestone.id) : [];
+  const submissions = submissionsForMember(member).filter((item) => !isDeleted(item));
+  const progress = clampProgress(value.progress);
+  return `
+    <div class="career-modal" role="dialog" aria-modal="true" aria-labelledby="careerEditorTitle">
+      <button class="career-modal-backdrop" data-close-career type="button" aria-label="Fermer"></button>
+      <section class="career-editor panel">
+        <header class="career-editor-header">
+          <div><p class="eyebrow">${escapeHtml(member.name)}</p><h2 id="careerEditorTitle">${milestone ? "Modifier l'etape" : "Nouvelle etape"}</h2></div>
+          <button class="button icon-only" data-close-career type="button" title="Fermer"><i data-lucide="x"></i></button>
+        </header>
+        <div class="career-editor-scroll">
+          <form id="careerForm">
+            <input type="hidden" name="milestoneId" value="${escapeAttr(milestone?.id || "")}">
+            <label class="field field-wide">Titre<input name="title" required value="${escapeAttr(value.title || "")}" placeholder="Ex.: Devenir autonome sur les fondations"></label>
+            <label class="field">Categorie<select name="category">${CAREER_CATEGORY_OPTIONS.map(([id, label]) => `<option value="${id}" ${(value.category || "skill") === id ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label>
+            <label class="field">Statut<select name="status">${CAREER_STATUS_OPTIONS.map(([id, label]) => `<option value="${id}" ${(value.status || "planned") === id ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label>
+            <label class="field">Date cible<input name="targetDate" type="date" value="${escapeAttr(dateInputValue(value.targetDate))}"></label>
+            <label class="field">Date de realisation<input name="completedDate" type="date" value="${escapeAttr(dateInputValue(value.completedDate))}"></label>
+            <label class="field">Responsable<select name="ownerName"><option value="">A determiner</option>${CAREER_OWNER_OPTIONS.map((name) => `<option value="${escapeAttr(name)}" ${value.ownerName === name ? "selected" : ""}>${escapeHtml(name)}</option>`).join("")}</select></label>
+            <label class="field">Roadmap d'origine<select name="sourceSubmissionId"><option value="">Aucune</option>${submissions.map((submission) => `<option value="${escapeAttr(submission.id)}" ${value.sourceSubmissionId === submission.id ? "selected" : ""}>${escapeHtml(submissionLabel(submission))}</option>`).join("")}</select></label>
+            <label class="field field-wide">Progression <span class="range-value" id="careerProgressValue">${progress}%</span><input id="careerProgress" name="progress" type="range" min="0" max="100" step="5" value="${progress}"></label>
+            <label class="field field-wide">Description<textarea class="compact-textarea" name="description" placeholder="Pourquoi cette etape compte et ce qu'elle implique...">${escapeHtml(value.description || "")}</textarea></label>
+            <label class="field field-wide">Criteres de reussite<textarea name="successCriteria" placeholder="Comment saura-t-on que l'etape est reussie?">${escapeHtml(value.successCriteria || "")}</textarea></label>
+            <div class="career-form-actions field-wide">
+              <button class="button primary" type="submit"><i data-lucide="save"></i> Enregistrer l'etape</button>
+              <button class="button" data-close-career type="button">Annuler</button>
+              ${milestone ? `<button class="button danger push-right" id="archiveCareerButton" type="button"><i data-lucide="${milestone.archivedAt ? "rotate-ccw" : "archive"}"></i>${milestone.archivedAt ? "Restaurer" : "Archiver l'etape"}</button>` : ""}
+            </div>
+          </form>
+          ${milestone && !milestone.archivedAt ? `
+            <section class="career-update-section">
+              <div class="section-heading"><div><h3>Notes d'evolution</h3><p>Chaque ajout reste date dans l'historique.</p></div></div>
+              <form id="careerUpdateForm" class="career-update-form">
+                <label class="field field-wide">Nouvelle note<textarea name="note" required placeholder="Ce qui a progresse, bloque ou change..."></textarea></label>
+                <label class="field">Progression apres cette note<input name="progress" type="number" min="0" max="100" step="5" value="${progress}"></label>
+                <button class="button primary" type="submit"><i data-lucide="message-square-plus"></i> Ajouter la note</button>
+              </form>
+              ${updates.length ? `<div class="career-update-list">${updates.map(renderCareerUpdate).join("")}</div>` : `<p class="form-hint">Aucune note d'evolution pour le moment.</p>`}
+            </section>
+          ` : ""}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderCareerUpdate(update) {
+  return `
+    <article class="career-update">
+      <span class="career-update-dot"></span>
+      <div><strong>${formatDate(update.createdAt)}</strong><p>${escapeHtml(update.note || "")}</p><small>${escapeHtml(update.createdByName || "Owner")} · ${clampProgress(update.progress)}%</small></div>
+    </article>
   `;
 }
 
@@ -534,6 +711,7 @@ function bindAppEvents() {
   document.querySelector("#logoutButton")?.addEventListener("click", () => signOut(auth));
   document.querySelector("#reloadButton")?.addEventListener("click", () => window.location.reload());
   document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => {
+    closeCareerEditor(false);
     state.view = button.dataset.view;
     state.selectedMemberId = "";
     state.editingMemberId = "";
@@ -586,11 +764,14 @@ function bindAppEvents() {
   document.querySelector("#restoreTrashButton")?.addEventListener("click", restoreSelectedFromTrash);
   document.querySelector("#deleteForeverButton")?.addEventListener("click", deleteSelectedForever);
   document.querySelector("#memberAssignment")?.addEventListener("change", assignSelectedMember);
+  document.querySelector("#convertNextActionButton")?.addEventListener("click", openCareerFromNextAction);
   document.querySelectorAll("[data-set-status]").forEach((button) => button.addEventListener("click", () => setSelectedStatus(button.dataset.setStatus)));
   document.querySelectorAll("[data-open-member]").forEach((button) => button.addEventListener("click", () => {
     state.view = "team";
     state.selectedMemberId = button.dataset.openMember;
     state.editingMemberId = "";
+    state.memberProfileSection = "career";
+    state.showArchivedCareer = false;
     renderApp();
   }));
   document.querySelectorAll("[data-edit-member]").forEach((button) => button.addEventListener("click", () => {
@@ -606,7 +787,34 @@ function bindAppEvents() {
   });
   document.querySelector("#backToTeamButton")?.addEventListener("click", () => {
     state.selectedMemberId = "";
+    closeCareerEditor(false);
     renderApp();
+  });
+  document.querySelectorAll("[data-member-section]").forEach((button) => button.addEventListener("click", () => {
+    state.memberProfileSection = button.dataset.memberSection;
+    renderApp();
+  }));
+  document.querySelector("#addCareerMilestone")?.addEventListener("click", () => {
+    state.careerEditorId = "__new__";
+    state.careerDraft = { status: "planned", category: "skill", progress: 0 };
+    renderApp();
+  });
+  document.querySelectorAll("[data-open-career]").forEach((button) => button.addEventListener("click", () => {
+    state.careerEditorId = button.dataset.openCareer;
+    state.careerDraft = null;
+    renderApp();
+  }));
+  document.querySelector("#toggleArchivedCareer")?.addEventListener("click", () => {
+    state.showArchivedCareer = !state.showArchivedCareer;
+    renderApp();
+  });
+  document.querySelectorAll("[data-close-career]").forEach((button) => button.addEventListener("click", () => closeCareerEditor()));
+  document.querySelector("#careerForm")?.addEventListener("submit", saveCareerMilestone);
+  document.querySelector("#careerUpdateForm")?.addEventListener("submit", saveCareerUpdate);
+  document.querySelector("#archiveCareerButton")?.addEventListener("click", toggleCareerArchive);
+  document.querySelector("#careerProgress")?.addEventListener("input", (event) => {
+    const output = document.querySelector("#careerProgressValue");
+    if (output) output.textContent = `${event.target.value}%`;
   });
   document.querySelectorAll("[data-open-submission]").forEach((button) => button.addEventListener("click", () => openSubmission(button.dataset.openSubmission)));
   document.querySelector("#openUnlinkedButton")?.addEventListener("click", () => {
@@ -618,6 +826,186 @@ function bindAppEvents() {
     renderApp();
   });
   document.querySelector("#memberForm")?.addEventListener("submit", saveTeamMember);
+}
+
+function closeCareerEditor(shouldRender = true) {
+  state.careerEditorId = "";
+  state.careerDraft = null;
+  if (shouldRender) renderApp();
+}
+
+function openCareerFromNextAction() {
+  const submission = selectedSubmission();
+  if (!submission) return;
+  const member = memberForSubmission(submission);
+  if (!member) {
+    showToast("Associe d'abord cette roadmap a un membre de l'equipe.");
+    return;
+  }
+  const linked = state.careerMilestones.find((item) => item.sourceSubmissionId === submission.id && !item.archivedAt) || null;
+  const notes = state.ownerNotes[submission.id] || {};
+  state.view = "team";
+  state.selectedMemberId = member.id;
+  state.editingMemberId = "";
+  state.memberProfileSection = "career";
+  state.showArchivedCareer = false;
+  if (linked) {
+    state.careerEditorId = linked.id;
+    state.careerDraft = null;
+  } else {
+    state.careerEditorId = "__new__";
+    state.careerDraft = {
+      title: notes.nextAction || "",
+      category: "skill",
+      status: "planned",
+      targetDate: notes.followupDate || "",
+      progress: 0,
+      sourceSubmissionId: submission.id,
+      description: `Prochaine etape issue de la roadmap ${submission.cycleId || "sans trimestre"}.`
+    };
+  }
+  renderApp();
+}
+
+async function saveCareerMilestone(event) {
+  event.preventDefault();
+  if (state.busy) return;
+  const member = state.teamMembers.find((item) => item.id === state.selectedMemberId);
+  if (!member) return;
+  const data = new FormData(event.currentTarget);
+  const title = String(data.get("title") || "").trim();
+  if (!title) return;
+  const existingId = String(data.get("milestoneId") || "").trim();
+  const existing = state.careerMilestones.find((item) => item.id === existingId) || null;
+  const milestoneRef = existing ? doc(db, "careerMilestones", existing.id) : doc(collection(db, "careerMilestones"));
+  const status = CAREER_STATUS_LABELS[String(data.get("status") || "")] ? String(data.get("status")) : "planned";
+  const category = CAREER_CATEGORY_LABELS[String(data.get("category") || "")] ? String(data.get("category")) : "other";
+  const sourceSubmissionId = String(data.get("sourceSubmissionId") || "").trim();
+  const sourceSubmission = state.submissions.find((item) => item.id === sourceSubmissionId) || null;
+  const progress = clampProgress(data.get("progress"));
+  let completedDate = String(data.get("completedDate") || "").trim();
+  if (status === "completed" && !completedDate) completedDate = todayInputValue();
+  state.busy = true;
+  try {
+    const payload = {
+      teamMemberId: member.id,
+      teamMemberName: member.name,
+      title,
+      category,
+      status,
+      targetDate: String(data.get("targetDate") || "").trim(),
+      completedDate,
+      description: String(data.get("description") || "").trim(),
+      successCriteria: String(data.get("successCriteria") || "").trim(),
+      ownerName: String(data.get("ownerName") || "").trim(),
+      progress,
+      sourceSubmissionId: sourceSubmissionId || null,
+      sourceLabel: sourceSubmission ? submissionLabel(sourceSubmission) : "",
+      archivedAt: existing?.archivedAt || null,
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    };
+    if (!existing) {
+      payload.createdAt = serverTimestamp();
+      payload.createdByUid = state.user.uid;
+      payload.createdByName = actorName();
+    }
+    const batch = writeBatch(db);
+    batch.set(milestoneRef, payload, { merge: true });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload("career_milestone_saved", milestoneRef.id, {
+      teamMemberId: member.id,
+      status,
+      progress
+    }));
+    await batch.commit();
+    closeCareerEditor(false);
+    showToast(existing ? "Etape mise a jour." : "Etape ajoutee au parcours.");
+    renderApp();
+  } catch (error) {
+    showToast(`Etape non enregistree: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function saveCareerUpdate(event) {
+  event.preventDefault();
+  if (state.busy) return;
+  const form = event.currentTarget;
+  const milestone = state.careerMilestones.find((item) => item.id === state.careerEditorId);
+  if (!milestone) return;
+  const data = new FormData(form);
+  const note = String(data.get("note") || "").trim();
+  if (!note) return;
+  const progress = clampProgress(data.get("progress"));
+  let nextStatus = milestone.status || "planned";
+  if (progress >= 100 && nextStatus !== "abandoned") nextStatus = "completed";
+  else if (progress > 0 && nextStatus === "planned") nextStatus = "in_progress";
+  state.busy = true;
+  try {
+    const updateRef = doc(collection(db, "careerUpdates"));
+    const batch = writeBatch(db);
+    batch.set(updateRef, {
+      milestoneId: milestone.id,
+      teamMemberId: milestone.teamMemberId,
+      note,
+      progress,
+      statusSnapshot: nextStatus,
+      createdAt: serverTimestamp(),
+      createdByUid: state.user.uid,
+      createdByName: actorName()
+    });
+    const milestoneUpdate = {
+      progress,
+      status: nextStatus,
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    };
+    if (nextStatus === "completed" && !milestone.completedDate) milestoneUpdate.completedDate = todayInputValue();
+    batch.update(doc(db, "careerMilestones", milestone.id), milestoneUpdate);
+    batch.set(doc(collection(db, "auditLogs")), auditPayload("career_update_added", milestone.id, {
+      teamMemberId: milestone.teamMemberId,
+      progress,
+      status: nextStatus
+    }));
+    await batch.commit();
+    form.reset();
+    showToast("Note d'evolution ajoutee.");
+  } catch (error) {
+    showToast(`Note non enregistree: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function toggleCareerArchive() {
+  const milestone = state.careerMilestones.find((item) => item.id === state.careerEditorId);
+  if (!milestone || state.busy) return;
+  const restoring = Boolean(milestone.archivedAt);
+  if (!restoring && !window.confirm(`Archiver l'etape « ${milestone.title || "sans titre"} »?`)) return;
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, "careerMilestones", milestone.id), {
+      archivedAt: restoring ? null : serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload(restoring ? "career_milestone_restored" : "career_milestone_archived", milestone.id, {
+      teamMemberId: milestone.teamMemberId
+    }));
+    await batch.commit();
+    closeCareerEditor(false);
+    showToast(restoring ? "Etape restauree." : "Etape archivee.");
+    renderApp();
+  } catch (error) {
+    showToast(`Action impossible: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
 }
 
 async function saveOwnerNotes() {
@@ -864,6 +1252,7 @@ async function saveTeamMember(event) {
       email: String(data.get("email") || "").trim().toLowerCase(),
       departmentId: String(data.get("departmentId") || "support"),
       displayTitle: String(data.get("displayTitle") || "").trim(),
+      careerTarget: String(data.get("careerTarget") || "").trim(),
       roleIds: String(data.get("roleIds") || "").split(/[,;]+/).map((item) => item.trim()).filter(Boolean),
       aliases: String(data.get("aliases") || "").split(/[,;]+/).map((item) => item.trim()).filter(Boolean),
       sortOrder: Number(data.get("sortOrder") || 100),
@@ -887,10 +1276,10 @@ async function saveTeamMember(event) {
 function auditPayload(action, entityId, details = {}) {
   return {
     action,
-    entityType: action.startsWith("team_") ? "teamMember" : "roadmapSubmission",
+    entityType: action.startsWith("team_") ? "teamMember" : action.startsWith("career_") ? "careerMilestone" : "roadmapSubmission",
     entityId,
     actorUid: state.user.uid,
-    actorName: state.profile.displayName || state.user.displayName || "Owner",
+    actorName: actorName(),
     details,
     createdAt: serverTimestamp(),
     source: "firebase_owner_dashboard"
@@ -930,6 +1319,7 @@ function ensureSelection() {
 function openSubmission(submissionId) {
   const submission = state.submissions.find((item) => item.id === submissionId);
   if (!submission) return;
+  closeCareerEditor(false);
   state.view = isDeleted(submission) ? "trash" : submission.status === "archived" ? "archive" : "active";
   state.selectedMemberId = "";
   state.editingMemberId = "";
@@ -1017,6 +1407,44 @@ function submissionsForMember(member) {
     .sort((a, b) => dateValue(b.submittedAt) - dateValue(a.submittedAt));
 }
 
+function milestonesForMember(member, includeArchived = false) {
+  return state.careerMilestones
+    .filter((milestone) => milestone.teamMemberId === member.id && (includeArchived || !milestone.archivedAt))
+    .sort(sortCareerMilestones);
+}
+
+function careerUpdatesForMilestone(milestoneId) {
+  return state.careerUpdates
+    .filter((update) => update.milestoneId === milestoneId)
+    .sort((a, b) => dateValue(b.createdAt) - dateValue(a.createdAt));
+}
+
+function sortCareerMilestones(a, b) {
+  const archivedDifference = Number(Boolean(a.archivedAt)) - Number(Boolean(b.archivedAt));
+  if (archivedDifference) return archivedDifference;
+  const rank = { in_progress: 0, blocked: 1, planned: 2, completed: 3, abandoned: 4 };
+  const statusDifference = (rank[a.status] ?? 9) - (rank[b.status] ?? 9);
+  if (statusDifference) return statusDifference;
+  if (["completed", "abandoned"].includes(a.status)) {
+    return dateValue(b.completedDate || b.updatedAt) - dateValue(a.completedDate || a.updatedAt);
+  }
+  const aDate = a.targetDate ? dateValue(a.targetDate) : Number.MAX_SAFE_INTEGER;
+  const bDate = b.targetDate ? dateValue(b.targetDate) : Number.MAX_SAFE_INTEGER;
+  return aDate - bDate || String(a.title || "").localeCompare(String(b.title || ""));
+}
+
+function nextCareerMilestone(milestones) {
+  const candidates = milestones.filter((item) => !item.archivedAt && ["in_progress", "blocked", "planned"].includes(item.status));
+  return candidates.sort((a, b) => {
+    const rank = { in_progress: 0, blocked: 1, planned: 2 };
+    const statusDifference = (rank[a.status] ?? 9) - (rank[b.status] ?? 9);
+    if (statusDifference) return statusDifference;
+    const aDate = a.targetDate ? dateValue(a.targetDate) : Number.MAX_SAFE_INTEGER;
+    const bDate = b.targetDate ? dateValue(b.targetDate) : Number.MAX_SAFE_INTEGER;
+    return aDate - bDate;
+  })[0] || null;
+}
+
 function unlinkedSubmissions() {
   return state.submissions.filter((submission) => !isDeleted(submission) && !memberForSubmission(submission));
 }
@@ -1040,6 +1468,18 @@ function completionInfo(submission) {
 function statusPill(status) {
   const label = status === "deleted" ? "Corbeille" : STATUS_LABELS[status] || humanize(status || "to_read");
   return `<span class="status-pill ${statusTone(status)}">${escapeHtml(label)}</span>`;
+}
+
+function careerStatusPill(status) {
+  return `<span class="career-status-pill ${careerStatusTone(status)}">${escapeHtml(CAREER_STATUS_LABELS[status] || "A preciser")}</span>`;
+}
+
+function careerStatusTone(status) {
+  if (status === "in_progress") return "green";
+  if (status === "planned") return "blue";
+  if (status === "blocked") return "red";
+  if (status === "completed") return "complete";
+  return "neutral";
 }
 
 function statusTone(status) {
@@ -1068,6 +1508,29 @@ function dateInputValue(value) {
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) return value.slice(0, 10);
   const time = dateValue(value);
   return time ? new Date(time).toISOString().slice(0, 10) : "";
+}
+
+function formatDateOnly(value) {
+  if (!value) return "Sans date";
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+    const [year, month, day] = value.slice(0, 10).split("-").map(Number);
+    return new Date(year, month - 1, day).toLocaleDateString("fr-CA", { year: "numeric", month: "short", day: "numeric" });
+  }
+  const time = dateValue(value);
+  return time ? new Date(time).toLocaleDateString("fr-CA", { year: "numeric", month: "short", day: "numeric" }) : "Sans date";
+}
+
+function todayInputValue() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function clampProgress(value) {
+  const progress = Number(value);
+  return Number.isFinite(progress) ? Math.max(0, Math.min(100, Math.round(progress))) : 0;
 }
 
 function formatShortDate(value) {
@@ -1125,6 +1588,10 @@ function showToast(message) {
   toastRoot.textContent = message;
   toastRoot.classList.add("visible");
   toastTimer = window.setTimeout(() => toastRoot.classList.remove("visible"), 3200);
+}
+
+function actorName() {
+  return state.profile?.displayName || state.user?.displayName || "Owner";
 }
 
 function refreshIcons() {

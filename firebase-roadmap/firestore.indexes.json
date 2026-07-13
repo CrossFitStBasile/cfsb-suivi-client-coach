@@ -32,6 +32,23 @@
         { "fieldPath": "teamMemberId", "order": "ASCENDING" },
         { "fieldPath": "submittedAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "careerMilestones",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "teamMemberId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "targetDate", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "careerUpdates",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "milestoneId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

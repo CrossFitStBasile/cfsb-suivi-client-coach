@@ -22,6 +22,8 @@ Il ne remplace pas la production GitHub Pages + Apps Script. Aucun deploiement p
 - pipeline cliquable par statut et filtres par role, trimestre et recherche;
 - compte rendu de rencontre simplifie avec prochaine action et date de suivi;
 - dossier longitudinal par membre avec toutes ses roadmaps actives et archivees;
+- ligne du temps `Parcours CFSB` avec objectifs, echeances, responsables, progression et notes d'evolution datees;
+- conversion d'une prochaine action de roadmap en etape de parcours, sans double saisie;
 - association ou reassignation manuelle d'une soumission au bon membre;
 - archivage, corbeille reversible et suppression definitive confirmee;
 - conservation des anciennes notes owners dans un bloc historique;
@@ -59,7 +61,7 @@ Les identifiants Firestore sont derives des identifiants Apps Script. Une relanc
 
 1. Valider la connexion Google avec les deux comptes owners reels.
 2. Comparer les soumissions, notes et archives avec la production actuelle.
-3. Tester les modifications de notes, statuts, archives et membres d'equipe.
+3. Tester les modifications de notes, statuts, archives, membres d'equipe et parcours de carriere.
 4. Refaire un export/import de copie juste avant la recette finale.
 5. Garder la Google Sheet et GitHub Pages comme production jusqu'a l'approbation finale.
 

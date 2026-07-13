@@ -84,6 +84,15 @@ service cloud.firestore {
       allow read, create, update, delete: if isOwner();
     }
 
+    match /careerMilestones/{milestoneId} {
+      allow read, create, update, delete: if isOwner();
+    }
+
+    match /careerUpdates/{updateId} {
+      allow read, create: if isOwner();
+      allow update, delete: if false;
+    }
+
     match /revenueScenarios/{scenarioId} {
       allow create: if signedIn()
         && request.resource.data.authorUid == request.auth.uid;

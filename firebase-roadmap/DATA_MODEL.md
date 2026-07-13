@@ -127,6 +127,7 @@ Les anciens champs structures et `followupNotes` sont conserves pour ne perdre a
 - `aliases`: autres orthographes reconnues pendant le rapprochement des anciennes soumissions
 - `departmentId`
 - `displayTitle`
+- `careerTarget`: direction de carriere visee affichee dans le dossier
 - `roleIds`
 - `sortOrder`
 - `active`
@@ -141,6 +142,43 @@ L'identifiant du document est permanent. Un changement de nom ne doit jamais cre
 - Mettre a la corbeille ajoute `deletedAt` et masque la roadmap de tous les compteurs et dossiers.
 - Restaurer depuis la corbeille remet la roadmap dans Archives.
 - La suppression definitive efface `roadmapSubmissions/{submissionId}` et `ownerNotes/{submissionId}` apres une confirmation explicite, tout en conservant une entree minimale sans nom dans `auditLogs`.
+
+## `careerMilestones/{milestoneId}`
+
+Etape durable du parcours professionnel d'un membre.
+
+- `teamMemberId`
+- `title`
+- `category`: `role`, `certification`, `skill`, `clientele`, `income`, `leadership` ou `other`
+- `status`: `planned`, `in_progress`, `blocked`, `completed` ou `abandoned`
+- `targetDate`
+- `completedDate`
+- `description`
+- `successCriteria`
+- `ownerName`
+- `progress`: nombre de 0 a 100
+- `sourceSubmissionId`: roadmap d'origine, si applicable
+- `sourceLabel`
+- `archivedAt`: etape retiree de la ligne du temps, absente sinon
+- `createdAt`
+- `createdByUid`
+- `updatedAt`
+- `updatedByUid`
+
+## `careerUpdates/{updateId}`
+
+Note d'evolution immutable rattachee a une etape de carriere.
+
+- `milestoneId`
+- `teamMemberId`
+- `note`
+- `progress`
+- `statusSnapshot`
+- `createdAt`
+- `createdByUid`
+- `createdByName`
+
+Les mises a jour sont conservees separement afin qu'une nouvelle note n'ecrase jamais l'historique d'evolution.
 
 ## `revenueScenarios/{scenarioId}`
 
