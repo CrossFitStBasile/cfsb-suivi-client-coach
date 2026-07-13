@@ -25,15 +25,16 @@ provider.setCustomParameters({ prompt: "select_account" });
 
 const STATUS_OPTIONS = [
   ["to_read", "A lire"],
-  ["meeting_planned", "Rencontre planifiee"],
-  ["meeting_done", "Rencontre faite"],
-  ["action_required", "Action requise"],
-  ["ready_to_archive", "Pret a archiver"],
-  ["archived", "Archive"]
+  ["message_to_send", "Message a envoyer"],
+  ["meeting_planned", "Rencontre a faire"],
+  ["action_required", "Suivi a faire"],
+  ["meeting_done", "Terminee"],
+  ["ready_to_archive", "Terminee"],
+  ["archived", "Archivee"]
 ];
 const OWNER_OPTIONS = ["Michael", "Gabriel", "Michael + Gabriel"];
 const STATUS_LABELS = Object.fromEntries(STATUS_OPTIONS);
-const WORKFLOW_STATUS_OPTIONS = STATUS_OPTIONS.filter(([id]) => ["to_read", "meeting_planned", "action_required", "ready_to_archive"].includes(id));
+const WORKFLOW_STATUS_OPTIONS = STATUS_OPTIONS.filter(([id]) => ["to_read", "message_to_send", "meeting_planned", "action_required"].includes(id));
 const WORKFLOW_STATUS_IDS = WORKFLOW_STATUS_OPTIONS.map(([id]) => id);
 const TASK_PRIORITY_OPTIONS = [
   ["P1", "Urgent"],
@@ -42,7 +43,7 @@ const TASK_PRIORITY_OPTIONS = [
 ];
 const TASK_FILTER_OPTIONS = [
   ["all", "Toutes"],
-  ["urgent", "Urgentes"],
+  ["urgent", "Priorite haute"],
   ["roadmap", "Roadmaps"],
   ["career", "Parcours"],
   ["manual", "Manuelles"]
@@ -86,6 +87,8 @@ const state = {
   memberProfileSection: "overview",
   careerEditorId: "",
   careerDraft: null,
+  roadmapCompletionId: "",
+  teamActionMemberId: "",
   showArchivedCareer: false,
   taskFilter: "all",
   taskOwnerFilter: "all",
@@ -254,6 +257,8 @@ function renderApp() {
         </main>
       </div>
       ${state.careerEditorId ? renderCareerEditor() : ""}
+      ${state.roadmapCompletionId ? renderRoadmapCompletionModal() : ""}
+      ${state.teamActionMemberId ? renderTeamActionModal() : ""}
     </div>
   `;
   bindAppEvents();
@@ -296,20 +301,21 @@ function renderRoadmapModule() {
   return `
     <section class="module-heading">
       <nav class="roadmap-tabs" aria-label="Etapes des roadmaps">
-        ${roadmapTab("queue", "A traiter", bucketCounts.queue)}
-        ${roadmapTab("completed", "Rencontres faites", bucketCounts.completed)}
-        ${roadmapTab("archive", "Archives", bucketCounts.archive)}
-        ${roadmapTab("trash", "Corbeille", bucketCounts.trash, "trash-2")}
+        ${roadmapTab("queue", "En cours", bucketCounts.queue)}
+        ${roadmapTab("history", "Historique", bucketCounts.history)}
       </nav>
-      <button class="button filter-reset-button" id="resetRoadmapFilters" type="button"><i data-lucide="filter-x"></i> Reinitialiser les filtres</button>
+      <div class="module-actions">
+        <button class="button filter-reset-button" id="resetRoadmapFilters" type="button"><i data-lucide="filter-x"></i> Reinitialiser les filtres</button>
+        <button class="button roadmap-trash-button ${state.roadmapView === "trash" ? "active" : ""}" data-roadmap-view="trash" type="button" title="Ouvrir la corbeille"><i data-lucide="trash-2"></i><span>Corbeille</span><strong>${bucketCounts.trash}</strong></button>
+      </div>
     </section>
     ${renderFilters()}
     ${state.roadmapView === "queue" ? `
       <section class="pipeline roadmap-pipeline" aria-label="Filtrer les roadmaps a traiter par statut">
         ${metric(counts.to_read, "A lire", "green", "to_read")}
-        ${metric(counts.meeting_planned, "Rencontre planifiee", "blue", "meeting_planned")}
-        ${metric(counts.action_required, "Action requise", "red", "action_required")}
-        ${metric(counts.ready_to_archive, "Pret a archiver", "amber", "ready_to_archive")}
+        ${metric(counts.message_to_send, "Message a envoyer", "amber", "message_to_send")}
+        ${metric(counts.meeting_planned, "Rencontre a faire", "blue", "meeting_planned")}
+        ${metric(counts.action_required, "Suivi a faire", "red", "action_required")}
       </section>
     ` : ""}
     ${renderSubmissionWorkspace()}
@@ -329,7 +335,7 @@ function renderTodoView() {
   return `
     <section class="todo-stats">
       ${todoStat(allTasks.length, "Actions ouvertes", "all", "list-checks")}
-      ${todoStat(urgentCount, "Urgentes ou en retard", "urgent", "circle-alert", "red")}
+      ${todoStat(urgentCount, "A prioriser", "urgent", "circle-alert", "red")}
       ${todoStat(roadmapCount, "Issues des roadmaps", "roadmap", "clipboard-list", "green")}
       ${todoStat(careerCount, "Parcours a suivre", "career", "route", "blue")}
     </section>
@@ -351,7 +357,7 @@ function renderTodoView() {
         </div>
       </section>
       <aside class="panel quick-task-panel">
-        <div class="quick-task-heading"><i data-lucide="plus"></i><div><h2>Ajouter une action</h2><p>Pour une tache qui ne vient pas d'une roadmap.</p></div></div>
+        <div class="quick-task-heading"><i data-lucide="plus"></i><div><h2>Ajouter une action</h2><p>Une action libre, sans calendrier impose.</p></div></div>
         <form id="managementTaskForm" class="quick-task-form">
           <label class="field">Action<input name="title" required maxlength="180" placeholder="Ex.: Confirmer la formation de Chloe"></label>
           <label class="field">Membre concerne
@@ -361,7 +367,6 @@ function renderTodoView() {
             <label class="field">Responsable<select name="ownerName">${OWNER_OPTIONS.map((owner) => `<option value="${escapeAttr(owner)}">${escapeHtml(owner)}</option>`).join("")}</select></label>
             <label class="field">Priorite<select name="priority">${TASK_PRIORITY_OPTIONS.map(([id, label]) => `<option value="${id}" ${id === "P2" ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label>
           </div>
-          <label class="field">Echeance<input name="dueDate" type="date"></label>
           <label class="field">Details<textarea name="description" class="compact-textarea" placeholder="Contexte utile pour Michael ou Gabriel"></textarea></label>
           <button class="button primary" type="submit"><i data-lucide="plus"></i> Ajouter a la liste</button>
         </form>
@@ -392,17 +397,24 @@ function renderTaskCard(task) {
         <span class="task-meta">
           ${member || task.teamMemberName ? `<span><i data-lucide="user-round"></i>${escapeHtml(member?.name || task.teamMemberName)}</span>` : ""}
           <span><i data-lucide="user-check"></i>${escapeHtml(task.ownerName || "Non assigne")}</span>
-          <span class="${overdue ? "is-overdue" : ""}"><i data-lucide="calendar"></i>${task.dueDate ? `${overdue ? "En retard · " : ""}${formatDateOnly(task.dueDate)}` : "Sans echeance"}</span>
+          ${task.dueDate ? `<span class="${overdue ? "is-overdue" : ""}"><i data-lucide="calendar"></i>${overdue ? "En retard · " : ""}${formatDateOnly(task.dueDate)}</span>` : ""}
         </span>
       </button>
       <div class="task-card-actions">
         <span class="priority-pill ${String(task.priority || "P2").toLowerCase()}">${escapeHtml(task.priority || "P2")}</span>
         ${task.persisted ? `
-          <button class="button icon-only" data-postpone-task="${escapeAttr(task.id)}" type="button" title="Reporter de 7 jours"><i data-lucide="calendar-plus"></i></button>
           <button class="button icon-only task-complete" data-complete-task="${escapeAttr(task.id)}" type="button" title="Marquer comme terminee"><i data-lucide="check"></i></button>
-        ` : `<button class="button task-source-button" data-open-task-source="${escapeAttr(task.id)}" type="button">Ouvrir <i data-lucide="arrow-right"></i></button>`}
+        ` : task.sourceType === "roadmap" ? renderRoadmapTaskActions(task) : `<button class="button task-source-button" data-open-task-source="${escapeAttr(task.id)}" type="button">Ouvrir <i data-lucide="arrow-right"></i></button>`}
       </div>
     </article>
+  `;
+}
+
+function renderRoadmapTaskActions(task) {
+  const action = roadmapActionDefinition(task.sourceStatus);
+  return `
+    <button class="button task-source-button" data-open-task-source="${escapeAttr(task.id)}" type="button">Ouvrir</button>
+    ${action ? `<button class="button primary task-next-button" data-roadmap-action="${action.id}" data-submission-id="${escapeAttr(task.sourceId)}" type="button">${escapeHtml(action.label)} <i data-lucide="${action.icon}"></i></button>` : ""}
   `;
 }
 
@@ -444,13 +456,12 @@ function roadmapBucketCounts() {
   return state.submissions.reduce((counts, item) => {
     counts[submissionBucket(item)] += 1;
     return counts;
-  }, { queue: 0, completed: 0, archive: 0, trash: 0 });
+  }, { queue: 0, history: 0, trash: 0 });
 }
 
 function submissionBucket(submission) {
   if (isDeleted(submission)) return "trash";
-  if (submission.status === "archived") return "archive";
-  if (submission.status === "meeting_done") return "completed";
+  if (["meeting_done", "ready_to_archive", "archived"].includes(submission.status)) return "history";
   return "queue";
 }
 
@@ -512,6 +523,7 @@ function renderSubmissionWorkspace() {
           <span><i data-lucide="file-clock"></i>Version ${escapeHtml(formVersionLabel(selected))}</span>
           ${member ? `<button class="inline-link" data-open-member="${escapeAttr(member.id)}" type="button"><i data-lucide="user-round"></i>Dossier ${escapeHtml(member.name)}</button>` : `<span class="warning-text"><i data-lucide="unlink"></i>Aucun membre associe</span>`}
         </div>
+        ${renderRoadmapActionBar(selected, notes, member)}
         <div class="responses-body">
           ${responseGroups.map((group, index) => `
             <details class="response-section" ${index < 2 ? "open" : ""}>
@@ -526,78 +538,74 @@ function renderSubmissionWorkspace() {
               </dl>
             </details>
           `).join("")}
+          ${renderExistingRoadmapNotes(notes)}
         </div>
       </section>
-      ${renderNotesPanel(selected, notes)}
     </div>
   `;
 }
 
-function renderNotesPanel(submission, notes) {
-  const isArchived = submission.status === "archived";
+function renderRoadmapActionBar(submission, notes, member) {
   const inTrash = isDeleted(submission);
-  const member = memberForSubmission(submission);
-  const mainNote = notes.meetingSummary || notes.followupNotes || "";
-  const linkedCareer = state.careerMilestones.find((item) => item.sourceSubmissionId === submission.id && !item.archivedAt) || null;
+  const bucket = submissionBucket(submission);
+  const action = bucket === "queue" ? roadmapActionDefinition(submission.status || "to_read") : null;
+  const instruction = roadmapStepInstruction(submission, notes);
   return `
-    <aside class="panel notes-panel ${inTrash ? "is-trash" : ""}">
-      <h2>${inTrash ? "Soumission supprimee" : "Compte rendu"}</h2>
-      <p>${inTrash ? "Cette roadmap est masquee des dossiers actifs. Elle peut encore etre restauree." : "Une note simple pour garder la continuite entre les rencontres."}</p>
-      ${!isArchived && !inTrash ? `
-        <fieldset class="status-fieldset">
-          <legend>Etape de suivi</legend>
-          <div class="status-switch">
-            ${STATUS_OPTIONS.filter(([id]) => id !== "archived").map(([id, label]) => `
-              <button class="status-button ${submission.status === id ? "active" : ""}" data-set-status="${id}" type="button">${escapeHtml(label)}</button>
-            `).join("")}
-          </div>
-        </fieldset>
-      ` : `<div class="current-state">${statusPill(inTrash ? "deleted" : submission.status)}</div>`}
-      <label class="field">Dossier membre
+    <section class="roadmap-action-bar ${inTrash ? "is-trash" : ""}">
+      <div class="roadmap-next-step">
+        <span>Prochaine action</span>
+        <strong>${escapeHtml(instruction)}</strong>
+      </div>
+      <label class="roadmap-member-assignment">Dossier membre
         <select id="memberAssignment" ${inTrash ? "disabled" : ""}>
           <option value="">Non associe</option>
           ${state.teamMembers.map((item) => `<option value="${escapeAttr(item.id)}" ${member?.id === item.id ? "selected" : ""}>${escapeHtml(item.name)}${item.active === false ? " (inactif)" : ""}</option>`).join("")}
         </select>
       </label>
-      <label class="field">Responsable
-        <select id="ownerReviewer">
-          <option value="">Choisir</option>
-          ${OWNER_OPTIONS.map((name) => `<option value="${name}" ${(notes.reviewerName || "") === name ? "selected" : ""}>${name}</option>`).join("")}
-        </select>
-      </label>
-      <label class="field">Date de rencontre
-        <input id="meetingDate" type="date" value="${escapeAttr(dateInputValue(notes.meetingDate))}">
-      </label>
-      <label class="field">Compte rendu de rencontre
-        <textarea id="ownerMainNote" placeholder="Constats, decisions et engagements...">${escapeHtml(mainNote)}</textarea>
-      </label>
-      <label class="field">Prochaine action
-        <textarea class="compact-textarea" id="nextAction" placeholder="Ce qui doit arriver ensuite...">${escapeHtml(notes.nextAction || "")}</textarea>
-      </label>
-      ${member && notes.nextAction && !inTrash ? `
-        <button class="career-convert" id="convertNextActionButton" type="button">
-          <i data-lucide="${linkedCareer ? "route" : "git-branch-plus"}"></i>
-          <span><strong>${linkedCareer ? "Voir dans Parcours CFSB" : "Ajouter au parcours"}</strong>${linkedCareer ? "Cette action est deja reliee a une etape." : "Transforme la prochaine action en etape suivie."}</span>
-        </button>
-      ` : ""}
-      <label class="field">Date de suivi
-        <input id="followupDate" type="date" value="${escapeAttr(dateInputValue(notes.followupDate))}">
-      </label>
-      <div class="notes-actions">
+      <div class="roadmap-action-controls">
+        ${action ? `<button class="button primary" data-roadmap-action="${action.id}" data-submission-id="${escapeAttr(submission.id)}" type="button">${escapeHtml(action.label)} <i data-lucide="${action.icon}"></i></button>` : ""}
+        ${bucket === "history" ? `
+          <button class="button" id="restoreButton" type="button"><i data-lucide="rotate-ccw"></i> Rouvrir</button>
+          <button class="button danger" id="trashButton" type="button"><i data-lucide="trash-2"></i> Corbeille</button>
+        ` : ""}
         ${inTrash ? `
-          <button class="button" id="restoreTrashButton" type="button"><i data-lucide="rotate-ccw"></i> Restaurer dans Archives</button>
-          <button class="button danger" id="deleteForeverButton" type="button"><i data-lucide="trash-2"></i> Supprimer definitivement</button>
-        ` : `
-          <button class="button primary" id="saveNotesButton" type="button"><i data-lucide="save"></i> Enregistrer</button>
-          ${isArchived ? `
-            <button class="button" id="restoreButton" type="button"><i data-lucide="rotate-ccw"></i> Rouvrir</button>
-            <button class="button danger" id="trashButton" type="button"><i data-lucide="trash-2"></i> Mettre a la corbeille</button>
-          ` : `<button class="button" id="archiveButton" type="button"><i data-lucide="archive"></i> Archiver</button>`}
-        `}
+          <button class="button" id="restoreTrashButton" type="button"><i data-lucide="rotate-ccw"></i> Restaurer</button>
+          <button class="button danger" id="deleteForeverButton" type="button"><i data-lucide="trash-2"></i> Supprimer</button>
+        ` : ""}
       </div>
-      <div class="save-status" id="saveStatus">${notes.updatedAt || notes.sourceUpdatedAt ? `Derniere mise a jour: ${formatDate(notes.updatedAt || notes.sourceUpdatedAt)}` : ""}</div>
+    </section>
+  `;
+}
+
+function roadmapActionDefinition(status) {
+  return {
+    to_read: { id: "mark_read", label: "Marquer comme lue", icon: "check" },
+    message_to_send: { id: "message_sent", label: "Message envoye", icon: "send" },
+    meeting_planned: { id: "meeting_done", label: "Rencontre faite", icon: "circle-check-big" },
+    action_required: { id: "followup_done", label: "Suivi fait", icon: "check-check" }
+  }[status] || null;
+}
+
+function roadmapStepInstruction(submission, notes) {
+  if (isDeleted(submission)) return "Restaurer cette roadmap ou la supprimer definitivement.";
+  if (submissionBucket(submission) === "history") return "Cette roadmap est terminee et reste consultable dans l'historique.";
+  if (submission.status === "message_to_send") return "Envoyer manuellement le message dans Google Chat, puis confirmer ici.";
+  if (submission.status === "meeting_planned") return "Faire la rencontre reservee dans votre logiciel habituel.";
+  if (submission.status === "action_required") return notes.nextAction || "Completer le suivi convenu pendant la rencontre.";
+  return "Lire les reponses et reperer les points a discuter.";
+}
+
+function renderExistingRoadmapNotes(notes) {
+  const mainNote = notes.meetingSummary || notes.followupNotes || "";
+  const hasLegacy = [notes.meetingFormat, notes.priorityTopics, notes.questions, notes.performance, notes.memberCommitments, notes.directionCommitments].some(Boolean);
+  if (!mainNote && !notes.nextAction && !hasLegacy) return "";
+  return `
+    <details class="existing-roadmap-notes">
+      <summary>Notes enregistrees precedemment</summary>
+      ${mainNote ? `<p><strong>Note</strong><br>${escapeHtml(mainNote)}</p>` : ""}
+      ${notes.nextAction ? `<p><strong>Suivi</strong><br>${escapeHtml(notes.nextAction)}</p>` : ""}
       ${renderLegacyNotes(notes)}
-    </aside>
+    </details>
   `;
 }
 
@@ -684,7 +692,7 @@ function renderTeamMemberCard(member) {
         </span>
         <i data-lucide="chevron-right"></i>
       </button>
-      <button class="member-edit" data-edit-member="${escapeAttr(member.id)}" type="button" title="Modifier ${escapeAttr(member.name || "ce membre")}"><i data-lucide="pencil"></i></button>
+      <button class="member-edit member-action" data-create-member-action="${escapeAttr(member.id)}" type="button" title="Creer une action pour ${escapeAttr(member.name || "ce membre")}"><i data-lucide="plus"></i></button>
     </div>
   `;
 }
@@ -739,7 +747,10 @@ function renderMemberProfile() {
             <p>${escapeHtml(member.displayTitle || "Role a preciser")}${member.careerTarget ? ` · Vise: ${escapeHtml(member.careerTarget)}` : ""}${member.active === false ? " · Membre inactif" : ""}</p>
           </div>
         </div>
-        <button class="button" data-edit-member="${escapeAttr(member.id)}" type="button"><i data-lucide="pencil"></i> Modifier</button>
+        <div class="member-profile-actions">
+          <button class="button primary" data-create-member-action="${escapeAttr(member.id)}" type="button"><i data-lucide="plus"></i> Creer une action</button>
+          <button class="button" data-edit-member="${escapeAttr(member.id)}" type="button"><i data-lucide="pencil"></i> Modifier</button>
+        </div>
       </header>
       <section class="member-metrics">
         ${profileMetric(tasks.length, "Actions ouvertes")}
@@ -798,7 +809,8 @@ function renderMemberActions(member, tasks) {
 }
 
 function renderCompactTask(task) {
-  return `<button data-open-task-source="${escapeAttr(task.id)}" type="button"><span class="priority-dot ${String(task.priority || "P2").toLowerCase()}"></span><span><strong>${escapeHtml(task.title)}</strong><small>${task.dueDate ? formatDateOnly(task.dueDate) : "Sans echeance"}</small></span><i data-lucide="chevron-right"></i></button>`;
+  const context = task.dueDate ? formatDateOnly(task.dueDate) : task.sourceType === "roadmap" ? STATUS_LABELS[task.sourceStatus] || "Roadmap" : "Action ouverte";
+  return `<button data-open-task-source="${escapeAttr(task.id)}" type="button"><span class="priority-dot ${String(task.priority || "P2").toLowerCase()}"></span><span><strong>${escapeHtml(task.title)}</strong><small>${escapeHtml(context)}</small></span><i data-lucide="chevron-right"></i></button>`;
 }
 
 function renderRoadmapHistory(submissions) {
@@ -931,6 +943,79 @@ function renderCareerEditor() {
   `;
 }
 
+function renderRoadmapCompletionModal() {
+  const submission = state.submissions.find((item) => item.id === state.roadmapCompletionId);
+  if (!submission) return "";
+  const notes = state.ownerNotes[submission.id] || {};
+  const name = submission.employeeName || submission.answers?.employee_name || "ce membre";
+  return `
+    <div class="career-modal action-modal" role="dialog" aria-modal="true" aria-labelledby="roadmapCompletionTitle">
+      <button class="career-modal-backdrop" data-close-roadmap-completion type="button" aria-label="Fermer"></button>
+      <section class="action-editor panel">
+        <header class="career-editor-header">
+          <div><p class="eyebrow">Roadmap de ${escapeHtml(name)}</p><h2 id="roadmapCompletionTitle">Terminer la rencontre</h2></div>
+          <button class="button icon-only" data-close-roadmap-completion type="button" title="Fermer"><i data-lucide="x"></i></button>
+        </header>
+        <form id="roadmapCompletionForm" class="action-form">
+          <div class="action-modal-intro"><i data-lucide="calendar-check"></i><p>La date et la reservation restent dans votre logiciel habituel. Ici, indique seulement s'il reste une action a faire.</p></div>
+          <label class="field">Responsable du suivi
+            <select name="reviewerName">${OWNER_OPTIONS.map((owner) => `<option value="${escapeAttr(owner)}" ${(notes.reviewerName || "Michael + Gabriel") === owner ? "selected" : ""}>${escapeHtml(owner)}</option>`).join("")}</select>
+          </label>
+          <label class="field">Action de suivi <span class="field-optional">facultatif</span>
+            <textarea name="nextAction" placeholder="Ex.: Valider son plan de suivis clients. Laisse vide si la rencontre est completement terminee.">${escapeHtml(notes.nextAction || "")}</textarea>
+          </label>
+          <div class="action-form-actions">
+            <button class="button primary" type="submit"><i data-lucide="check"></i> Confirmer la rencontre</button>
+            <button class="button" data-close-roadmap-completion type="button">Annuler</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  `;
+}
+
+function renderTeamActionModal() {
+  const member = state.teamMembers.find((item) => item.id === state.teamActionMemberId);
+  if (!member) return "";
+  return `
+    <div class="career-modal action-modal" role="dialog" aria-modal="true" aria-labelledby="teamActionTitle">
+      <button class="career-modal-backdrop" data-close-team-action type="button" aria-label="Fermer"></button>
+      <section class="action-editor panel">
+        <header class="career-editor-header">
+          <div><p class="eyebrow">${escapeHtml(member.name)}</p><h2 id="teamActionTitle">Creer une action</h2></div>
+          <button class="button icon-only" data-close-team-action type="button" title="Fermer"><i data-lucide="x"></i></button>
+        </header>
+        <form id="teamActionForm" class="action-form">
+          <fieldset class="action-kind-fieldset">
+            <legend>Type d'action</legend>
+            <div class="action-kind-options">
+              <label><input type="radio" name="taskKind" value="meeting" checked><span><i data-lucide="messages-square"></i><strong>Prevoir une rencontre</strong><small>La reservation se fera dans votre logiciel habituel.</small></span></label>
+              <label><input type="radio" name="taskKind" value="followup"><span><i data-lucide="list-checks"></i><strong>Faire un suivi</strong><small>Une action concrete pour Michael ou Gabriel.</small></span></label>
+              <label><input type="radio" name="taskKind" value="development"><span><i data-lucide="route"></i><strong>Parler developpement</strong><small>Un sujet lie au role ou au parcours CFSB.</small></span></label>
+            </div>
+          </fieldset>
+          <label class="field">Action<input name="title" required maxlength="180" value="${escapeAttr(defaultMemberActionTitle("meeting", member.name))}"></label>
+          <div class="action-form-grid">
+            <label class="field">Responsable<select name="ownerName">${OWNER_OPTIONS.map((owner) => `<option value="${escapeAttr(owner)}">${escapeHtml(owner)}</option>`).join("")}</select></label>
+            <label class="field">Priorite<select name="priority">${TASK_PRIORITY_OPTIONS.map(([id, label]) => `<option value="${id}" ${id === "P2" ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label>
+          </div>
+          <label class="field">Details <span class="field-optional">facultatif</span><textarea class="compact-textarea" name="description" placeholder="Contexte utile pour agir sans rouvrir tout le dossier."></textarea></label>
+          <div class="action-form-actions">
+            <button class="button primary" type="submit"><i data-lucide="plus"></i> Ajouter a A faire</button>
+            <button class="button" data-close-team-action type="button">Annuler</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  `;
+}
+
+function defaultMemberActionTitle(kind, memberName) {
+  if (kind === "followup") return `Faire un suivi avec ${memberName}`;
+  if (kind === "development") return `Discuter du developpement de ${memberName}`;
+  return `Prevoir une rencontre avec ${memberName}`;
+}
+
 function renderCareerUpdate(update) {
   return `
     <article class="career-update">
@@ -942,14 +1027,13 @@ function renderCareerUpdate(update) {
 
 function renderTimelineItem(submission) {
   const notes = state.ownerNotes[submission.id] || {};
-  const summary = notes.meetingSummary || notes.followupNotes || "";
   const completion = completionInfo(submission);
   return `
     <button class="timeline-item" data-open-submission="${escapeAttr(submission.id)}" type="button">
       <span class="timeline-date">${formatShortDate(submission.submittedAt)}</span>
       <span class="timeline-main">
         <strong>${escapeHtml(submission.cycleId || "Sans trimestre")} · ${escapeHtml(submission.selectedRoleLabel || "Role inconnu")}</strong>
-        <small>${summary ? escapeHtml(truncate(summary, 150)) : "Aucun compte rendu de rencontre"}</small>
+        <small>${notes.nextAction ? `Suivi: ${escapeHtml(truncate(notes.nextAction, 140))}` : escapeHtml(STATUS_LABELS[submission.status] || "Roadmap conservee")}</small>
       </span>
       <span class="timeline-meta">${statusPill(submission.status)}<small>${completion.percent}% complete</small></span>
       <i data-lucide="chevron-right"></i>
@@ -962,6 +1046,8 @@ function bindAppEvents() {
   document.querySelector("#reloadButton")?.addEventListener("click", () => window.location.reload());
   document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => {
     closeCareerEditor(false);
+    closeRoadmapCompletion(false);
+    closeTeamAction(false);
     state.view = button.dataset.view;
     state.selectedMemberId = "";
     state.editingMemberId = "";
@@ -1029,18 +1115,14 @@ function bindAppEvents() {
   }));
   document.querySelector("#managementTaskForm")?.addEventListener("submit", saveManagementTask);
   document.querySelectorAll("[data-complete-task]").forEach((button) => button.addEventListener("click", () => completeManagementTask(button.dataset.completeTask)));
-  document.querySelectorAll("[data-postpone-task]").forEach((button) => button.addEventListener("click", () => postponeManagementTask(button.dataset.postponeTask)));
   document.querySelectorAll("[data-open-task-source]").forEach((button) => button.addEventListener("click", () => openTaskSource(button.dataset.openTaskSource)));
+  document.querySelectorAll("[data-roadmap-action]").forEach((button) => button.addEventListener("click", () => handleRoadmapAction(button.dataset.roadmapAction, button.dataset.submissionId)));
   document.querySelector("#printButton")?.addEventListener("click", () => window.print());
-  document.querySelector("#saveNotesButton")?.addEventListener("click", saveOwnerNotes);
-  document.querySelector("#archiveButton")?.addEventListener("click", archiveSelected);
   document.querySelector("#restoreButton")?.addEventListener("click", restoreSelected);
   document.querySelector("#trashButton")?.addEventListener("click", moveSelectedToTrash);
   document.querySelector("#restoreTrashButton")?.addEventListener("click", restoreSelectedFromTrash);
   document.querySelector("#deleteForeverButton")?.addEventListener("click", deleteSelectedForever);
   document.querySelector("#memberAssignment")?.addEventListener("change", assignSelectedMember);
-  document.querySelector("#convertNextActionButton")?.addEventListener("click", openCareerFromNextAction);
-  document.querySelectorAll("[data-set-status]").forEach((button) => button.addEventListener("click", () => setSelectedStatus(button.dataset.setStatus)));
   document.querySelectorAll("[data-open-member]").forEach((button) => button.addEventListener("click", () => {
     state.view = "team";
     state.selectedMemberId = button.dataset.openMember;
@@ -1053,6 +1135,10 @@ function bindAppEvents() {
     state.view = "team";
     state.selectedMemberId = "";
     state.editingMemberId = button.dataset.editMember;
+    renderApp();
+  }));
+  document.querySelectorAll("[data-create-member-action]").forEach((button) => button.addEventListener("click", () => {
+    state.teamActionMemberId = button.dataset.createMemberAction;
     renderApp();
   }));
   document.querySelector("#addMemberButton")?.addEventListener("click", () => {
@@ -1109,12 +1195,34 @@ function bindAppEvents() {
     renderApp();
   });
   document.querySelector("#memberForm")?.addEventListener("submit", saveTeamMember);
+  document.querySelectorAll("[data-close-roadmap-completion]").forEach((button) => button.addEventListener("click", () => closeRoadmapCompletion()));
+  document.querySelector("#roadmapCompletionForm")?.addEventListener("submit", completeRoadmapMeeting);
+  document.querySelectorAll("[data-close-team-action]").forEach((button) => button.addEventListener("click", () => closeTeamAction()));
+  document.querySelector("#teamActionForm")?.addEventListener("submit", saveTeamAction);
+  document.querySelectorAll('#teamActionForm input[name="taskKind"]').forEach((input) => input.addEventListener("change", updateTeamActionTitle));
 }
 
 function closeCareerEditor(shouldRender = true) {
   state.careerEditorId = "";
   state.careerDraft = null;
   if (shouldRender) renderApp();
+}
+
+function closeRoadmapCompletion(shouldRender = true) {
+  state.roadmapCompletionId = "";
+  if (shouldRender) renderApp();
+}
+
+function closeTeamAction(shouldRender = true) {
+  state.teamActionMemberId = "";
+  if (shouldRender) renderApp();
+}
+
+function updateTeamActionTitle(event) {
+  const member = state.teamMembers.find((item) => item.id === state.teamActionMemberId);
+  const titleInput = document.querySelector('#teamActionForm input[name="title"]');
+  if (!member || !titleInput) return;
+  titleInput.value = defaultMemberActionTitle(event.target.value, member.name);
 }
 
 function openCareerFromNextAction() {
@@ -1325,6 +1433,93 @@ async function saveOwnerNotes() {
   }
 }
 
+async function handleRoadmapAction(action, submissionId) {
+  const submission = state.submissions.find((item) => item.id === submissionId);
+  if (!submission || state.busy) return;
+  if (action === "meeting_done") {
+    state.roadmapCompletionId = submission.id;
+    renderApp();
+    return;
+  }
+  const transitions = {
+    mark_read: ["message_to_send", "Roadmap lue. Le message Google Chat est maintenant a envoyer."],
+    message_sent: ["meeting_planned", "Message envoye. La rencontre peut etre reservee dans votre logiciel habituel."],
+    followup_done: ["meeting_done", "Suivi termine. La roadmap est maintenant dans l'historique."]
+  };
+  const transition = transitions[action];
+  if (!transition) return;
+  const [nextStatus, confirmation] = transition;
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, "roadmapSubmissions", submission.id), {
+      status: nextStatus,
+      archivedAt: null,
+      updatedAt: serverTimestamp()
+    });
+    const noteUpdate = {
+      submissionId: submission.id,
+      ownerStatus: nextStatus,
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    };
+    if (action === "followup_done") noteUpdate.followupCompletedAt = serverTimestamp();
+    batch.set(doc(db, "ownerNotes", submission.id), noteUpdate, { merge: true });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload("submission_workflow_advanced", submission.id, { action, status: nextStatus }));
+    await batch.commit();
+    if (state.view === "roadmaps" && nextStatus === "meeting_done") state.roadmapView = "history";
+    showToast(confirmation);
+    renderApp();
+  } catch (error) {
+    showToast(`Action impossible: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function completeRoadmapMeeting(event) {
+  event.preventDefault();
+  const submission = state.submissions.find((item) => item.id === state.roadmapCompletionId);
+  if (!submission || state.busy) return;
+  const data = new FormData(event.currentTarget);
+  const nextAction = String(data.get("nextAction") || "").trim();
+  const reviewerName = String(data.get("reviewerName") || "Michael + Gabriel");
+  const nextStatus = nextAction ? "action_required" : "meeting_done";
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, "roadmapSubmissions", submission.id), {
+      status: nextStatus,
+      archivedAt: null,
+      updatedAt: serverTimestamp()
+    });
+    batch.set(doc(db, "ownerNotes", submission.id), {
+      submissionId: submission.id,
+      ownerStatus: nextStatus,
+      reviewerName,
+      nextAction,
+      meetingCompletedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    }, { merge: true });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload("roadmap_meeting_completed", submission.id, {
+      status: nextStatus,
+      hasFollowup: Boolean(nextAction)
+    }));
+    await batch.commit();
+    closeRoadmapCompletion(false);
+    if (state.view === "roadmaps") state.roadmapView = nextStatus === "meeting_done" ? "history" : "queue";
+    showToast(nextAction ? "Rencontre terminee. Le suivi est ajoute a A faire." : "Rencontre terminee. La roadmap est dans l'historique.");
+    renderApp();
+  } catch (error) {
+    showToast(`Rencontre non terminee: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
 async function setSelectedStatus(nextStatus) {
   const submission = selectedSubmission();
   if (!submission || state.busy || !STATUS_LABELS[nextStatus] || nextStatus === "archived" || submission.status === nextStatus) return;
@@ -1358,7 +1553,6 @@ async function assignSelectedMember(event) {
   const memberId = event.target.value || "";
   const member = state.teamMembers.find((item) => item.id === memberId) || null;
   state.busy = true;
-  setSaveStatus("Association en cours...");
   try {
     const batch = writeBatch(db);
     batch.update(doc(db, "roadmapSubmissions", submission.id), {
@@ -1368,9 +1562,9 @@ async function assignSelectedMember(event) {
     });
     batch.set(doc(collection(db, "auditLogs")), auditPayload("submission_member_assigned", submission.id, { teamMemberId: memberId || null }));
     await batch.commit();
-    setSaveStatus(member ? `Associee au dossier de ${member.name}.` : "Association retiree.", "success");
+    showToast(member ? `Roadmap associee au dossier de ${member.name}.` : "Association retiree.");
   } catch (error) {
-    setSaveStatus(`Association impossible: ${friendlyError(error)}`, "error");
+    showToast(`Association impossible: ${friendlyError(error)}`);
   } finally {
     state.busy = false;
   }
@@ -1398,7 +1592,7 @@ async function archiveSelected() {
     batch.set(doc(collection(db, "auditLogs")), auditPayload("submission_archived", submission.id));
     await batch.commit();
     state.view = "roadmaps";
-    state.roadmapView = "archive";
+    state.roadmapView = "history";
     state.filters.status = "all";
     showToast("Roadmap archivee.");
   } catch (error) {
@@ -1430,7 +1624,7 @@ async function restoreSelected() {
     state.view = "roadmaps";
     state.roadmapView = "queue";
     state.filters.status = "all";
-    showToast("Roadmap restauree dans les actifs.");
+    showToast("Roadmap rouverte dans En cours.");
   } catch (error) {
     showToast(`Restauration impossible: ${friendlyError(error)}`);
   } finally {
@@ -1440,7 +1634,7 @@ async function restoreSelected() {
 
 async function moveSelectedToTrash() {
   const submission = selectedSubmission();
-  if (!submission || state.busy || submission.status !== "archived") return;
+  if (!submission || state.busy || submissionBucket(submission) !== "history") return;
   const name = submission.employeeName || submission.answers?.employee_name || "cette soumission";
   if (!window.confirm(`Mettre la roadmap de ${name} a la corbeille? Elle pourra encore etre restauree.`)) return;
   state.busy = true;
@@ -1450,6 +1644,7 @@ async function moveSelectedToTrash() {
       deletedAt: serverTimestamp(),
       deletedByUid: state.user.uid,
       deletedByName: state.profile.displayName || state.user.displayName || "Owner",
+      statusBeforeDelete: submission.status || "meeting_done",
       updatedAt: serverTimestamp()
     });
     batch.set(doc(collection(db, "auditLogs")), auditPayload("submission_trashed", submission.id));
@@ -1475,15 +1670,16 @@ async function restoreSelectedFromTrash() {
       deletedAt: null,
       deletedByUid: null,
       deletedByName: null,
-      status: "archived",
+      status: ["meeting_done", "ready_to_archive", "archived"].includes(submission.statusBeforeDelete) ? submission.statusBeforeDelete : "meeting_done",
+      statusBeforeDelete: null,
       updatedAt: serverTimestamp()
     });
     batch.set(doc(collection(db, "auditLogs")), auditPayload("submission_trash_restored", submission.id));
     await batch.commit();
     state.view = "roadmaps";
-    state.roadmapView = "archive";
+    state.roadmapView = "history";
     state.filters.status = "all";
-    showToast("Roadmap restauree dans Archives.");
+    showToast("Roadmap restauree dans l'historique.");
   } catch (error) {
     showToast(`Restauration impossible: ${friendlyError(error)}`);
   } finally {
@@ -1570,9 +1766,9 @@ function allOpenManagementTasks() {
 function derivedRoadmapTasks() {
   const titleByStatus = {
     to_read: (name) => `Lire la roadmap de ${name}`,
-    meeting_planned: (name) => `Preparer la rencontre de ${name}`,
-    action_required: (name) => `Faire le suivi avec ${name}`,
-    ready_to_archive: (name) => `Archiver la roadmap de ${name}`
+    message_to_send: (name) => `Envoyer le message a ${name}`,
+    meeting_planned: (name) => `Faire la rencontre avec ${name}`,
+    action_required: (name) => `Faire le suivi avec ${name}`
   };
   return state.submissions
     .filter((submission) => submissionBucket(submission) === "queue" && WORKFLOW_STATUS_IDS.includes(submission.status || "to_read"))
@@ -1581,7 +1777,6 @@ function derivedRoadmapTasks() {
       const notes = state.ownerNotes[submission.id] || {};
       const member = memberForSubmission(submission);
       const name = member?.name || submission.employeeName || submission.answers?.employee_name || "un membre";
-      const dueDate = status === "meeting_planned" ? notes.meetingDate : status === "action_required" ? notes.followupDate : "";
       return {
         id: `roadmap:${submission.id}`,
         sourceType: "roadmap",
@@ -1590,10 +1785,10 @@ function derivedRoadmapTasks() {
         teamMemberId: member?.id || submission.teamMemberId || "",
         teamMemberName: name,
         title: titleByStatus[status](name),
-        description: status === "action_required" ? notes.nextAction || "Un suivi a ete identifie pendant la rencontre." : `${STATUS_LABELS[status]} · ${submission.cycleId || "Trimestre a preciser"}`,
+        description: status === "action_required" ? notes.nextAction || "Un suivi a ete identifie pendant la rencontre." : status === "message_to_send" ? "Envoyer manuellement le message dans Google Chat." : `${STATUS_LABELS[status]} · ${submission.cycleId || "Trimestre a preciser"}`,
         ownerName: notes.reviewerName || "Michael + Gabriel",
-        priority: status === "action_required" ? "P1" : status === "ready_to_archive" ? "P3" : "P2",
-        dueDate,
+        priority: status === "action_required" ? "P1" : "P2",
+        dueDate: "",
         createdAt: submission.submittedAt,
         persisted: false
       };
@@ -1689,7 +1884,8 @@ async function saveManagementTask(event) {
       ownerName: String(data.get("ownerName") || "Michael + Gabriel"),
       priority: String(data.get("priority") || "P2"),
       status: "open",
-      dueDate: String(data.get("dueDate") || ""),
+      dueDate: "",
+      taskKind: "general",
       sourceType: "manual",
       createdAt: serverTimestamp(),
       createdByUid: state.user.uid,
@@ -1701,6 +1897,48 @@ async function saveManagementTask(event) {
     await batch.commit();
     form.reset();
     showToast("Action ajoutee a la liste.");
+  } catch (error) {
+    showToast(`Action non ajoutee: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function saveTeamAction(event) {
+  event.preventDefault();
+  if (state.busy) return;
+  const member = state.teamMembers.find((item) => item.id === state.teamActionMemberId);
+  if (!member) return;
+  const data = new FormData(event.currentTarget);
+  const title = String(data.get("title") || "").trim();
+  const taskKind = ["meeting", "followup", "development"].includes(String(data.get("taskKind"))) ? String(data.get("taskKind")) : "followup";
+  if (!title) return;
+  const taskRef = doc(collection(db, "managementTasks"));
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.set(taskRef, {
+      title,
+      description: String(data.get("description") || "").trim(),
+      teamMemberId: member.id,
+      teamMemberName: member.name,
+      ownerName: String(data.get("ownerName") || "Michael + Gabriel"),
+      priority: String(data.get("priority") || "P2"),
+      status: "open",
+      dueDate: "",
+      taskKind,
+      sourceType: "manual",
+      createdAt: serverTimestamp(),
+      createdByUid: state.user.uid,
+      createdByName: actorName(),
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid
+    });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload("management_task_created", taskRef.id, { teamMemberId: member.id, taskKind }));
+    await batch.commit();
+    closeTeamAction(false);
+    showToast("Action ajoutee a A faire.");
+    renderApp();
   } catch (error) {
     showToast(`Action non ajoutee: ${friendlyError(error)}`);
   } finally {
@@ -1802,6 +2040,8 @@ function openSubmission(submissionId) {
   const submission = state.submissions.find((item) => item.id === submissionId);
   if (!submission) return;
   closeCareerEditor(false);
+  closeRoadmapCompletion(false);
+  closeTeamAction(false);
   state.view = "roadmaps";
   state.roadmapView = submissionBucket(submission);
   state.selectedMemberId = "";
@@ -1859,7 +2099,7 @@ function submissionLabel(item) {
 function submissionMenuLabel(item) {
   const name = item.employeeName || item.answers?.employee_name || "Sans nom";
   const date = item.submittedAt ? formatDate(item.submittedAt) : "Sans date";
-  return `${STATUS_LABELS[item.status] || "A traiter"} · ${name} · ${date} · ${item.selectedRoleLabel || "Role"}`;
+  return `${STATUS_LABELS[item.status] || "En cours"} · ${name} · ${date} · ${item.selectedRoleLabel || "Role"}`;
 }
 
 function memberForSubmission(submission) {
@@ -1962,6 +2202,7 @@ function careerStatusTone(status) {
 
 function statusTone(status) {
   if (status === "to_read") return "green";
+  if (status === "message_to_send") return "amber";
   if (status === "meeting_planned") return "blue";
   if (status === "action_required" || status === "deleted") return "red";
   if (status === "ready_to_archive") return "amber";

@@ -75,7 +75,7 @@ Soumission finale et dossier durable.
 - `selectedRoleLabel`
 - `answers`
 - `completion`
-- `status`: `to_read`, `meeting_planned`, `meeting_done`, `action_required`, `ready_to_archive`, `archived`
+- `status`: `to_read`, `message_to_send`, `meeting_planned`, `action_required`, `meeting_done`, `ready_to_archive`, `archived`
 - `source`: `firebase`, `apps_script_import` ou `manual_import`
 - `submittedAt`
 - `archivedAt`
@@ -84,6 +84,9 @@ Soumission finale et dossier durable.
 - `deletedAt`: date de mise a la corbeille, absente sinon
 - `deletedByUid`
 - `deletedByName`
+- `statusBeforeDelete`: statut historique conserve pendant un passage dans la corbeille
+
+Les statuts `ready_to_archive` et `archived` restent supportes pour les donnees historiques. Le flux courant se termine directement a `meeting_done` lorsqu'aucun suivi n'est requis.
 
 Sous-collection `events/{eventId}`:
 
@@ -108,9 +111,11 @@ Sous-collection `events/{eventId}`:
 - `followupNotes`
 - `nextAction`
 - `followupDate`
+- `meetingCompletedAt`
+- `followupCompletedAt`
 - `updatedAt`
 
-Les anciens champs structures et `followupNotes` sont conserves pour ne perdre aucune note de rencontre importee. La nouvelle interface les presente dans un bloc historique replie et utilise `meetingSummary` comme champ principal.
+Les anciens champs structures, dates et `followupNotes` sont conserves pour ne perdre aucune note importee. Ils restent consultables dans un bloc historique replie, mais le flux courant ne demande ni date de rencontre ni compte rendu obligatoire.
 
 ## `orgDepartments/{departmentId}`
 
@@ -138,9 +143,9 @@ L'identifiant du document est permanent. Un changement de nom ne doit jamais cre
 
 ## Suppression et restauration
 
-- Archiver conserve la roadmap dans le dossier longitudinal du membre.
+- Terminer conserve la roadmap dans l'historique et le dossier longitudinal du membre.
 - Mettre a la corbeille ajoute `deletedAt` et masque la roadmap de tous les compteurs et dossiers.
-- Restaurer depuis la corbeille remet la roadmap dans Archives.
+- Restaurer depuis la corbeille remet la roadmap dans l'historique.
 - La suppression definitive efface `roadmapSubmissions/{submissionId}` et `ownerNotes/{submissionId}` apres une confirmation explicite, tout en conservant une entree minimale sans nom dans `auditLogs`.
 
 ## `careerMilestones/{milestoneId}`
@@ -191,7 +196,8 @@ Action de gestion creee manuellement par Michael ou Gabriel. Les actions directe
 - `ownerName`: `Michael`, `Gabriel` ou `Michael + Gabriel`
 - `priority`: `P1`, `P2` ou `P3`
 - `status`: `open`, `completed` ou `cancelled`
-- `dueDate`
+- `dueDate`: facultatif et conserve surtout pour les anciennes actions
+- `taskKind`: `general`, `meeting`, `followup` ou `development`
 - `sourceType`: `manual`
 - `createdAt`
 - `createdByUid`

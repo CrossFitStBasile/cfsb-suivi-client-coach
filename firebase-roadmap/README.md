@@ -21,16 +21,19 @@ Il ne remplace pas la production GitHub Pages + Apps Script. Aucun deploiement p
 
 - vue `A faire` inspiree du Dashboard Coach, avec actions de Michael et Gabriel;
 - actions automatiquement projetees depuis les roadmaps a traiter et les etapes de carriere bloquees ou proches de leur echeance;
-- actions manuelles avec membre, responsable, priorite et date, pouvant etre reportees ou terminees;
-- module Roadmaps separe en `A traiter`, `Rencontres faites`, `Archives` et `Corbeille`;
+- actions manuelles avec membre, responsable et priorite, sans imposer un calendrier dans le dashboard;
+- creation rapide d'une rencontre a prevoir, d'un suivi ou d'une discussion de developpement depuis chaque dossier membre;
+- module Roadmaps separe en `En cours`, `Historique` et une corbeille secondaire;
 - pipeline cliquable dont les compteurs respectent les filtres par role, trimestre et recherche;
+- parcours explicite `A lire` -> `Message a envoyer` -> `Rencontre a faire` -> `Suivi a faire` ou `Terminee`;
+- boutons d'action immediate dans `A faire` et dans chaque roadmap, sans passer par un menu de statuts;
 - menus de soumissions enrichis du statut, de la date et de l'heure pour distinguer les doublons;
-- compte rendu de rencontre simplifie avec prochaine action et date de suivi;
+- fin de rencontre simplifiee: une action de suivi facultative, sans date de rencontre a saisir;
 - dossier longitudinal par membre avec vue d'ensemble, actions, roadmaps et parcours;
 - ligne du temps `Parcours CFSB` avec objectifs, echeances, responsables, progression et notes d'evolution datees;
 - conversion d'une prochaine action de roadmap en etape de parcours, sans double saisie;
 - association ou reassignation manuelle d'une soumission au bon membre;
-- archivage, corbeille reversible et suppression definitive confirmee;
+- historique consultable, corbeille reversible et suppression definitive confirmee;
 - conservation des anciennes notes owners dans un bloc historique;
 - impression du dossier de rencontre et affichage de la version du formulaire.
 

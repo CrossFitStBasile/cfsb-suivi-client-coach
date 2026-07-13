@@ -286,10 +286,14 @@ svg { width: 18px; height: 18px; flex: 0 0 auto; }
 }
 .roadmap-pipeline { grid-template-columns: repeat(4, minmax(150px, 1fr)); }
 .module-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+.module-actions { display: flex; align-items: center; gap: 7px; }
 .roadmap-tabs { display: flex; flex-wrap: wrap; gap: 7px; }
 .roadmap-tabs .tab-button { display: inline-flex; align-items: center; gap: 7px; }
 .roadmap-tabs .tab-button span { min-width: 24px; padding: 2px 6px; border-radius: 4px; background: #edf0ee; color: var(--muted); font-size: 11px; }
 .roadmap-tabs .tab-button.active span { background: #d7ebe4; color: var(--green-dark); }
+.roadmap-trash-button { gap: 7px; color: var(--muted); }
+.roadmap-trash-button strong { min-width: 22px; padding: 2px 6px; border-radius: 4px; background: #edf0ee; font-size: 11px; text-align: center; }
+.roadmap-trash-button.active { border-color: var(--red); background: #fff4f2; color: var(--red); }
 .roadmap-filters { margin-bottom: 12px; }
 .roadmap-filters.without-status { grid-template-columns: minmax(220px, 1.6fr) repeat(2, minmax(180px, 0.7fr)); }
 
@@ -357,6 +361,7 @@ svg { width: 18px; height: 18px; flex: 0 0 auto; }
 .task-card-actions .icon-only { width: 38px; min-height: 38px; }
 .task-complete { border-color: #a8d2c4; color: var(--green); }
 .task-source-button { min-height: 38px; padding: 8px 10px; }
+.task-next-button { white-space: nowrap; }
 .priority-pill { padding: 4px 6px; border-radius: 4px; background: #eef1ef; color: #596760; font-size: 10px; font-weight: 850; }
 .priority-pill.p1 { background: #fff0ed; color: var(--red); }
 .priority-pill.p3 { background: #edf5f9; color: var(--blue); }
@@ -392,6 +397,8 @@ svg { width: 18px; height: 18px; flex: 0 0 auto; }
 .member-card-stats { display: flex; flex-wrap: wrap; gap: 5px 10px; margin: 3px 0; color: #52615b; font-size: 11px; }
 .member-card-stats .needs-attention { color: var(--red); font-weight: 800; }
 .member-card > .member-edit { align-self: center; margin-right: 6px; }
+.member-action { border: 1px solid #c4d8d1; background: var(--wash); color: var(--green); }
+.member-profile-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
 
 .member-overview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .member-overview-panel { overflow: hidden; }
@@ -467,10 +474,7 @@ svg { width: 18px; height: 18px; flex: 0 0 auto; }
 .status-pill.red { border-color: #e4b7af; background: #fff1ef; color: #963524; }
 
 .workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 350px;
-  gap: 16px;
-  align-items: start;
+  display: block;
 }
 
 .responses { min-width: 0; }
@@ -482,6 +486,27 @@ svg { width: 18px; height: 18px; flex: 0 0 auto; }
 .answer-row dt { color: #42504a; font-size: 13px; line-height: 1.45; font-weight: 700; }
 .answer-row dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
 .answer-row dd.empty { color: #9a4b3f; font-style: italic; }
+
+.roadmap-action-bar {
+  display: grid;
+  grid-template-columns: minmax(250px, 1fr) minmax(200px, 280px) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--line);
+  background: #f2f7f5;
+}
+.roadmap-action-bar.is-trash { background: #fff4f2; }
+.roadmap-next-step { display: grid; gap: 4px; min-width: 0; }
+.roadmap-next-step span,
+.roadmap-member-assignment { color: var(--muted); font-size: 11px; font-weight: 750; }
+.roadmap-next-step strong { overflow-wrap: anywhere; font-size: 14px; line-height: 1.4; }
+.roadmap-member-assignment { display: grid; gap: 5px; }
+.roadmap-member-assignment select { min-height: 40px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink); }
+.roadmap-action-controls { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.existing-roadmap-notes { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 6px; background: #fbfcfb; }
+.existing-roadmap-notes summary { font-weight: 800; cursor: pointer; }
+.existing-roadmap-notes p { color: #48564f; line-height: 1.55; white-space: pre-wrap; }
 
 .notes-panel { position: sticky; top: 88px; padding: 16px; }
 .notes-panel h2 { margin: 0; font-size: 18px; }
@@ -610,6 +635,27 @@ svg { width: 18px; height: 18px; flex: 0 0 auto; }
 .career-modal { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 16px; }
 .career-modal-backdrop { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; background: rgba(19, 29, 25, 0.48); cursor: default; }
 .career-editor { position: relative; display: flex; flex-direction: column; width: min(780px, 100%); max-height: calc(100vh - 32px); overflow: hidden; box-shadow: 0 24px 70px rgba(20, 31, 27, 0.26); }
+.action-editor { position: relative; width: min(650px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; box-shadow: 0 24px 70px rgba(20, 31, 27, 0.26); }
+.action-form { display: grid; gap: 14px; padding: 18px; }
+.action-modal-intro { display: grid; grid-template-columns: 36px minmax(0, 1fr); align-items: center; gap: 10px; padding: 11px 12px; border-left: 3px solid var(--green); background: var(--wash); color: #395248; }
+.action-modal-intro svg { color: var(--green); }
+.action-modal-intro p { margin: 0; font-size: 13px; line-height: 1.5; }
+.field-optional { color: var(--muted); font-size: 11px; font-weight: 600; }
+.action-form textarea { min-height: 100px; resize: vertical; line-height: 1.5; }
+.action-form textarea.compact-textarea { min-height: 76px; }
+.action-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.action-form-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.action-kind-fieldset { margin: 0; padding: 0; border: 0; }
+.action-kind-fieldset legend { margin-bottom: 7px; font-size: 13px; font-weight: 800; }
+.action-kind-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.action-kind-options label { cursor: pointer; }
+.action-kind-options input { position: absolute; opacity: 0; pointer-events: none; }
+.action-kind-options label > span { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 3px 7px; height: 100%; padding: 11px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.action-kind-options svg { grid-row: 1 / span 2; width: 18px; color: var(--muted); }
+.action-kind-options strong { font-size: 12px; }
+.action-kind-options small { color: var(--muted); font-size: 10px; line-height: 1.35; }
+.action-kind-options input:checked + span { border-color: var(--green); background: var(--wash); box-shadow: inset 0 0 0 1px var(--green); }
+.action-kind-options input:checked + span svg { color: var(--green); }
 .career-editor-header { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 17px 18px; border-bottom: 1px solid var(--line); }
 .career-editor-header h2 { margin: 0; font-size: 21px; }
 .career-editor-scroll { overflow-y: auto; overscroll-behavior: contain; }
@@ -671,6 +717,8 @@ svg { width: 18px; height: 18px; flex: 0 0 auto; }
   .team-columns { grid-template-columns: repeat(2, 1fr); }
   .member-metrics { grid-template-columns: repeat(2, 1fr); }
   .timeline-item { grid-template-columns: 100px minmax(0, 1fr) 130px 20px; }
+  .roadmap-action-bar { grid-template-columns: minmax(220px, 1fr) minmax(200px, 260px); }
+  .roadmap-action-controls { grid-column: 1 / -1; justify-content: flex-start; }
 }
 
 @media (max-width: 820px) {
@@ -689,6 +737,7 @@ svg { width: 18px; height: 18px; flex: 0 0 auto; }
   .quick-task-panel { position: static; }
   .member-overview-grid { grid-template-columns: 1fr; }
   .module-heading { align-items: stretch; flex-direction: column; }
+  .module-actions { justify-content: space-between; }
   .filter-reset-button { align-self: flex-start; }
   .member-overview-panel.overview-wide { grid-column: 1; }
   .recent-roadmaps button { grid-template-columns: 100px minmax(0, 1fr) 18px; }
@@ -699,8 +748,11 @@ svg { width: 18px; height: 18px; flex: 0 0 auto; }
   .page-heading { align-items: start; flex-direction: column; }
   .page-heading h1 { font-size: 30px; }
   .filters { grid-template-columns: 1fr; }
+  .roadmap-filters.without-status { grid-template-columns: 1fr; }
   .pipeline { grid-template-columns: repeat(2, 1fr); }
   .submission-header { grid-template-columns: 1fr; }
+  .roadmap-action-bar { grid-template-columns: 1fr; align-items: stretch; }
+  .roadmap-action-controls { grid-column: 1; justify-content: flex-start; }
   .workspace,
   .team-layout { grid-template-columns: 1fr; }
   .notes-panel,
@@ -738,10 +790,14 @@ svg { width: 18px; height: 18px; flex: 0 0 auto; }
   .compact-field { min-width: 0; }
   .task-card { grid-template-columns: 1fr; }
   .task-card-actions { justify-content: flex-end; border-top: 1px solid #edf0ee; border-left: 0; }
+  .task-next-button { flex: 1; white-space: normal; }
   .quick-task-fields { grid-template-columns: 1fr; }
   .roadmap-tabs { flex-wrap: nowrap; width: 100%; overflow-x: auto; }
   .roadmap-tabs .tab-button { white-space: nowrap; }
   .roadmap-pipeline { grid-template-columns: 1fr 1fr; }
+  .roadmap-trash-button span { display: none; }
+  .member-profile-actions { justify-content: stretch; }
+  .member-profile-actions .button { flex: 1; }
   .member-section-tabs { width: 100%; }
   .recent-roadmaps button { grid-template-columns: 1fr 18px; }
   .recent-roadmaps button > span,
@@ -772,6 +828,9 @@ svg { width: 18px; height: 18px; flex: 0 0 auto; }
   .career-item-owner { grid-column: 2; display: flex; justify-content: space-between; }
   .career-item > svg { grid-column: 3; grid-row: 1 / span 3; }
   .career-modal { padding: 7px; }
+  .action-kind-options,
+  .action-form-grid { grid-template-columns: 1fr; }
+  .action-form-actions .button { width: 100%; }
   .career-editor { max-height: calc(100vh - 14px); }
   #careerForm { grid-template-columns: 1fr; padding: 14px; }
   #careerForm .field-wide { grid-column: 1; }
@@ -794,12 +853,13 @@ svg { width: 18px; height: 18px; flex: 0 0 auto; }
   .view-tabs,
   .filters,
   .pipeline,
+  .roadmap-action-bar,
   .submission-picker,
   .notes-actions,
   .status-fieldset,
   #toast { display: none !important; }
   .page { width: 100%; padding: 0; }
-  .workspace { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 12px; }
+  .workspace { display: block; }
   .panel { box-shadow: none; }
   .notes-panel { position: static; }
   .response-section { break-inside: avoid; }

@@ -354,6 +354,7 @@ function normalizeStatus(value) {
   const normalized = aliases[value] || value || "to_read";
   const allowed = new Set([
     "to_read",
+    "message_to_send",
     "meeting_planned",
     "meeting_done",
     "action_required",
