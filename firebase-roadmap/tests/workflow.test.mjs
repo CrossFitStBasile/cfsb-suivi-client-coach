@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  entityVersionToken,
   effectiveWorkflowStatus,
+  hasVersionConflict,
   isHistoricalManagementTask,
   isOpenManagementTask,
   roadmapActionDefinition,
@@ -49,4 +51,20 @@ test("completed and cancelled manual actions leave the open list but remain hist
   assert.equal(isHistoricalManagementTask({ status: "completed" }), true);
   assert.equal(isHistoricalManagementTask({ status: "cancelled" }), true);
   assert.equal(isHistoricalManagementTask({ status: "open" }), false);
+});
+
+test("entity version tokens support Firestore timestamps, dates, and ISO values", () => {
+  assert.equal(entityVersionToken({ updatedAt: { toMillis: () => 42 } }), "42");
+  assert.equal(entityVersionToken({ updatedAt: new Date("2026-07-13T12:00:00Z") }), "1783944000000");
+  assert.equal(
+    entityVersionToken({ submittedAt: "2026-07-13T12:00:00Z" }),
+    "1783944000000"
+  );
+});
+
+test("version conflicts only trigger when a loaded entity changed", () => {
+  const baseline = entityVersionToken({ updatedAt: "2026-07-13T12:00:00Z" });
+  assert.equal(hasVersionConflict({ updatedAt: "2026-07-13T12:00:00Z" }, baseline), false);
+  assert.equal(hasVersionConflict({ updatedAt: "2026-07-13T12:05:00Z" }, baseline), true);
+  assert.equal(hasVersionConflict({ updatedAt: "2026-07-13T12:05:00Z" }, ""), false);
 });

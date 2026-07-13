@@ -11,13 +11,19 @@ import {
   doc,
   getDoc,
   getFirestore,
+  limit,
   onSnapshot,
+  orderBy,
+  query,
+  runTransaction,
   serverTimestamp,
   writeBatch
 } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
 import {
+  entityVersionToken,
   effectiveWorkflowStatus,
+  hasVersionConflict,
   isHistoricalManagementTask,
   isOpenManagementTask,
   roadmapActionDefinition,
@@ -97,6 +103,8 @@ const state = {
   careerMilestones: [],
   careerUpdates: [],
   managementTasks: [],
+  auditLogs: [],
+  clientErrors: [],
   view: "todo",
   roadmapView: "queue",
   selectedId: "",
@@ -108,11 +116,20 @@ const state = {
   roadmapCompletionId: "",
   teamActionMemberId: "",
   taskEditorId: "",
+  taskEditorVersion: "",
+  taskConflict: null,
+  taskEditorForceSave: false,
+  memberEditorVersion: "",
+  careerEditorVersion: "",
+  roadmapCompletionVersion: "",
   memberActionView: "open",
   showArchivedCareer: false,
   taskFilter: "all",
   taskOwnerFilter: "all",
   teamSearch: "",
+  activitySearch: "",
+  activityActor: "all",
+  activityEntity: "all",
   filters: { search: "", role: "all", cycle: "all", status: "all" },
   unsubscribers: [],
   busy: false,
@@ -122,7 +139,10 @@ const state = {
 const appRoot = document.querySelector("#app");
 const toastRoot = document.querySelector("#toast");
 let toastTimer = null;
+let loggingClientError = false;
 document.addEventListener("keydown", handleGlobalKeydown);
+window.addEventListener("error", (event) => logClientError(event.error || event.message, "window_error"));
+window.addEventListener("unhandledrejection", (event) => logClientError(event.reason, "unhandled_rejection"));
 
 onAuthStateChanged(auth, async (user) => {
   cleanupSubscriptions();
@@ -165,7 +185,7 @@ function renderLogin() {
           <i data-lucide="log-in"></i>
           Connexion Google
         </button>
-        <div class="auth-note">Environnement de test prive. Les roadmaps actuellement utilisees restent dans le systeme officiel pendant la validation.</div>
+        <div class="auth-note">Acces reserve a Michael et Gabriel.</div>
       </section>
     </main>
   `;
@@ -239,6 +259,14 @@ function subscribeData() {
     state.managementTasks = snapshot.docs.map(fromDoc).sort(sortManagementTasks);
     renderFromData();
   }, dataError));
+  state.unsubscribers.push(onSnapshot(query(collection(db, "auditLogs"), orderBy("createdAt", "desc"), limit(250)), (snapshot) => {
+    state.auditLogs = snapshot.docs.map(fromDoc);
+    renderFromData();
+  }, dataError));
+  state.unsubscribers.push(onSnapshot(query(collection(db, "clientErrors"), orderBy("createdAt", "desc"), limit(50)), (snapshot) => {
+    state.clientErrors = snapshot.docs.map(fromDoc);
+    renderFromData();
+  }, dataError));
 }
 
 function cleanupSubscriptions() {
@@ -248,11 +276,12 @@ function cleanupSubscriptions() {
 
 function dataError(error) {
   state.loadError = friendlyError(error);
+  logClientError(error, "firestore_subscription");
   renderFromData();
 }
 
 function renderFromData() {
-  if (hasOpenModal()) return;
+  if (hasProtectedEditor()) return;
   renderApp();
 }
 
@@ -262,7 +291,8 @@ function renderApp() {
   const viewMeta = {
     todo: ["Pilotage quotidien", "A faire", "Les prochaines actions de Michael et Gabriel, rassemblees au meme endroit."],
     team: ["Dossiers longitudinaux", state.selectedMemberId ? "Dossier membre" : "Equipe", state.selectedMemberId ? "Roadmaps, actions et evolution de carriere dans un seul dossier." : "Une vue claire de chaque membre et de ce qui demande votre attention."],
-    roadmaps: ["Rencontres trimestrielles", "Roadmaps", "Traiter les nouvelles reponses, preparer les rencontres et conserver l'historique."]
+    roadmaps: ["Rencontres trimestrielles", "Roadmaps", "Traiter les nouvelles reponses, preparer les rencontres et conserver l'historique."],
+    activity: ["Tracabilite owner", "Activite", "Voir les changements importants et l'etat de sante du dashboard."]
   }[state.view] || ["Dashboard Equipe", "Dashboard Equipe", ""];
   appRoot.innerHTML = `
     <div class="team-command-shell">
@@ -282,7 +312,7 @@ function renderApp() {
             <div class="environment-badge">FIREBASE · TEMPS REEL</div>
           </section>
           ${state.loadError ? `<div class="auth-note">${escapeHtml(state.loadError)}</div>` : ""}
-          ${state.view === "todo" ? renderTodoView() : state.view === "team" ? renderTeamView() : renderRoadmapModule()}
+          ${state.view === "todo" ? renderTodoView() : state.view === "team" ? renderTeamView() : state.view === "roadmaps" ? renderRoadmapModule() : renderActivityView()}
         </main>
       </div>
       ${state.careerEditorId ? renderCareerEditor() : ""}
@@ -299,6 +329,7 @@ function renderApp() {
 function renderCommandSidebar() {
   const openTasks = allOpenManagementTasks().length;
   const queueCount = state.submissions.filter((item) => submissionBucket(item) === "queue").length;
+  const unresolvedErrors = state.clientErrors.filter((item) => !item.resolvedAt).length;
   return `
     <aside class="command-sidebar">
       <div class="command-brand">
@@ -309,6 +340,7 @@ function renderCommandSidebar() {
         ${commandNavButton("todo", "list-checks", "A faire", openTasks)}
         ${commandNavButton("team", "users-round", "Equipe", state.teamMembers.filter((item) => item.active !== false).length)}
         ${commandNavButton("roadmaps", "clipboard-list", "Roadmaps", queueCount)}
+        ${commandNavButton("activity", "history", "Activite", unresolvedErrors)}
       </nav>
       <div class="command-sidebar-footer">
         <span>${escapeHtml(state.profile.displayName || state.user.displayName || "Owner")}</span>
@@ -411,6 +443,130 @@ function todoStat(value, label, filter, icon, tone = "") {
       <i data-lucide="${icon}"></i><span><strong>${value || 0}</strong><small>${escapeHtml(label)}</small></span>
     </button>
   `;
+}
+
+function renderActivityView() {
+  const logs = filteredActivityLogs();
+  const unresolvedErrors = state.clientErrors.filter((item) => !item.resolvedAt);
+  const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+  const changesToday = state.auditLogs.filter((item) => dateValue(item.createdAt) >= dayAgo).length;
+  const actorsToday = new Set(state.auditLogs.filter((item) => dateValue(item.createdAt) >= dayAgo).map((item) => item.actorName).filter(Boolean)).size;
+  const actors = [...new Set(state.auditLogs.map((item) => item.actorName).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  return `
+    <section class="activity-stats">
+      ${activityStat(changesToday, "Changements en 24 h", "activity")}
+      ${activityStat(actorsToday, "Owners actifs", "users")}
+      ${activityStat(state.auditLogs.length, "Evenements recents", "history")}
+      ${activityStat(unresolvedErrors.length, unresolvedErrors.length === 1 ? "Erreur a verifier" : "Erreurs a verifier", unresolvedErrors.length ? "triangle-alert" : "shield-check", unresolvedErrors.length ? "danger" : "healthy")}
+    </section>
+    <section class="panel activity-health ${unresolvedErrors.length ? "has-errors" : "healthy"}">
+      <header class="activity-health-heading">
+        <span class="activity-health-icon"><i data-lucide="${unresolvedErrors.length ? "triangle-alert" : "shield-check"}"></i></span>
+        <div><h2>${unresolvedErrors.length ? "Une erreur demande votre attention" : "Systeme en bonne sante"}</h2><p>${unresolvedErrors.length ? "Les erreurs techniques non traitees sont visibles ici, sans exposer de donnees sensibles." : "Aucune erreur non resolue n'a ete enregistree par le dashboard."}</p></div>
+      </header>
+      ${unresolvedErrors.length ? `<div class="health-error-list">${unresolvedErrors.slice(0, 6).map(renderClientError).join("")}</div>` : ""}
+    </section>
+    <section class="panel activity-toolbar">
+      <label class="field activity-search">Recherche
+        <input id="activitySearchInput" value="${escapeAttr(state.activitySearch)}" placeholder="Action, membre ou owner...">
+      </label>
+      <label class="field">Owner
+        <select id="activityActorFilter"><option value="all">Tous</option>${actors.map((actor) => `<option value="${escapeAttr(actor)}" ${state.activityActor === actor ? "selected" : ""}>${escapeHtml(actor)}</option>`).join("")}</select>
+      </label>
+      <label class="field">Element
+        <select id="activityEntityFilter">
+          ${[["all", "Tous"], ["roadmapSubmission", "Roadmaps"], ["managementTask", "Actions"], ["teamMember", "Equipe"], ["careerMilestone", "Parcours"], ["clientError", "Systeme"]].map(([id, label]) => `<option value="${id}" ${state.activityEntity === id ? "selected" : ""}>${label}</option>`).join("")}
+        </select>
+      </label>
+    </section>
+    <section class="panel activity-panel">
+      <header class="section-heading"><div><h2>Journal des changements</h2><p>${logs.length} evenement(s) visible(s). Clique sur une ligne pour ouvrir l'element concerne.</p></div></header>
+      <div class="activity-list">
+        ${logs.length ? logs.map(renderActivityRow).join("") : `<div class="empty-state"><i data-lucide="search-x"></i><div>Aucun changement ne correspond a ces filtres.</div></div>`}
+      </div>
+    </section>
+  `;
+}
+
+function activityStat(value, label, icon, tone = "") {
+  return `<article class="activity-stat ${tone}"><i data-lucide="${icon}"></i><span><strong>${value || 0}</strong><small>${escapeHtml(label)}</small></span></article>`;
+}
+
+function renderClientError(error) {
+  return `
+    <article class="health-error">
+      <div><strong>${escapeHtml(error.context || "Erreur du dashboard")}</strong><p>${escapeHtml(truncate(error.message || "Erreur inconnue", 220))}</p><small>${formatDate(error.createdAt)} · ${escapeHtml(error.actorName || "Owner")}</small></div>
+      <button class="button" data-resolve-client-error="${escapeAttr(error.id)}" type="button"><i data-lucide="check"></i> Marquer resolue</button>
+    </article>
+  `;
+}
+
+function renderActivityRow(log) {
+  const meta = activityActionMeta(log.action);
+  const target = activityTargetLabel(log);
+  return `
+    <button class="activity-row" data-open-audit="${escapeAttr(log.id)}" type="button">
+      <span class="activity-row-icon ${escapeAttr(meta.tone)}"><i data-lucide="${meta.icon}"></i></span>
+      <span class="activity-row-copy"><strong>${escapeHtml(meta.label)}</strong><small>${escapeHtml(target)}</small></span>
+      <span class="activity-row-actor"><strong>${escapeHtml(log.actorName || "Owner")}</strong><small>${formatDate(log.createdAt)}</small></span>
+      <i data-lucide="chevron-right"></i>
+    </button>
+  `;
+}
+
+function filteredActivityLogs() {
+  const search = normalize(state.activitySearch);
+  return state.auditLogs.filter((log) => {
+    if (state.activityActor !== "all" && log.actorName !== state.activityActor) return false;
+    if (state.activityEntity !== "all" && log.entityType !== state.activityEntity) return false;
+    if (!search) return true;
+    return normalize([activityActionMeta(log.action).label, activityTargetLabel(log), log.actorName].join(" ")).includes(search);
+  });
+}
+
+function activityActionMeta(action) {
+  const values = {
+    management_task_created: ["Action creee", "circle-plus", "blue"],
+    management_task_updated: ["Action modifiee", "pencil", "blue"],
+    management_task_completed: ["Action terminee", "circle-check-big", "green"],
+    management_task_cancelled: ["Action annulee et conservee", "circle-slash-2", "neutral"],
+    management_task_reopened: ["Action rouverte", "rotate-ccw", "amber"],
+    management_task_postponed: ["Action reportee", "calendar-clock", "amber"],
+    team_member_saved: ["Dossier membre enregistre", "user-round-check", "green"],
+    career_milestone_saved: ["Etape de parcours enregistree", "route", "blue"],
+    career_update_added: ["Note d'evolution ajoutee", "message-square-plus", "green"],
+    career_milestone_archived: ["Etape de parcours archivee", "archive", "neutral"],
+    career_milestone_restored: ["Etape de parcours restauree", "rotate-ccw", "amber"],
+    roadmap_meeting_completed: ["Rencontre roadmap terminee", "calendar-check", "green"],
+    submission_workflow_advanced: ["Roadmap avancee", "move-right", "green"],
+    submission_status_changed: ["Etape de roadmap modifiee", "refresh-cw", "blue"],
+    submission_member_assigned: ["Roadmap associee a un membre", "link", "blue"],
+    submission_archived: ["Roadmap archivee", "archive", "neutral"],
+    submission_restored: ["Roadmap restauree", "rotate-ccw", "amber"],
+    submission_trashed: ["Roadmap placee dans la corbeille", "trash-2", "neutral"],
+    submission_trash_restored: ["Roadmap sortie de la corbeille", "rotate-ccw", "amber"],
+    submission_deleted_permanently: ["Roadmap supprimee", "trash", "red"],
+    owner_notes_saved: ["Notes owner enregistrees", "notebook-pen", "blue"],
+    client_error_resolved: ["Erreur technique resolue", "shield-check", "green"]
+  };
+  const [label, icon, tone] = values[action] || [humanize(action || "changement"), "history", "neutral"];
+  return { label, icon, tone };
+}
+
+function activityTargetLabel(log) {
+  if (log.entityType === "clientError") return log.details?.context || "Etat de sante du dashboard";
+  if (log.entityType === "teamMember") {
+    return state.teamMembers.find((item) => item.id === log.entityId)?.name || "Dossier equipe";
+  }
+  if (log.entityType === "careerMilestone") {
+    const milestone = state.careerMilestones.find((item) => item.id === log.entityId);
+    return milestone?.title || state.teamMembers.find((item) => item.id === log.details?.teamMemberId)?.name || "Parcours CFSB";
+  }
+  if (log.entityType === "managementTask") {
+    return state.managementTasks.find((item) => item.id === log.entityId)?.title || "Action de gestion";
+  }
+  const submission = state.submissions.find((item) => item.id === log.entityId);
+  return submission ? `${submission.employeeName || submission.answers?.employee_name || "Membre"} · ${submission.cycleId || "Roadmap"}` : "Roadmap conservee au journal";
 }
 
 function renderTaskCard(task) {
@@ -1067,6 +1223,7 @@ function renderTeamActionModal() {
 function renderTaskEditorModal() {
   const task = state.managementTasks.find((item) => item.id === state.taskEditorId);
   if (!task) return "";
+  const value = state.taskConflict?.taskId === task.id ? state.taskConflict.draft : task;
   const status = task.status || "open";
   const isOpen = !["completed", "cancelled"].includes(status);
   const statusLabel = TASK_STATUS_LABELS[status] || "Ouverte";
@@ -1079,25 +1236,35 @@ function renderTaskEditorModal() {
           <button class="button icon-only" data-close-task-editor type="button" title="Fermer" aria-label="Fermer"><i data-lucide="x"></i></button>
         </header>
         <form id="taskEditorForm" class="action-form">
-          <label class="field">Action<input name="title" required maxlength="180" value="${escapeAttr(task.title || "")}" autofocus></label>
+          ${state.taskConflict?.taskId === task.id ? `
+            <div class="conflict-alert" role="alert">
+              <i data-lucide="git-merge"></i>
+              <div><strong>Une version plus recente existe</strong><p>${escapeHtml(task.updatedByName || "L'autre owner")} a modifie cette action pendant ton edition. Choisis la version a conserver.</p></div>
+              <div class="conflict-actions">
+                <button class="button" data-resolve-task-conflict="reload" type="button">Utiliser la version recente</button>
+                <button class="button primary" data-resolve-task-conflict="overwrite" type="button">Garder mes changements</button>
+              </div>
+            </div>
+          ` : ""}
+          <label class="field">Action<input name="title" required maxlength="180" value="${escapeAttr(value.title || "")}" autofocus></label>
           <div class="action-form-grid">
             <label class="field">Membre concerne
               <select name="teamMemberId">
                 <option value="">Aucun membre</option>
-                ${state.teamMembers.map((member) => `<option value="${escapeAttr(member.id)}" ${task.teamMemberId === member.id ? "selected" : ""}>${escapeHtml(member.name)}${member.active === false ? " (inactif)" : ""}</option>`).join("")}
+                ${state.teamMembers.map((member) => `<option value="${escapeAttr(member.id)}" ${value.teamMemberId === member.id ? "selected" : ""}>${escapeHtml(member.name)}${member.active === false ? " (inactif)" : ""}</option>`).join("")}
               </select>
             </label>
             <label class="field">Type
-              <select name="taskKind">${TASK_KIND_OPTIONS.map(([id, label]) => `<option value="${id}" ${(task.taskKind || "general") === id ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select>
+              <select name="taskKind">${TASK_KIND_OPTIONS.map(([id, label]) => `<option value="${id}" ${(value.taskKind || "general") === id ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select>
             </label>
             <label class="field">Responsable
-              <select name="ownerName">${OWNER_OPTIONS.map((owner) => `<option value="${escapeAttr(owner)}" ${task.ownerName === owner ? "selected" : ""}>${escapeHtml(owner)}</option>`).join("")}</select>
+              <select name="ownerName">${OWNER_OPTIONS.map((owner) => `<option value="${escapeAttr(owner)}" ${value.ownerName === owner ? "selected" : ""}>${escapeHtml(owner)}</option>`).join("")}</select>
             </label>
             <label class="field">Priorite
-              <select name="priority">${TASK_PRIORITY_OPTIONS.map(([id, label]) => `<option value="${id}" ${(task.priority || "P2") === id ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select>
+              <select name="priority">${TASK_PRIORITY_OPTIONS.map(([id, label]) => `<option value="${id}" ${(value.priority || "P2") === id ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select>
             </label>
           </div>
-          <label class="field">Details <span class="field-optional">facultatif</span><textarea class="compact-textarea" name="description" placeholder="Contexte utile pour agir sans rouvrir tout le dossier.">${escapeHtml(task.description || "")}</textarea></label>
+          <label class="field">Details <span class="field-optional">facultatif</span><textarea class="compact-textarea" name="description" placeholder="Contexte utile pour agir sans rouvrir tout le dossier.">${escapeHtml(value.description || "")}</textarea></label>
           <div class="task-editor-state"><span class="task-status-pill ${escapeAttr(status)}">${escapeHtml(statusLabel)}</span>${task.updatedAt ? `<small>Derniere modification: ${formatDate(task.updatedAt)}</small>` : ""}</div>
           <div class="action-form-actions">
             <button class="button primary" type="submit"><i data-lucide="save"></i> Enregistrer</button>
@@ -1161,6 +1328,24 @@ function bindAppEvents() {
     ensureSelection();
     renderApp();
   }));
+  document.querySelector("#activitySearchInput")?.addEventListener("input", (event) => {
+    state.activitySearch = event.target.value;
+    const cursor = event.target.selectionStart ?? state.activitySearch.length;
+    renderApp();
+    const input = document.querySelector("#activitySearchInput");
+    input?.focus();
+    input?.setSelectionRange(cursor, cursor);
+  });
+  document.querySelector("#activityActorFilter")?.addEventListener("change", (event) => {
+    state.activityActor = event.target.value;
+    renderApp();
+  });
+  document.querySelector("#activityEntityFilter")?.addEventListener("change", (event) => {
+    state.activityEntity = event.target.value;
+    renderApp();
+  });
+  document.querySelectorAll("[data-open-audit]").forEach((button) => button.addEventListener("click", () => openAuditEntity(button.dataset.openAudit)));
+  document.querySelectorAll("[data-resolve-client-error]").forEach((button) => button.addEventListener("click", () => resolveClientError(button.dataset.resolveClientError)));
   document.querySelectorAll("[data-roadmap-view]").forEach((button) => button.addEventListener("click", () => {
     state.roadmapView = button.dataset.roadmapView;
     state.filters.status = "all";
@@ -1245,6 +1430,7 @@ function bindAppEvents() {
     state.view = "team";
     state.selectedMemberId = "";
     state.editingMemberId = button.dataset.editMember;
+    state.memberEditorVersion = entityVersionToken(state.teamMembers.find((item) => item.id === state.editingMemberId));
     renderApp();
   }));
   document.querySelectorAll("[data-create-member-action]").forEach((button) => button.addEventListener("click", () => {
@@ -1254,6 +1440,7 @@ function bindAppEvents() {
   document.querySelector("#addMemberButton")?.addEventListener("click", () => {
     state.selectedMemberId = "";
     state.editingMemberId = "__new__";
+    state.memberEditorVersion = "";
     renderApp();
   });
   document.querySelector("#teamSearchInput")?.addEventListener("input", (event) => {
@@ -1280,11 +1467,13 @@ function bindAppEvents() {
   }));
   document.querySelector("#addCareerMilestone")?.addEventListener("click", () => {
     state.careerEditorId = "__new__";
+    state.careerEditorVersion = "";
     state.careerDraft = { status: "planned", category: "skill", progress: 0 };
     renderApp();
   });
   document.querySelectorAll("[data-open-career]").forEach((button) => button.addEventListener("click", () => {
     state.careerEditorId = button.dataset.openCareer;
+    state.careerEditorVersion = entityVersionToken(state.careerMilestones.find((item) => item.id === state.careerEditorId));
     state.careerDraft = null;
     renderApp();
   }));
@@ -1307,6 +1496,7 @@ function bindAppEvents() {
   });
   document.querySelector("#cancelMemberEdit")?.addEventListener("click", () => {
     state.editingMemberId = "";
+    state.memberEditorVersion = "";
     renderApp();
   });
   document.querySelector("#memberForm")?.addEventListener("submit", saveTeamMember);
@@ -1317,16 +1507,19 @@ function bindAppEvents() {
   document.querySelectorAll('#teamActionForm input[name="taskKind"]').forEach((input) => input.addEventListener("change", updateTeamActionTitle));
   document.querySelectorAll("[data-close-task-editor]").forEach((button) => button.addEventListener("click", () => closeTaskEditor()));
   document.querySelector("#taskEditorForm")?.addEventListener("submit", saveManagementTaskEdit);
+  document.querySelectorAll("[data-resolve-task-conflict]").forEach((button) => button.addEventListener("click", () => resolveTaskConflict(button.dataset.resolveTaskConflict)));
 }
 
 function closeCareerEditor(shouldRender = true) {
   state.careerEditorId = "";
+  state.careerEditorVersion = "";
   state.careerDraft = null;
   if (shouldRender) renderApp();
 }
 
 function closeRoadmapCompletion(shouldRender = true) {
   state.roadmapCompletionId = "";
+  state.roadmapCompletionVersion = "";
   if (shouldRender) renderApp();
 }
 
@@ -1336,21 +1529,32 @@ function closeTeamAction(shouldRender = true) {
 }
 
 function openTaskEditor(taskId) {
-  if (!state.managementTasks.some((item) => item.id === taskId)) return;
+  const task = state.managementTasks.find((item) => item.id === taskId);
+  if (!task) return;
   closeCareerEditor(false);
   closeRoadmapCompletion(false);
   closeTeamAction(false);
   state.taskEditorId = taskId;
+  state.taskEditorVersion = entityVersionToken(task);
+  state.taskConflict = null;
+  state.taskEditorForceSave = false;
   renderApp();
 }
 
 function closeTaskEditor(shouldRender = true) {
   state.taskEditorId = "";
+  state.taskEditorVersion = "";
+  state.taskConflict = null;
+  state.taskEditorForceSave = false;
   if (shouldRender) renderApp();
 }
 
 function hasOpenModal() {
   return Boolean(state.taskEditorId || state.teamActionMemberId || state.roadmapCompletionId || state.careerEditorId);
+}
+
+function hasProtectedEditor() {
+  return hasOpenModal() || Boolean(state.editingMemberId);
 }
 
 function syncModalState() {
@@ -1418,9 +1622,11 @@ function openCareerFromNextAction() {
   state.showArchivedCareer = false;
   if (linked) {
     state.careerEditorId = linked.id;
+    state.careerEditorVersion = entityVersionToken(linked);
     state.careerDraft = null;
   } else {
     state.careerEditorId = "__new__";
+    state.careerEditorVersion = "";
     state.careerDraft = {
       title: notes.nextAction || "",
       category: "skill",
@@ -1478,14 +1684,32 @@ async function saveCareerMilestone(event) {
       payload.createdByUid = state.user.uid;
       payload.createdByName = actorName();
     }
-    const batch = writeBatch(db);
-    batch.set(milestoneRef, payload, { merge: true });
-    batch.set(doc(collection(db, "auditLogs")), auditPayload("career_milestone_saved", milestoneRef.id, {
+    const auditRef = doc(collection(db, "auditLogs"));
+    const audit = auditPayload("career_milestone_saved", milestoneRef.id, {
       teamMemberId: member.id,
       status,
       progress
-    }));
-    await batch.commit();
+    });
+    if (existing) {
+      const saved = await runVersionedWrite({
+        reference: milestoneRef,
+        baseline: state.careerEditorVersion,
+        label: "cette etape",
+        write(transaction) {
+          transaction.set(milestoneRef, payload, { merge: true });
+          transaction.set(auditRef, audit);
+        }
+      });
+      if (!saved) {
+        closeCareerEditor();
+        return;
+      }
+    } else {
+      const batch = writeBatch(db);
+      batch.set(milestoneRef, payload, { merge: true });
+      batch.set(auditRef, audit);
+      await batch.commit();
+    }
     closeCareerEditor(false);
     showToast(existing ? "Etape mise a jour." : "Etape ajoutee au parcours.");
     renderApp();
@@ -1512,8 +1736,7 @@ async function saveCareerUpdate(event) {
   state.busy = true;
   try {
     const updateRef = doc(collection(db, "careerUpdates"));
-    const batch = writeBatch(db);
-    batch.set(updateRef, {
+    const updatePayload = {
       milestoneId: milestone.id,
       teamMemberId: milestone.teamMemberId,
       note,
@@ -1522,7 +1745,7 @@ async function saveCareerUpdate(event) {
       createdAt: serverTimestamp(),
       createdByUid: state.user.uid,
       createdByName: actorName()
-    });
+    };
     const milestoneUpdate = {
       progress,
       status: nextStatus,
@@ -1531,13 +1754,29 @@ async function saveCareerUpdate(event) {
       updatedByName: actorName()
     };
     if (nextStatus === "completed" && !milestone.completedDate) milestoneUpdate.completedDate = todayInputValue();
-    batch.update(doc(db, "careerMilestones", milestone.id), milestoneUpdate);
-    batch.set(doc(collection(db, "auditLogs")), auditPayload("career_update_added", milestone.id, {
+    const milestoneRef = doc(db, "careerMilestones", milestone.id);
+    const auditRef = doc(collection(db, "auditLogs"));
+    const audit = auditPayload("career_update_added", milestone.id, {
       teamMemberId: milestone.teamMemberId,
       progress,
       status: nextStatus
-    }));
-    await batch.commit();
+    });
+    const saved = await runVersionedWrite({
+      reference: milestoneRef,
+      baseline: state.careerEditorVersion,
+      label: "cette etape",
+      write(transaction) {
+        transaction.set(updateRef, updatePayload);
+        transaction.update(milestoneRef, milestoneUpdate);
+        transaction.set(auditRef, audit);
+      }
+    });
+    if (!saved) {
+      closeCareerEditor();
+      return;
+    }
+    Object.assign(milestone, milestoneUpdate, { updatedAt: new Date() });
+    state.careerEditorVersion = entityVersionToken(milestone);
     form.reset();
     showToast("Note d'evolution ajoutee.");
   } catch (error) {
@@ -1554,17 +1793,30 @@ async function toggleCareerArchive() {
   if (!restoring && !window.confirm(`Archiver l'etape « ${milestone.title || "sans titre"} »?`)) return;
   state.busy = true;
   try {
-    const batch = writeBatch(db);
-    batch.update(doc(db, "careerMilestones", milestone.id), {
+    const milestoneRef = doc(db, "careerMilestones", milestone.id);
+    const auditRef = doc(collection(db, "auditLogs"));
+    const milestoneUpdate = {
       archivedAt: restoring ? null : serverTimestamp(),
       updatedAt: serverTimestamp(),
       updatedByUid: state.user.uid,
       updatedByName: actorName()
-    });
-    batch.set(doc(collection(db, "auditLogs")), auditPayload(restoring ? "career_milestone_restored" : "career_milestone_archived", milestone.id, {
+    };
+    const audit = auditPayload(restoring ? "career_milestone_restored" : "career_milestone_archived", milestone.id, {
       teamMemberId: milestone.teamMemberId
-    }));
-    await batch.commit();
+    });
+    const saved = await runVersionedWrite({
+      reference: milestoneRef,
+      baseline: state.careerEditorVersion,
+      label: "cette etape",
+      write(transaction) {
+        transaction.update(milestoneRef, milestoneUpdate);
+        transaction.set(auditRef, audit);
+      }
+    });
+    if (!saved) {
+      closeCareerEditor();
+      return;
+    }
     closeCareerEditor(false);
     showToast(restoring ? "Etape restauree." : "Etape archivee.");
     renderApp();
@@ -1614,6 +1866,7 @@ async function handleRoadmapAction(action, submissionId) {
   if (!submission || state.busy) return;
   if (action === "meeting_done") {
     state.roadmapCompletionId = submission.id;
+    state.roadmapCompletionVersion = entityVersionToken(submission);
     renderApp();
     return;
   }
@@ -1664,13 +1917,17 @@ async function completeRoadmapMeeting(event) {
   const nextStatus = nextAction ? "action_required" : "meeting_done";
   state.busy = true;
   try {
-    const batch = writeBatch(db);
-    batch.update(doc(db, "roadmapSubmissions", submission.id), {
+    const submissionRef = doc(db, "roadmapSubmissions", submission.id);
+    const notesRef = doc(db, "ownerNotes", submission.id);
+    const auditRef = doc(collection(db, "auditLogs"));
+    const submissionUpdate = {
       status: nextStatus,
       archivedAt: null,
-      updatedAt: serverTimestamp()
-    });
-    batch.set(doc(db, "ownerNotes", submission.id), {
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    };
+    const notesUpdate = {
       submissionId: submission.id,
       ownerStatus: nextStatus,
       reviewerName,
@@ -1679,12 +1936,25 @@ async function completeRoadmapMeeting(event) {
       updatedAt: serverTimestamp(),
       updatedByUid: state.user.uid,
       updatedByName: actorName()
-    }, { merge: true });
-    batch.set(doc(collection(db, "auditLogs")), auditPayload("roadmap_meeting_completed", submission.id, {
+    };
+    const audit = auditPayload("roadmap_meeting_completed", submission.id, {
       status: nextStatus,
       hasFollowup: Boolean(nextAction)
-    }));
-    await batch.commit();
+    });
+    const saved = await runVersionedWrite({
+      reference: submissionRef,
+      baseline: state.roadmapCompletionVersion,
+      label: "cette roadmap",
+      write(transaction) {
+        transaction.update(submissionRef, submissionUpdate);
+        transaction.set(notesRef, notesUpdate, { merge: true });
+        transaction.set(auditRef, audit);
+      }
+    });
+    if (!saved) {
+      closeRoadmapCompletion();
+      return;
+    }
     closeRoadmapCompletion(false);
     if (state.view === "roadmaps") state.roadmapView = nextStatus === "meeting_done" ? "history" : "queue";
     showToast(nextAction ? "Rencontre terminee. Le suivi est ajoute a A faire." : "Rencontre terminee. La roadmap est dans l'historique.");
@@ -1711,7 +1981,8 @@ async function setSelectedStatus(nextStatus) {
       submissionId: submission.id,
       ownerStatus: nextStatus,
       updatedAt: serverTimestamp(),
-      updatedByUid: state.user.uid
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
     }, { merge: true });
     batch.set(doc(collection(db, "auditLogs")), auditPayload("submission_status_changed", submission.id, { status: nextStatus }));
     await batch.commit();
@@ -1898,6 +2169,7 @@ async function saveTeamMember(event) {
   const existingId = String(data.get("memberId") || "").trim();
   const memberId = existingId || slug(name);
   if (!name || !memberId) return;
+  const existingMember = state.teamMembers.find((item) => item.id === existingId) || null;
   state.busy = true;
   try {
     if (!existingId) {
@@ -1917,14 +2189,38 @@ async function saveTeamMember(event) {
       sortOrder: Number(data.get("sortOrder") || 100),
       active: data.get("active") === "on",
       updatedAt: serverTimestamp(),
-      updatedByUid: state.user.uid
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
     };
     if (!existingId) memberPayload.createdAt = serverTimestamp();
-    batch.set(doc(db, "teamMembers", memberId), memberPayload, { merge: true });
-    batch.set(doc(collection(db, "auditLogs")), auditPayload("team_member_saved", memberId));
-    await batch.commit();
+    const memberRef = doc(db, "teamMembers", memberId);
+    const auditRef = doc(collection(db, "auditLogs"));
+    const audit = auditPayload("team_member_saved", memberId);
+    if (existingMember) {
+      const saved = await runVersionedWrite({
+        reference: memberRef,
+        baseline: state.memberEditorVersion,
+        label: "ce dossier membre",
+        write(transaction) {
+          transaction.set(memberRef, memberPayload, { merge: true });
+          transaction.set(auditRef, audit);
+        }
+      });
+      if (!saved) {
+        state.editingMemberId = "";
+        state.memberEditorVersion = "";
+        renderApp();
+        return;
+      }
+    } else {
+      batch.set(memberRef, memberPayload, { merge: true });
+      batch.set(auditRef, audit);
+      await batch.commit();
+    }
     state.editingMemberId = "";
+    state.memberEditorVersion = "";
     showToast("Membre enregistre.");
+    renderApp();
   } catch (error) {
     showToast(`Membre non enregistre: ${friendlyError(error)}`);
   } finally {
@@ -2136,35 +2432,69 @@ async function saveManagementTaskEdit(event) {
   const memberId = String(data.get("teamMemberId") || "");
   const member = state.teamMembers.find((item) => item.id === memberId) || null;
   const taskKind = TASK_KIND_OPTIONS.some(([id]) => id === data.get("taskKind")) ? String(data.get("taskKind")) : "general";
-  const payload = {
+  const draft = {
     title,
     description: String(data.get("description") || "").trim(),
     teamMemberId: member?.id || "",
     teamMemberName: member?.name || "",
     ownerName: OWNER_OPTIONS.includes(String(data.get("ownerName"))) ? String(data.get("ownerName")) : "Michael + Gabriel",
     priority: TASK_PRIORITY_OPTIONS.some(([id]) => id === data.get("priority")) ? String(data.get("priority")) : "P2",
-    taskKind,
+    taskKind
+  };
+  const payload = {
+    ...draft,
     updatedAt: serverTimestamp(),
     updatedByUid: state.user.uid,
     updatedByName: actorName()
   };
   state.busy = true;
   try {
-    const batch = writeBatch(db);
-    batch.update(doc(db, "managementTasks", task.id), payload);
-    batch.set(doc(collection(db, "auditLogs")), auditPayload("management_task_updated", task.id, {
-      teamMemberId: member?.id || "",
-      taskKind
-    }));
-    await batch.commit();
+    const taskRef = doc(db, "managementTasks", task.id);
+    const auditRef = doc(collection(db, "auditLogs"));
+    await runTransaction(db, async (transaction) => {
+      const currentSnapshot = await transaction.get(taskRef);
+      if (!currentSnapshot.exists()) throw new Error("Cette action n'existe plus.");
+      const current = currentSnapshot.data();
+      if (!state.taskEditorForceSave && hasVersionConflict(current, state.taskEditorVersion)) throw versionConflictError(current);
+      transaction.update(taskRef, payload);
+      transaction.set(auditRef, auditPayload("management_task_updated", task.id, {
+        teamMemberId: member?.id || "",
+        taskKind
+      }));
+    });
     Object.assign(task, payload, { updatedAt: new Date() });
     closeTaskEditor(false);
     showToast("Action mise a jour.");
     renderApp();
   } catch (error) {
-    showToast(`Action non enregistree: ${friendlyError(error)}`);
+    if (error.code === "version-conflict") {
+      Object.assign(task, error.current, { id: task.id });
+      state.taskConflict = { taskId: task.id, draft };
+      state.taskEditorVersion = entityVersionToken(task);
+      state.taskEditorForceSave = false;
+      renderApp();
+    } else {
+      showToast(`Action non enregistree: ${friendlyError(error)}`);
+    }
   } finally {
     state.busy = false;
+  }
+}
+
+function resolveTaskConflict(choice) {
+  const task = state.managementTasks.find((item) => item.id === state.taskEditorId);
+  if (!task || !state.taskConflict) return;
+  if (choice === "reload") {
+    state.taskConflict = null;
+    state.taskEditorVersion = entityVersionToken(task);
+    state.taskEditorForceSave = false;
+    showToast("Version recente chargee.");
+    renderApp();
+    return;
+  }
+  if (choice === "overwrite") {
+    state.taskEditorForceSave = true;
+    document.querySelector("#taskEditorForm")?.requestSubmit();
   }
 }
 
@@ -2289,7 +2619,10 @@ function openTaskSource(taskId) {
     state.selectedMemberId = task.teamMemberId;
     state.editingMemberId = "";
     state.memberProfileSection = task.sourceType === "career" ? "career" : "actions";
-    if (task.sourceType === "career") state.careerEditorId = task.sourceId;
+    if (task.sourceType === "career") {
+      state.careerEditorId = task.sourceId;
+      state.careerEditorVersion = entityVersionToken(state.careerMilestones.find((item) => item.id === task.sourceId));
+    }
     renderApp();
     return;
   }
@@ -2299,7 +2632,7 @@ function openTaskSource(taskId) {
 function auditPayload(action, entityId, details = {}) {
   return {
     action,
-    entityType: action.startsWith("team_") ? "teamMember" : action.startsWith("career_") ? "careerMilestone" : action.startsWith("management_") ? "managementTask" : "roadmapSubmission",
+    entityType: action.startsWith("team_") ? "teamMember" : action.startsWith("career_") ? "careerMilestone" : action.startsWith("management_") ? "managementTask" : action.startsWith("client_error_") ? "clientError" : "roadmapSubmission",
     entityId,
     actorUid: state.user.uid,
     actorName: actorName(),
@@ -2307,6 +2640,92 @@ function auditPayload(action, entityId, details = {}) {
     createdAt: serverTimestamp(),
     source: "firebase_owner_dashboard"
   };
+}
+
+async function logClientError(error, context) {
+  if (!state.user || !state.profile || loggingClientError) return;
+  const message = String(error?.message || error || "Erreur inconnue").slice(0, 1000);
+  const stack = String(error?.stack || "").slice(0, 4000);
+  loggingClientError = true;
+  try {
+    const batch = writeBatch(db);
+    batch.set(doc(collection(db, "clientErrors")), {
+      message,
+      stack,
+      context: String(context || "dashboard").slice(0, 120),
+      page: window.location.pathname,
+      actorUid: state.user.uid,
+      actorName: actorName(),
+      resolvedAt: null,
+      createdAt: serverTimestamp()
+    });
+    await batch.commit();
+  } catch {
+    // Error reporting must never interrupt the owner workflow.
+  } finally {
+    loggingClientError = false;
+  }
+}
+
+async function resolveClientError(errorId) {
+  const error = state.clientErrors.find((item) => item.id === errorId);
+  if (!error || error.resolvedAt || state.busy) return;
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, "clientErrors", error.id), {
+      resolvedAt: serverTimestamp(),
+      resolvedByUid: state.user.uid,
+      resolvedByName: actorName()
+    });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload("client_error_resolved", error.id, { context: error.context || "" }));
+    await batch.commit();
+    Object.assign(error, { resolvedAt: new Date(), resolvedByName: actorName() });
+    showToast("Erreur marquee comme resolue.");
+    renderApp();
+  } catch (failure) {
+    showToast(`Erreur non resolue: ${friendlyError(failure)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+function openAuditEntity(logId) {
+  const log = state.auditLogs.find((item) => item.id === logId);
+  if (!log) return;
+  if (log.entityType === "managementTask") {
+    if (state.managementTasks.some((item) => item.id === log.entityId)) openTaskEditor(log.entityId);
+    else showToast("Cette action n'est plus disponible dans la vue courante.");
+    return;
+  }
+  if (log.entityType === "teamMember") {
+    if (!state.teamMembers.some((item) => item.id === log.entityId)) return showToast("Ce dossier membre n'est plus disponible.");
+    state.view = "team";
+    state.selectedMemberId = log.entityId;
+    state.memberProfileSection = "overview";
+    renderApp();
+    return;
+  }
+  if (log.entityType === "careerMilestone") {
+    const milestone = state.careerMilestones.find((item) => item.id === log.entityId);
+    const memberId = milestone?.teamMemberId || log.details?.teamMemberId;
+    if (!memberId) return showToast("Cette etape n'est plus disponible.");
+    state.view = "team";
+    state.selectedMemberId = memberId;
+    state.memberProfileSection = "career";
+    if (milestone) {
+      state.careerEditorId = milestone.id;
+      state.careerEditorVersion = entityVersionToken(milestone);
+    }
+    renderApp();
+    return;
+  }
+  if (log.entityType === "clientError") {
+    showToast("Cette erreur est presentee dans l'etat de sante en haut de la page.");
+    return;
+  }
+  if (state.submissions.some((item) => item.id === log.entityId)) openSubmission(log.entityId);
+  else showToast("Cette roadmap n'est plus disponible, mais sa trace reste conservee.");
 }
 
 function filteredSubmissions() {
@@ -2611,6 +3030,38 @@ function showToast(message) {
   toastRoot.textContent = message;
   toastRoot.classList.add("visible");
   toastTimer = window.setTimeout(() => toastRoot.classList.remove("visible"), 3200);
+}
+
+function confirmOverwrite(label, updatedByName = "") {
+  const owner = updatedByName || "L'autre owner";
+  return window.confirm(`${owner} a modifie ${label} pendant ton edition.\n\nOK: conserver tes changements et remplacer la version recente.\nAnnuler: fermer et charger la version recente.`);
+}
+
+function versionConflictError(current) {
+  const error = new Error("Une version plus recente existe.");
+  error.code = "version-conflict";
+  error.current = current;
+  return error;
+}
+
+async function runVersionedWrite({ reference, baseline, label, write }) {
+  let forceOverwrite = false;
+  while (true) {
+    try {
+      await runTransaction(db, async (transaction) => {
+        const currentSnapshot = await transaction.get(reference);
+        if (!currentSnapshot.exists()) throw new Error("Cet element n'existe plus.");
+        const current = currentSnapshot.data();
+        if (!forceOverwrite && hasVersionConflict(current, baseline)) throw versionConflictError(current);
+        write(transaction, current);
+      });
+      return true;
+    } catch (error) {
+      if (error.code !== "version-conflict") throw error;
+      if (!confirmOverwrite(label, error.current?.updatedByName)) return false;
+      forceOverwrite = true;
+    }
+  }
 }
 
 function actorName() {

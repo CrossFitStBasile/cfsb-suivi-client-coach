@@ -31,3 +31,18 @@ export function isOpenManagementTask(task) {
 export function isHistoricalManagementTask(task) {
   return ["completed", "cancelled"].includes(task?.status);
 }
+
+export function entityVersionToken(entity) {
+  const value = entity?.updatedAt || entity?.createdAt || entity?.submittedAt;
+  if (!value) return "";
+  if (typeof value.toMillis === "function") return String(value.toMillis());
+  if (typeof value.toDate === "function") return String(value.toDate().getTime());
+  if (value instanceof Date) return String(value.getTime());
+  const time = Date.parse(value);
+  return Number.isNaN(time) ? String(value) : String(time);
+}
+
+export function hasVersionConflict(entity, baseline) {
+  const current = entityVersionToken(entity);
+  return Boolean(baseline && current && baseline !== current);
+}

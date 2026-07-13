@@ -114,6 +114,11 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    match /clientErrors/{errorId} {
+      allow read, update, delete: if isOwner();
+      allow create: if activeUser();
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

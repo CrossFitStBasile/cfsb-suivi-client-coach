@@ -38,8 +38,12 @@ Le Dashboard Equipe est deploye sur Firebase Hosting avec connexion Google owner
 - association ou reassignation manuelle d'une soumission au bon membre;
 - historique consultable, corbeille reversible et suppression definitive confirmee;
 - conservation des anciennes notes owners dans un bloc historique;
-- impression du dossier de rencontre et affichage de la version du formulaire.
-- formulaires modaux proteges contre les rafraichissements Firestore pendant une saisie, avec fermeture par `Echap` et focus clavier contenu.
+- impression du dossier de rencontre et affichage de la version du formulaire;
+- formulaires modaux proteges contre les rafraichissements Firestore pendant une saisie, avec fermeture par `Echap` et focus clavier contenu;
+- journal `Activite` reliant chaque changement au dossier, a la roadmap, a l'action ou au parcours concerne;
+- etat de sante owner avec consignation et resolution des erreurs du navigateur;
+- detection des modifications simultanees pour empecher Michael et Gabriel de s'ecraser silencieusement;
+- tests de flux unitaires, controle responsive et smoke test de l'URL de production.
 
 ## Verification locale
 
@@ -47,6 +51,12 @@ Executer les controles de syntaxe et les tests de flux avant chaque deploiement:
 
 ```powershell
 npm run check
+```
+
+Verifier ensuite les ressources reellement servies par Firebase Hosting:
+
+```powershell
+npm run test:live
 ```
 
 ## Configuration Web
