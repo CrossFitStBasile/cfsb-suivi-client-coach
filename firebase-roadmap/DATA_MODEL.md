@@ -180,6 +180,27 @@ Note d'evolution immutable rattachee a une etape de carriere.
 
 Les mises a jour sont conservees separement afin qu'une nouvelle note n'ecrase jamais l'historique d'evolution.
 
+## `managementTasks/{taskId}`
+
+Action de gestion creee manuellement par Michael ou Gabriel. Les actions directement issues des Roadmaps et des etapes de carriere sont projetees automatiquement dans l'interface sans dupliquer les donnees sources.
+
+- `title`
+- `description`
+- `teamMemberId`: membre concerne, si applicable
+- `teamMemberName`
+- `ownerName`: `Michael`, `Gabriel` ou `Michael + Gabriel`
+- `priority`: `P1`, `P2` ou `P3`
+- `status`: `open`, `completed` ou `cancelled`
+- `dueDate`
+- `sourceType`: `manual`
+- `createdAt`
+- `createdByUid`
+- `createdByName`
+- `updatedAt`
+- `updatedByUid`
+- `completedAt`
+- `completedByUid`
+
 ## `revenueScenarios/{scenarioId}`
 
 - `authorUid`

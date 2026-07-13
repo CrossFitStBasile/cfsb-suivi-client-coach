@@ -33,6 +33,20 @@ const STATUS_OPTIONS = [
 ];
 const OWNER_OPTIONS = ["Michael", "Gabriel", "Michael + Gabriel"];
 const STATUS_LABELS = Object.fromEntries(STATUS_OPTIONS);
+const WORKFLOW_STATUS_OPTIONS = STATUS_OPTIONS.filter(([id]) => ["to_read", "meeting_planned", "action_required", "ready_to_archive"].includes(id));
+const WORKFLOW_STATUS_IDS = WORKFLOW_STATUS_OPTIONS.map(([id]) => id);
+const TASK_PRIORITY_OPTIONS = [
+  ["P1", "Urgent"],
+  ["P2", "Normal"],
+  ["P3", "Faible"]
+];
+const TASK_FILTER_OPTIONS = [
+  ["all", "Toutes"],
+  ["urgent", "Urgentes"],
+  ["roadmap", "Roadmaps"],
+  ["career", "Parcours"],
+  ["manual", "Manuelles"]
+];
 const CAREER_STATUS_OPTIONS = [
   ["planned", "Planifiee"],
   ["in_progress", "En cours"],
@@ -63,14 +77,19 @@ const state = {
   forms: {},
   careerMilestones: [],
   careerUpdates: [],
-  view: "active",
+  managementTasks: [],
+  view: "todo",
+  roadmapView: "queue",
   selectedId: "",
   selectedMemberId: "",
   editingMemberId: "",
-  memberProfileSection: "career",
+  memberProfileSection: "overview",
   careerEditorId: "",
   careerDraft: null,
   showArchivedCareer: false,
+  taskFilter: "all",
+  taskOwnerFilter: "all",
+  teamSearch: "",
   filters: { search: "", role: "all", cycle: "all", status: "all" },
   unsubscribers: [],
   busy: false,
@@ -115,8 +134,8 @@ function renderLogin() {
       <section class="auth-panel">
         <div class="brand-mark">CF</div>
         <p class="eyebrow">CrossFit St-Basile</p>
-        <h1>Roadmap owners</h1>
-        <p>Preparation des rencontres, notes owners, archives et portrait de l'equipe dans le nouvel environnement Firebase.</p>
+        <h1>Dashboard Equipe</h1>
+        <p>Actions de gestion, dossiers membres, roadmaps et parcours de carriere dans le nouvel environnement Firebase.</p>
         <button class="button primary" id="loginButton" type="button">
           <i data-lucide="log-in"></i>
           Connexion Google
@@ -135,7 +154,7 @@ function renderAccessDenied(message) {
       <section class="auth-panel">
         <div class="brand-mark">CF</div>
         <p class="eyebrow">Acces non disponible</p>
-        <h1>Roadmap owners</h1>
+        <h1>Dashboard Equipe</h1>
         <p>${escapeHtml(message)}</p>
         <button class="button" id="logoutButton" type="button">
           <i data-lucide="log-out"></i>
@@ -190,6 +209,10 @@ function subscribeData() {
     state.careerUpdates = snapshot.docs.map(fromDoc).sort((a, b) => dateValue(b.createdAt) - dateValue(a.createdAt));
     renderApp();
   }, dataError));
+  state.unsubscribers.push(onSnapshot(collection(db, "managementTasks"), (snapshot) => {
+    state.managementTasks = snapshot.docs.map(fromDoc).sort(sortManagementTasks);
+    renderApp();
+  }, dataError));
 }
 
 function cleanupSubscriptions() {
@@ -204,50 +227,32 @@ function dataError(error) {
 
 function renderApp() {
   if (!state.user || !state.profile) return;
-  const counts = statusCounts();
+  const viewMeta = {
+    todo: ["Pilotage quotidien", "A faire", "Les prochaines actions de Michael et Gabriel, rassemblees au meme endroit."],
+    team: ["Dossiers longitudinaux", state.selectedMemberId ? "Dossier membre" : "Equipe", state.selectedMemberId ? "Roadmaps, actions et evolution de carriere dans un seul dossier." : "Une vue claire de chaque membre et de ce qui demande votre attention."],
+    roadmaps: ["Rencontres trimestrielles", "Roadmaps", "Traiter les nouvelles reponses, preparer les rencontres et conserver l'historique."]
+  }[state.view] || ["Dashboard Equipe", "Dashboard Equipe", ""];
   appRoot.innerHTML = `
-    <div class="app-shell">
-      <header class="topbar">
-        <div class="brand-line">
-          <div class="brand-mark">CF</div>
-          <div><strong>Roadmap owners</strong><span>${escapeHtml(state.profile.displayName || state.user.displayName || "Owner")}</span></div>
-        </div>
-        <div class="top-actions">
-          <div class="realtime">Temps reel Firestore</div>
-          <button class="button icon-only" id="reloadButton" type="button" title="Recharger">
-            <i data-lucide="refresh-cw"></i>
-          </button>
-          <button class="button" id="logoutButton" type="button">
-            <i data-lucide="log-out"></i><span>Deconnexion</span>
-          </button>
-        </div>
-      </header>
-      <main class="page">
-        <section class="page-heading">
-          <div>
-            <p class="eyebrow">Preparation des rencontres</p>
-            <h1>Lire, annoter, preparer.</h1>
-            <p>Les nouvelles soumissions apparaissent automatiquement, sans bouton de synchronisation.</p>
+    <div class="team-command-shell">
+      ${renderCommandSidebar()}
+      <div class="command-main">
+        <header class="command-topbar">
+          <div class="mobile-brand"><span class="brand-mark">CF</span><strong>Dashboard Equipe</strong></div>
+          <div class="top-actions">
+            <div class="realtime">Temps reel Firestore</div>
+            <button class="button icon-only" id="reloadButton" type="button" title="Recharger les donnees"><i data-lucide="refresh-cw"></i></button>
+            <button class="button icon-only" id="logoutButton" type="button" title="Deconnexion"><i data-lucide="log-out"></i></button>
           </div>
-          <div class="environment-badge">ENVIRONNEMENT FIREBASE TEST</div>
-        </section>
-        ${state.loadError ? `<div class="auth-note">${escapeHtml(state.loadError)}</div>` : ""}
-        ${renderTabs()}
-        ${state.view === "team" ? renderTeamView() : `
-          ${renderFilters()}
-          ${state.view === "trash" ? "" : `
-            <section class="pipeline" aria-label="Filtrer le pipeline par statut">
-              ${metric(counts.to_read, "A lire", "green", "to_read")}
-              ${metric(counts.meeting_planned, "Rencontre planifiee", "blue", "meeting_planned")}
-              ${metric(counts.meeting_done, "Rencontre faite", "", "meeting_done")}
-              ${metric(counts.action_required, "Action requise", "red", "action_required")}
-              ${metric(counts.ready_to_archive, "Pret a archiver", "amber", "ready_to_archive")}
-              ${metric(counts.archived, "Archives", "", "archived")}
-            </section>
-          `}
-          ${renderSubmissionWorkspace()}
-        `}
-      </main>
+        </header>
+        <main class="command-content">
+          <section class="command-heading">
+            <div><p class="eyebrow">${escapeHtml(viewMeta[0])}</p><h1>${escapeHtml(viewMeta[1])}</h1><p>${escapeHtml(viewMeta[2])}</p></div>
+            <div class="environment-badge">FIREBASE · TEMPS REEL</div>
+          </section>
+          ${state.loadError ? `<div class="auth-note">${escapeHtml(state.loadError)}</div>` : ""}
+          ${state.view === "todo" ? renderTodoView() : state.view === "team" ? renderTeamView() : renderRoadmapModule()}
+        </main>
+      </div>
       ${state.careerEditorId ? renderCareerEditor() : ""}
     </div>
   `;
@@ -255,11 +260,157 @@ function renderApp() {
   refreshIcons();
 }
 
+function renderCommandSidebar() {
+  const openTasks = allOpenManagementTasks().length;
+  const queueCount = state.submissions.filter((item) => submissionBucket(item) === "queue").length;
+  return `
+    <aside class="command-sidebar">
+      <div class="command-brand">
+        <div class="brand-mark">CF</div>
+        <div><strong>Dashboard Equipe</strong><span>CrossFit St-Basile</span></div>
+      </div>
+      <nav class="command-nav" aria-label="Navigation principale">
+        ${commandNavButton("todo", "list-checks", "A faire", openTasks)}
+        ${commandNavButton("team", "users-round", "Equipe", state.teamMembers.filter((item) => item.active !== false).length)}
+        ${commandNavButton("roadmaps", "clipboard-list", "Roadmaps", queueCount)}
+      </nav>
+      <div class="command-sidebar-footer">
+        <span>${escapeHtml(state.profile.displayName || state.user.displayName || "Owner")}</span>
+        <small>Acces owner</small>
+      </div>
+    </aside>
+  `;
+}
+
+function commandNavButton(view, icon, label, count) {
+  return `
+    <button class="command-nav-button ${state.view === view ? "active" : ""}" data-view="${view}" type="button">
+      <i data-lucide="${icon}"></i><span>${escapeHtml(label)}</span><strong>${count || 0}</strong>
+    </button>
+  `;
+}
+
+function renderRoadmapModule() {
+  const bucketCounts = roadmapBucketCounts();
+  const counts = contextualStatusCounts();
+  return `
+    <section class="module-heading">
+      <nav class="roadmap-tabs" aria-label="Etapes des roadmaps">
+        ${roadmapTab("queue", "A traiter", bucketCounts.queue)}
+        ${roadmapTab("completed", "Rencontres faites", bucketCounts.completed)}
+        ${roadmapTab("archive", "Archives", bucketCounts.archive)}
+        ${roadmapTab("trash", "Corbeille", bucketCounts.trash, "trash-2")}
+      </nav>
+      <button class="button filter-reset-button" id="resetRoadmapFilters" type="button"><i data-lucide="filter-x"></i> Reinitialiser les filtres</button>
+    </section>
+    ${renderFilters()}
+    ${state.roadmapView === "queue" ? `
+      <section class="pipeline roadmap-pipeline" aria-label="Filtrer les roadmaps a traiter par statut">
+        ${metric(counts.to_read, "A lire", "green", "to_read")}
+        ${metric(counts.meeting_planned, "Rencontre planifiee", "blue", "meeting_planned")}
+        ${metric(counts.action_required, "Action requise", "red", "action_required")}
+        ${metric(counts.ready_to_archive, "Pret a archiver", "amber", "ready_to_archive")}
+      </section>
+    ` : ""}
+    ${renderSubmissionWorkspace()}
+  `;
+}
+
+function roadmapTab(view, label, count, icon = "") {
+  return `<button class="tab-button ${state.roadmapView === view ? "active" : ""}" data-roadmap-view="${view}" type="button">${icon ? `<i data-lucide="${icon}"></i>` : ""}${escapeHtml(label)} <span>${count || 0}</span></button>`;
+}
+
+function renderTodoView() {
+  const allTasks = allOpenManagementTasks();
+  const tasks = filteredManagementTasks();
+  const urgentCount = allTasks.filter((item) => taskIsUrgent(item)).length;
+  const roadmapCount = allTasks.filter((item) => item.sourceType === "roadmap").length;
+  const careerCount = allTasks.filter((item) => item.sourceType === "career").length;
+  return `
+    <section class="todo-stats">
+      ${todoStat(allTasks.length, "Actions ouvertes", "all", "list-checks")}
+      ${todoStat(urgentCount, "Urgentes ou en retard", "urgent", "circle-alert", "red")}
+      ${todoStat(roadmapCount, "Issues des roadmaps", "roadmap", "clipboard-list", "green")}
+      ${todoStat(careerCount, "Parcours a suivre", "career", "route", "blue")}
+    </section>
+    <div class="todo-layout">
+      <section class="todo-main">
+        <header class="panel todo-toolbar">
+          <div><h2>File d'actions</h2><p>${tasks.length} action(s) visible(s) sur ${allTasks.length}.</p></div>
+          <div class="todo-filters">
+            <label class="field compact-field">Type
+              <select id="taskFilter">${TASK_FILTER_OPTIONS.map(([id, label]) => `<option value="${id}" ${state.taskFilter === id ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select>
+            </label>
+            <label class="field compact-field">Responsable
+              <select id="taskOwnerFilter"><option value="all">Tous</option>${OWNER_OPTIONS.map((owner) => `<option value="${escapeAttr(owner)}" ${state.taskOwnerFilter === owner ? "selected" : ""}>${escapeHtml(owner)}</option>`).join("")}</select>
+            </label>
+          </div>
+        </header>
+        <div class="task-list">
+          ${tasks.length ? tasks.map(renderTaskCard).join("") : `<section class="panel empty-state"><i data-lucide="circle-check-big"></i><div>Aucune action dans cette vue.</div></section>`}
+        </div>
+      </section>
+      <aside class="panel quick-task-panel">
+        <div class="quick-task-heading"><i data-lucide="plus"></i><div><h2>Ajouter une action</h2><p>Pour une tache qui ne vient pas d'une roadmap.</p></div></div>
+        <form id="managementTaskForm" class="quick-task-form">
+          <label class="field">Action<input name="title" required maxlength="180" placeholder="Ex.: Confirmer la formation de Chloe"></label>
+          <label class="field">Membre concerne
+            <select name="teamMemberId"><option value="">Aucun membre</option>${state.teamMembers.filter((item) => item.active !== false).map((member) => `<option value="${escapeAttr(member.id)}">${escapeHtml(member.name)}</option>`).join("")}</select>
+          </label>
+          <div class="quick-task-fields">
+            <label class="field">Responsable<select name="ownerName">${OWNER_OPTIONS.map((owner) => `<option value="${escapeAttr(owner)}">${escapeHtml(owner)}</option>`).join("")}</select></label>
+            <label class="field">Priorite<select name="priority">${TASK_PRIORITY_OPTIONS.map(([id, label]) => `<option value="${id}" ${id === "P2" ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label>
+          </div>
+          <label class="field">Echeance<input name="dueDate" type="date"></label>
+          <label class="field">Details<textarea name="description" class="compact-textarea" placeholder="Contexte utile pour Michael ou Gabriel"></textarea></label>
+          <button class="button primary" type="submit"><i data-lucide="plus"></i> Ajouter a la liste</button>
+        </form>
+      </aside>
+    </div>
+  `;
+}
+
+function todoStat(value, label, filter, icon, tone = "") {
+  return `
+    <button class="todo-stat ${tone} ${state.taskFilter === filter ? "active" : ""}" data-task-filter-button="${filter}" type="button">
+      <i data-lucide="${icon}"></i><span><strong>${value || 0}</strong><small>${escapeHtml(label)}</small></span>
+    </button>
+  `;
+}
+
+function renderTaskCard(task) {
+  const member = task.teamMemberId ? state.teamMembers.find((item) => item.id === task.teamMemberId) : null;
+  const sourceLabel = task.sourceType === "roadmap" ? "Roadmap" : task.sourceType === "career" ? "Parcours" : "Action manuelle";
+  const sourceIcon = task.sourceType === "roadmap" ? "clipboard-list" : task.sourceType === "career" ? "route" : "check-square";
+  const overdue = taskIsOverdue(task);
+  return `
+    <article class="task-card ${task.priority === "P1" ? "urgent" : ""} ${overdue ? "overdue" : ""}">
+      <button class="task-card-main" data-open-task-source="${escapeAttr(task.id)}" type="button">
+        <span class="task-source"><i data-lucide="${sourceIcon}"></i>${escapeHtml(sourceLabel)}</span>
+        <strong>${escapeHtml(task.title || "Action sans titre")}</strong>
+        ${task.description ? `<p>${escapeHtml(truncate(task.description, 180))}</p>` : ""}
+        <span class="task-meta">
+          ${member || task.teamMemberName ? `<span><i data-lucide="user-round"></i>${escapeHtml(member?.name || task.teamMemberName)}</span>` : ""}
+          <span><i data-lucide="user-check"></i>${escapeHtml(task.ownerName || "Non assigne")}</span>
+          <span class="${overdue ? "is-overdue" : ""}"><i data-lucide="calendar"></i>${task.dueDate ? `${overdue ? "En retard · " : ""}${formatDateOnly(task.dueDate)}` : "Sans echeance"}</span>
+        </span>
+      </button>
+      <div class="task-card-actions">
+        <span class="priority-pill ${String(task.priority || "P2").toLowerCase()}">${escapeHtml(task.priority || "P2")}</span>
+        ${task.persisted ? `
+          <button class="button icon-only" data-postpone-task="${escapeAttr(task.id)}" type="button" title="Reporter de 7 jours"><i data-lucide="calendar-plus"></i></button>
+          <button class="button icon-only task-complete" data-complete-task="${escapeAttr(task.id)}" type="button" title="Marquer comme terminee"><i data-lucide="check"></i></button>
+        ` : `<button class="button task-source-button" data-open-task-source="${escapeAttr(task.id)}" type="button">Ouvrir <i data-lucide="arrow-right"></i></button>`}
+      </div>
+    </article>
+  `;
+}
+
 function renderFilters() {
   const roles = [...new Set(state.submissions.map((item) => item.selectedRoleLabel).filter(Boolean))].sort((a, b) => a.localeCompare(b));
   const cycles = [...new Set(state.submissions.map((item) => item.cycleId).filter(Boolean))].sort().reverse();
   return `
-    <section class="panel filters">
+    <section class="panel filters roadmap-filters ${state.roadmapView === "queue" ? "" : "without-status"}">
       <label class="field">Recherche
         <input id="searchInput" value="${escapeAttr(state.filters.search)}" placeholder="Nom, role, trimestre...">
       </label>
@@ -275,29 +426,57 @@ function renderFilters() {
           ${cycles.map((cycle) => `<option value="${escapeAttr(cycle)}" ${state.filters.cycle === cycle ? "selected" : ""}>${escapeHtml(cycle)}</option>`).join("")}
         </select>
       </label>
-      <label class="field">Statut
-        <select id="statusFilter" ${state.view === "trash" ? "disabled" : ""}>
-          <option value="all">Tous les statuts</option>
-          ${STATUS_OPTIONS.map(([id, label]) => `<option value="${id}" ${state.filters.status === id ? "selected" : ""}>${label}</option>`).join("")}
+      ${state.roadmapView === "queue" ? `<label class="field">Etape
+        <select id="statusFilter">
+          <option value="all">Toutes les etapes</option>
+          ${WORKFLOW_STATUS_OPTIONS.map(([id, label]) => `<option value="${id}" ${state.filters.status === id ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}
         </select>
-      </label>
+      </label>` : ""}
     </section>
   `;
 }
 
 function renderTabs() {
-  const visible = state.submissions.filter((item) => !isDeleted(item));
-  const activeCount = visible.filter((item) => item.status !== "archived").length;
-  const archiveCount = visible.filter((item) => item.status === "archived").length;
-  const trashCount = state.submissions.filter(isDeleted).length;
-  return `
-    <nav class="view-tabs" aria-label="Vues Roadmap">
-      <button class="tab-button ${state.view === "active" ? "active" : ""}" data-view="active" type="button">Actifs (${activeCount})</button>
-      <button class="tab-button ${state.view === "archive" ? "active" : ""}" data-view="archive" type="button">Archives (${archiveCount})</button>
-      <button class="tab-button ${state.view === "team" ? "active" : ""}" data-view="team" type="button">Equipe (${state.teamMembers.length})</button>
-      <button class="tab-button ${state.view === "trash" ? "active" : ""}" data-view="trash" type="button"><i data-lucide="trash-2"></i> Corbeille (${trashCount})</button>
-    </nav>
-  `;
+  return "";
+}
+
+function roadmapBucketCounts() {
+  return state.submissions.reduce((counts, item) => {
+    counts[submissionBucket(item)] += 1;
+    return counts;
+  }, { queue: 0, completed: 0, archive: 0, trash: 0 });
+}
+
+function submissionBucket(submission) {
+  if (isDeleted(submission)) return "trash";
+  if (submission.status === "archived") return "archive";
+  if (submission.status === "meeting_done") return "completed";
+  return "queue";
+}
+
+function contextualStatusCounts() {
+  const counts = Object.fromEntries(WORKFLOW_STATUS_OPTIONS.map(([id]) => [id, 0]));
+  state.submissions.forEach((item) => {
+    if (submissionBucket(item) !== "queue" || !matchesRoadmapFilters(item, false)) return;
+    const status = item.status || "to_read";
+    counts[status] = (counts[status] || 0) + 1;
+  });
+  return counts;
+}
+
+function matchesRoadmapFilters(submission, includeStatus = true) {
+  const search = normalize(state.filters.search);
+  if (state.filters.role !== "all" && submission.selectedRoleLabel !== state.filters.role) return false;
+  if (state.filters.cycle !== "all" && submission.cycleId !== state.filters.cycle) return false;
+  if (includeStatus && state.roadmapView === "queue" && state.filters.status !== "all" && submission.status !== state.filters.status) return false;
+  if (!search) return true;
+  return normalize([
+    submission.employeeName,
+    submission.answers?.employee_name,
+    submission.answers?.employee_email,
+    submission.selectedRoleLabel,
+    submission.cycleId
+  ].filter(Boolean).join(" ")).includes(search);
 }
 
 function renderSubmissionWorkspace() {
@@ -321,7 +500,7 @@ function renderSubmissionWorkspace() {
           <div class="submission-picker">
             <label class="field">Soumission
               <select id="submissionSelect">
-                ${submissions.map((item) => `<option value="${escapeAttr(item.id)}" ${item.id === selected.id ? "selected" : ""}>${escapeHtml(submissionLabel(item))}</option>`).join("")}
+                ${submissions.map((item) => `<option value="${escapeAttr(item.id)}" ${item.id === selected.id ? "selected" : ""}>${escapeHtml(submissionMenuLabel(item))}</option>`).join("")}
               </select>
             </label>
             <button class="button icon-only" id="printButton" type="button" title="Imprimer le dossier"><i data-lucide="printer"></i></button>
@@ -445,13 +624,18 @@ function renderTeamView() {
   const isCreating = state.editingMemberId === "__new__";
   const editing = state.teamMembers.find((item) => item.id === state.editingMemberId) || null;
   const unlinked = unlinkedSubmissions();
+  const search = normalize(state.teamSearch);
+  const visibleMembers = state.teamMembers.filter((member) => !search || normalize([member.name, member.displayTitle, member.email].join(" ")).includes(search));
   return `
     <section class="panel team-toolbar">
       <div>
-        <h2>Equipe et dossiers Roadmap</h2>
-        <p>Clique sur une personne pour voir toute son histoire de rencontres.</p>
+        <h2>Dossiers de l'equipe</h2>
+        <p>${visibleMembers.length} membre(s) visible(s). Chaque dossier rassemble les actions, roadmaps et le parcours.</p>
       </div>
       <button class="button primary" id="addMemberButton" type="button"><i data-lucide="user-plus"></i> Ajouter un membre</button>
+    </section>
+    <section class="panel team-search-bar">
+      <label class="field"><span class="visually-hidden">Rechercher un membre</span><input id="teamSearchInput" value="${escapeAttr(state.teamSearch)}" placeholder="Rechercher par nom, role ou courriel..."></label>
     </section>
     ${unlinked.length ? `
       <button class="data-warning" id="openUnlinkedButton" type="button">
@@ -461,26 +645,46 @@ function renderTeamView() {
       </button>
     ` : ""}
     <div class="team-layout ${state.editingMemberId ? "" : "team-layout-wide"}">
-      <section class="panel team-columns">
+      <section class="team-directory">
         ${state.departments.map((department) => {
-          const members = state.teamMembers.filter((member) => member.departmentId === department.id);
+          const members = visibleMembers.filter((member) => member.departmentId === department.id);
+          if (!members.length) return "";
           return `
-            <article class="department ${escapeAttr(department.className || department.id)}">
-              <h3>${escapeHtml(department.label)}</h3>
-              ${members.length ? members.map((member) => `
-                <div class="member-record ${member.active === false ? "inactive" : ""}">
-                  <button class="member-row" data-open-member="${escapeAttr(member.id)}" type="button">
-                    <strong>${escapeHtml(member.name || "Sans nom")}</strong>
-                    <span>${escapeHtml(member.displayTitle || "Role a preciser")} · ${submissionsForMember(member).length} roadmap(s)</span>
-                  </button>
-                  <button class="member-edit" data-edit-member="${escapeAttr(member.id)}" type="button" title="Modifier ${escapeAttr(member.name || "ce membre")}"><i data-lucide="pencil"></i></button>
-                </div>
-              `).join("") : `<p class="empty-state">Aucun membre</p>`}
+            <article class="panel department-group ${escapeAttr(department.className || department.id)}">
+              <header><h3>${escapeHtml(department.label)}</h3><span>${members.length}</span></header>
+              <div class="department-members">${members.map(renderTeamMemberCard).join("")}</div>
             </article>
           `;
         }).join("")}
+        ${visibleMembers.length ? "" : `<section class="panel empty-state"><i data-lucide="search-x"></i><div>Aucun membre ne correspond a cette recherche.</div></section>`}
       </section>
       ${state.editingMemberId ? renderMemberForm(editing, isCreating) : ""}
+    </div>
+  `;
+}
+
+function renderTeamMemberCard(member) {
+  const submissions = submissionsForMember(member).filter((item) => !isDeleted(item));
+  const tasks = tasksForMember(member.id);
+  const milestones = milestonesForMember(member).filter((item) => ["planned", "in_progress", "blocked"].includes(item.status));
+  const latest = submissions[0] || null;
+  return `
+    <div class="member-card ${member.active === false ? "inactive" : ""}">
+      <button class="member-card-main" data-open-member="${escapeAttr(member.id)}" type="button">
+        <span class="member-avatar">${escapeHtml(initials(member.name))}</span>
+        <span class="member-card-copy">
+          <strong>${escapeHtml(member.name || "Sans nom")}</strong>
+          <small>${escapeHtml(member.displayTitle || "Role a preciser")}</small>
+          <span class="member-card-stats">
+            <span class="${tasks.length ? "needs-attention" : ""}">${tasks.length} action(s)</span>
+            <span>${submissions.length} roadmap(s)</span>
+            <span>${milestones.length} etape(s)</span>
+          </span>
+          <small>${latest ? `Derniere roadmap: ${formatShortDate(latest.submittedAt)}` : "Aucune roadmap au dossier"}</small>
+        </span>
+        <i data-lucide="chevron-right"></i>
+      </button>
+      <button class="member-edit" data-edit-member="${escapeAttr(member.id)}" type="button" title="Modifier ${escapeAttr(member.name || "ce membre")}"><i data-lucide="pencil"></i></button>
     </div>
   `;
 }
@@ -523,6 +727,7 @@ function renderMemberProfile() {
   const activeMilestones = milestones.filter((item) => ["in_progress", "blocked"].includes(item.status));
   const completedMilestones = milestones.filter((item) => item.status === "completed");
   const nextMilestone = nextCareerMilestone(milestones);
+  const tasks = tasksForMember(member.id);
   return `
     <section class="member-profile">
       <header class="panel member-profile-header">
@@ -537,18 +742,63 @@ function renderMemberProfile() {
         <button class="button" data-edit-member="${escapeAttr(member.id)}" type="button"><i data-lucide="pencil"></i> Modifier</button>
       </header>
       <section class="member-metrics">
-        ${profileMetric(submissions.length, "Roadmaps au dossier")}
-        ${profileMetric(activeMilestones.length, "Etapes en cours")}
+        ${profileMetric(tasks.length, "Actions ouvertes")}
+        ${profileMetric(submissions.length, "Roadmaps")}
+        ${profileMetric(activeMilestones.length, "Etapes actives")}
         ${profileMetric(completedMilestones.length, "Etapes realisees")}
-        ${profileMetric(nextMilestone ? formatDateOnly(nextMilestone.targetDate) : "Aucune", "Prochaine echeance")}
       </section>
       <nav class="member-section-tabs" aria-label="Sections du dossier membre">
-        <button class="tab-button ${state.memberProfileSection === "career" ? "active" : ""}" data-member-section="career" type="button"><i data-lucide="route"></i> Parcours CFSB (${milestones.length})</button>
+        <button class="tab-button ${state.memberProfileSection === "overview" ? "active" : ""}" data-member-section="overview" type="button"><i data-lucide="layout-dashboard"></i> Vue d'ensemble</button>
+        <button class="tab-button ${state.memberProfileSection === "actions" ? "active" : ""}" data-member-section="actions" type="button"><i data-lucide="list-checks"></i> Actions (${tasks.length})</button>
         <button class="tab-button ${state.memberProfileSection === "roadmaps" ? "active" : ""}" data-member-section="roadmaps" type="button"><i data-lucide="clipboard-list"></i> Roadmaps (${submissions.length})</button>
+        <button class="tab-button ${state.memberProfileSection === "career" ? "active" : ""}" data-member-section="career" type="button"><i data-lucide="route"></i> Parcours CFSB (${milestones.length})</button>
       </nav>
-      ${state.memberProfileSection === "roadmaps" ? renderRoadmapHistory(submissions) : renderCareerTimeline(member)}
+      ${state.memberProfileSection === "roadmaps" ? renderRoadmapHistory(submissions) : state.memberProfileSection === "career" ? renderCareerTimeline(member) : state.memberProfileSection === "actions" ? renderMemberActions(member, tasks) : renderMemberOverview(member, submissions, tasks, milestones, nextMilestone)}
     </section>
   `;
+}
+
+function renderMemberOverview(member, submissions, tasks, milestones, nextMilestone) {
+  const latest = submissions[0] || null;
+  const recent = submissions.slice(0, 3);
+  const activeMilestones = milestones.filter((item) => ["planned", "in_progress", "blocked"].includes(item.status)).slice(0, 3);
+  return `
+    <section class="member-overview-grid">
+      <article class="panel member-overview-panel attention-panel">
+        <div class="section-heading"><div><h3>Prochaines actions</h3><p>Ce que Michael et Gabriel doivent faire ensuite.</p></div><button class="inline-link" data-member-section="actions" type="button">Tout voir</button></div>
+        ${tasks.length ? `<div class="compact-task-list">${tasks.slice(0, 4).map(renderCompactTask).join("")}</div>` : `<div class="empty-state compact-empty"><i data-lucide="circle-check-big"></i><div>Aucune action ouverte.</div></div>`}
+      </article>
+      <article class="panel member-overview-panel">
+        <div class="section-heading"><div><h3>Parcours actuel</h3><p>Direction de carriere et prochaine cible.</p></div><button class="inline-link" data-member-section="career" type="button">Ouvrir</button></div>
+        <div class="member-focus">
+          <span class="focus-icon"><i data-lucide="route"></i></span>
+          <div><small>Direction visee</small><strong>${escapeHtml(member.careerTarget || "A preciser")}</strong></div>
+        </div>
+        <div class="member-focus">
+          <span class="focus-icon"><i data-lucide="flag"></i></span>
+          <div><small>Prochaine etape</small><strong>${escapeHtml(nextMilestone?.title || "Aucune etape planifiee")}</strong>${nextMilestone?.targetDate ? `<span>${formatDateOnly(nextMilestone.targetDate)}</span>` : ""}</div>
+        </div>
+        ${activeMilestones.length ? `<div class="mini-milestones">${activeMilestones.map((item) => `<button data-open-career="${escapeAttr(item.id)}" type="button">${careerStatusPill(item.status)}<span>${escapeHtml(item.title)}</span><strong>${clampProgress(item.progress)}%</strong></button>`).join("")}</div>` : ""}
+      </article>
+      <article class="panel member-overview-panel overview-wide">
+        <div class="section-heading"><div><h3>Roadmaps recentes</h3><p>${latest ? `Derniere reception le ${formatShortDate(latest.submittedAt)}.` : "Aucune roadmap recue."}</p></div><button class="inline-link" data-member-section="roadmaps" type="button">Historique complet</button></div>
+        ${recent.length ? `<div class="recent-roadmaps">${recent.map((item) => `<button data-open-submission="${escapeAttr(item.id)}" type="button"><span>${statusPill(item.status)}</span><strong>${escapeHtml(item.cycleId || "Sans trimestre")}</strong><small>${formatDate(item.submittedAt)} · ${completionInfo(item).percent}% complete</small><i data-lucide="arrow-right"></i></button>`).join("")}</div>` : `<div class="empty-state compact-empty"><i data-lucide="clipboard-x"></i><div>Aucune roadmap au dossier.</div></div>`}
+      </article>
+    </section>
+  `;
+}
+
+function renderMemberActions(member, tasks) {
+  return `
+    <section class="panel timeline-panel">
+      <div class="section-heading"><div><h3>Actions pour ${escapeHtml(member.name)}</h3><p>Actions manuelles et suivis generes par les roadmaps ou le parcours.</p></div></div>
+      <div class="task-list member-task-list">${tasks.length ? tasks.map(renderTaskCard).join("") : `<div class="empty-state"><i data-lucide="circle-check-big"></i><div>Aucune action ouverte pour ce membre.</div></div>`}</div>
+    </section>
+  `;
+}
+
+function renderCompactTask(task) {
+  return `<button data-open-task-source="${escapeAttr(task.id)}" type="button"><span class="priority-dot ${String(task.priority || "P2").toLowerCase()}"></span><span><strong>${escapeHtml(task.title)}</strong><small>${task.dueDate ? formatDateOnly(task.dueDate) : "Sans echeance"}</small></span><i data-lucide="chevron-right"></i></button>`;
 }
 
 function renderRoadmapHistory(submissions) {
@@ -719,12 +969,21 @@ function bindAppEvents() {
     ensureSelection();
     renderApp();
   }));
+  document.querySelectorAll("[data-roadmap-view]").forEach((button) => button.addEventListener("click", () => {
+    state.roadmapView = button.dataset.roadmapView;
+    state.filters.status = "all";
+    ensureSelection();
+    renderApp();
+  }));
+  document.querySelector("#resetRoadmapFilters")?.addEventListener("click", () => {
+    state.filters = { search: "", role: "all", cycle: "all", status: "all" };
+    ensureSelection();
+    renderApp();
+  });
   document.querySelectorAll("[data-status-filter]").forEach((button) => button.addEventListener("click", () => {
-    const status = button.dataset.statusFilter;
-    const nextView = status === "archived" ? "archive" : "active";
-    const isSame = state.view === nextView && state.filters.status === status;
-    state.view = nextView;
-    state.filters.status = isSame ? "all" : status;
+    state.view = "roadmaps";
+    state.roadmapView = "queue";
+    state.filters.status = button.dataset.statusFilter;
     ensureSelection();
     renderApp();
   }));
@@ -756,6 +1015,22 @@ function bindAppEvents() {
     state.selectedId = event.target.value;
     renderApp();
   });
+  document.querySelector("#taskFilter")?.addEventListener("change", (event) => {
+    state.taskFilter = event.target.value;
+    renderApp();
+  });
+  document.querySelector("#taskOwnerFilter")?.addEventListener("change", (event) => {
+    state.taskOwnerFilter = event.target.value;
+    renderApp();
+  });
+  document.querySelectorAll("[data-task-filter-button]").forEach((button) => button.addEventListener("click", () => {
+    state.taskFilter = button.dataset.taskFilterButton;
+    renderApp();
+  }));
+  document.querySelector("#managementTaskForm")?.addEventListener("submit", saveManagementTask);
+  document.querySelectorAll("[data-complete-task]").forEach((button) => button.addEventListener("click", () => completeManagementTask(button.dataset.completeTask)));
+  document.querySelectorAll("[data-postpone-task]").forEach((button) => button.addEventListener("click", () => postponeManagementTask(button.dataset.postponeTask)));
+  document.querySelectorAll("[data-open-task-source]").forEach((button) => button.addEventListener("click", () => openTaskSource(button.dataset.openTaskSource)));
   document.querySelector("#printButton")?.addEventListener("click", () => window.print());
   document.querySelector("#saveNotesButton")?.addEventListener("click", saveOwnerNotes);
   document.querySelector("#archiveButton")?.addEventListener("click", archiveSelected);
@@ -770,7 +1045,7 @@ function bindAppEvents() {
     state.view = "team";
     state.selectedMemberId = button.dataset.openMember;
     state.editingMemberId = "";
-    state.memberProfileSection = "career";
+    state.memberProfileSection = "overview";
     state.showArchivedCareer = false;
     renderApp();
   }));
@@ -784,6 +1059,14 @@ function bindAppEvents() {
     state.selectedMemberId = "";
     state.editingMemberId = "__new__";
     renderApp();
+  });
+  document.querySelector("#teamSearchInput")?.addEventListener("input", (event) => {
+    state.teamSearch = event.target.value;
+    const cursor = event.target.selectionStart ?? state.teamSearch.length;
+    renderApp();
+    const input = document.querySelector("#teamSearchInput");
+    input?.focus();
+    input?.setSelectionRange(cursor, cursor);
   });
   document.querySelector("#backToTeamButton")?.addEventListener("click", () => {
     state.selectedMemberId = "";
@@ -1114,7 +1397,8 @@ async function archiveSelected() {
     }, { merge: true });
     batch.set(doc(collection(db, "auditLogs")), auditPayload("submission_archived", submission.id));
     await batch.commit();
-    state.view = "archive";
+    state.view = "roadmaps";
+    state.roadmapView = "archive";
     state.filters.status = "all";
     showToast("Roadmap archivee.");
   } catch (error) {
@@ -1143,7 +1427,8 @@ async function restoreSelected() {
     }, { merge: true });
     batch.set(doc(collection(db, "auditLogs")), auditPayload("submission_restored", submission.id));
     await batch.commit();
-    state.view = "active";
+    state.view = "roadmaps";
+    state.roadmapView = "queue";
     state.filters.status = "all";
     showToast("Roadmap restauree dans les actifs.");
   } catch (error) {
@@ -1169,7 +1454,8 @@ async function moveSelectedToTrash() {
     });
     batch.set(doc(collection(db, "auditLogs")), auditPayload("submission_trashed", submission.id));
     await batch.commit();
-    state.view = "trash";
+    state.view = "roadmaps";
+    state.roadmapView = "trash";
     state.filters.status = "all";
     showToast("Roadmap placee dans la corbeille.");
   } catch (error) {
@@ -1194,7 +1480,8 @@ async function restoreSelectedFromTrash() {
     });
     batch.set(doc(collection(db, "auditLogs")), auditPayload("submission_trash_restored", submission.id));
     await batch.commit();
-    state.view = "archive";
+    state.view = "roadmaps";
+    state.roadmapView = "archive";
     state.filters.status = "all";
     showToast("Roadmap restauree dans Archives.");
   } catch (error) {
@@ -1273,10 +1560,221 @@ async function saveTeamMember(event) {
   }
 }
 
+function allOpenManagementTasks() {
+  const manual = state.managementTasks
+    .filter((item) => !["completed", "cancelled"].includes(item.status))
+    .map((item) => ({ ...item, sourceType: item.sourceType || "manual", persisted: true }));
+  return [...manual, ...derivedRoadmapTasks(), ...derivedCareerTasks()].sort(sortManagementTasks);
+}
+
+function derivedRoadmapTasks() {
+  const titleByStatus = {
+    to_read: (name) => `Lire la roadmap de ${name}`,
+    meeting_planned: (name) => `Preparer la rencontre de ${name}`,
+    action_required: (name) => `Faire le suivi avec ${name}`,
+    ready_to_archive: (name) => `Archiver la roadmap de ${name}`
+  };
+  return state.submissions
+    .filter((submission) => submissionBucket(submission) === "queue" && WORKFLOW_STATUS_IDS.includes(submission.status || "to_read"))
+    .map((submission) => {
+      const status = submission.status || "to_read";
+      const notes = state.ownerNotes[submission.id] || {};
+      const member = memberForSubmission(submission);
+      const name = member?.name || submission.employeeName || submission.answers?.employee_name || "un membre";
+      const dueDate = status === "meeting_planned" ? notes.meetingDate : status === "action_required" ? notes.followupDate : "";
+      return {
+        id: `roadmap:${submission.id}`,
+        sourceType: "roadmap",
+        sourceId: submission.id,
+        sourceStatus: status,
+        teamMemberId: member?.id || submission.teamMemberId || "",
+        teamMemberName: name,
+        title: titleByStatus[status](name),
+        description: status === "action_required" ? notes.nextAction || "Un suivi a ete identifie pendant la rencontre." : `${STATUS_LABELS[status]} · ${submission.cycleId || "Trimestre a preciser"}`,
+        ownerName: notes.reviewerName || "Michael + Gabriel",
+        priority: status === "action_required" ? "P1" : status === "ready_to_archive" ? "P3" : "P2",
+        dueDate,
+        createdAt: submission.submittedAt,
+        persisted: false
+      };
+    });
+}
+
+function derivedCareerTasks() {
+  const today = startOfLocalDay(new Date()).getTime();
+  const horizon = today + 14 * 24 * 60 * 60 * 1000;
+  return state.careerMilestones
+    .filter((milestone) => {
+      if (milestone.archivedAt || !["planned", "in_progress", "blocked"].includes(milestone.status)) return false;
+      if (milestone.status === "blocked") return true;
+      const target = dateValue(milestone.targetDate);
+      return target > 0 && target <= horizon;
+    })
+    .map((milestone) => {
+      const member = state.teamMembers.find((item) => item.id === milestone.teamMemberId);
+      const overdue = milestone.targetDate && dateValue(milestone.targetDate) < today;
+      return {
+        id: `career:${milestone.id}`,
+        sourceType: "career",
+        sourceId: milestone.id,
+        teamMemberId: milestone.teamMemberId || "",
+        teamMemberName: member?.name || milestone.teamMemberName || "Membre",
+        title: milestone.status === "blocked" ? `Debloquer: ${milestone.title}` : `Suivre l'etape: ${milestone.title}`,
+        description: milestone.successCriteria || milestone.description || "Etape du parcours CFSB a revoir.",
+        ownerName: OWNER_OPTIONS.includes(milestone.ownerName) ? milestone.ownerName : "Michael + Gabriel",
+        priority: milestone.status === "blocked" || overdue ? "P1" : "P2",
+        dueDate: milestone.targetDate || "",
+        createdAt: milestone.updatedAt || milestone.createdAt,
+        persisted: false
+      };
+    });
+}
+
+function filteredManagementTasks() {
+  return allOpenManagementTasks().filter((task) => {
+    if (state.taskOwnerFilter !== "all" && !normalize(task.ownerName).includes(normalize(state.taskOwnerFilter))) return false;
+    if (state.taskFilter === "urgent") return taskIsUrgent(task);
+    if (["roadmap", "career"].includes(state.taskFilter)) return task.sourceType === state.taskFilter;
+    if (state.taskFilter === "manual") return task.sourceType === "manual";
+    return true;
+  });
+}
+
+function tasksForMember(memberId) {
+  return allOpenManagementTasks().filter((task) => task.teamMemberId === memberId);
+}
+
+function taskById(taskId) {
+  return allOpenManagementTasks().find((task) => task.id === taskId) || null;
+}
+
+function taskIsOverdue(task) {
+  if (!task.dueDate) return false;
+  return dateValue(task.dueDate) < startOfLocalDay(new Date()).getTime();
+}
+
+function taskIsUrgent(task) {
+  return task.priority === "P1" || taskIsOverdue(task);
+}
+
+function sortManagementTasks(a, b) {
+  const urgency = Number(taskIsUrgent(b)) - Number(taskIsUrgent(a));
+  if (urgency) return urgency;
+  const priorityRank = { P1: 0, P2: 1, P3: 2 };
+  const priority = (priorityRank[a.priority] ?? 1) - (priorityRank[b.priority] ?? 1);
+  if (priority) return priority;
+  const aDue = a.dueDate ? dateValue(a.dueDate) : Number.MAX_SAFE_INTEGER;
+  const bDue = b.dueDate ? dateValue(b.dueDate) : Number.MAX_SAFE_INTEGER;
+  return aDue - bDue || dateValue(b.createdAt) - dateValue(a.createdAt);
+}
+
+async function saveManagementTask(event) {
+  event.preventDefault();
+  if (state.busy) return;
+  const form = event.currentTarget;
+  const data = new FormData(form);
+  const title = String(data.get("title") || "").trim();
+  if (!title) return;
+  const memberId = String(data.get("teamMemberId") || "");
+  const member = state.teamMembers.find((item) => item.id === memberId) || null;
+  const taskRef = doc(collection(db, "managementTasks"));
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.set(taskRef, {
+      title,
+      description: String(data.get("description") || "").trim(),
+      teamMemberId: member?.id || "",
+      teamMemberName: member?.name || "",
+      ownerName: String(data.get("ownerName") || "Michael + Gabriel"),
+      priority: String(data.get("priority") || "P2"),
+      status: "open",
+      dueDate: String(data.get("dueDate") || ""),
+      sourceType: "manual",
+      createdAt: serverTimestamp(),
+      createdByUid: state.user.uid,
+      createdByName: actorName(),
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid
+    });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload("management_task_created", taskRef.id, { teamMemberId: member?.id || "" }));
+    await batch.commit();
+    form.reset();
+    showToast("Action ajoutee a la liste.");
+  } catch (error) {
+    showToast(`Action non ajoutee: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function completeManagementTask(taskId) {
+  const task = state.managementTasks.find((item) => item.id === taskId);
+  if (!task || state.busy) return;
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, "managementTasks", task.id), {
+      status: "completed",
+      completedAt: serverTimestamp(),
+      completedByUid: state.user.uid,
+      completedByName: actorName(),
+      updatedAt: serverTimestamp()
+    });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload("management_task_completed", task.id));
+    await batch.commit();
+    showToast("Action terminee.");
+  } catch (error) {
+    showToast(`Action non modifiee: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function postponeManagementTask(taskId) {
+  const task = state.managementTasks.find((item) => item.id === taskId);
+  if (!task || state.busy) return;
+  const today = startOfLocalDay(new Date());
+  const currentDue = task.dueDate ? new Date(`${dateInputValue(task.dueDate)}T12:00:00`) : today;
+  const base = currentDue.getTime() > today.getTime() ? currentDue : today;
+  base.setDate(base.getDate() + 7);
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, "managementTasks", task.id), { dueDate: localDateInputValue(base), status: "open", updatedAt: serverTimestamp(), updatedByUid: state.user.uid });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload("management_task_postponed", task.id, { dueDate: localDateInputValue(base) }));
+    await batch.commit();
+    showToast("Action reportee de 7 jours.");
+  } catch (error) {
+    showToast(`Action non reportee: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+function openTaskSource(taskId) {
+  const task = taskById(taskId);
+  if (!task) return;
+  if (task.sourceType === "roadmap") {
+    openSubmission(task.sourceId);
+    return;
+  }
+  if (task.teamMemberId) {
+    state.view = "team";
+    state.selectedMemberId = task.teamMemberId;
+    state.editingMemberId = "";
+    state.memberProfileSection = task.sourceType === "career" ? "career" : "actions";
+    if (task.sourceType === "career") state.careerEditorId = task.sourceId;
+    renderApp();
+    return;
+  }
+  showToast("Cette action n'est pas associee a un dossier membre.");
+}
+
 function auditPayload(action, entityId, details = {}) {
   return {
     action,
-    entityType: action.startsWith("team_") ? "teamMember" : action.startsWith("career_") ? "careerMilestone" : "roadmapSubmission",
+    entityType: action.startsWith("team_") ? "teamMember" : action.startsWith("career_") ? "careerMilestone" : action.startsWith("management_") ? "managementTask" : "roadmapSubmission",
     entityId,
     actorUid: state.user.uid,
     actorName: actorName(),
@@ -1287,29 +1785,13 @@ function auditPayload(action, entityId, details = {}) {
 }
 
 function filteredSubmissions() {
-  const search = normalize(state.filters.search);
-  return state.submissions.filter((submission) => {
-    const deleted = isDeleted(submission);
-    if (state.view === "trash" && !deleted) return false;
-    if (state.view !== "trash" && deleted) return false;
-    if (state.view === "active" && submission.status === "archived") return false;
-    if (state.view === "archive" && submission.status !== "archived") return false;
-    if (state.filters.role !== "all" && submission.selectedRoleLabel !== state.filters.role) return false;
-    if (state.filters.cycle !== "all" && submission.cycleId !== state.filters.cycle) return false;
-    if (state.view !== "trash" && state.filters.status !== "all" && submission.status !== state.filters.status) return false;
-    if (!search) return true;
-    return normalize([
-      submission.employeeName,
-      submission.answers?.employee_name,
-      submission.answers?.employee_email,
-      submission.selectedRoleLabel,
-      submission.cycleId
-    ].filter(Boolean).join(" ")).includes(search);
-  });
+  return state.submissions
+    .filter((submission) => submissionBucket(submission) === state.roadmapView && matchesRoadmapFilters(submission))
+    .sort((a, b) => dateValue(b.submittedAt) - dateValue(a.submittedAt));
 }
 
 function ensureSelection() {
-  if (state.view === "team") return;
+  if (state.view !== "roadmaps") return;
   const visible = filteredSubmissions();
   if (!visible.some((item) => item.id === state.selectedId)) {
     state.selectedId = visible[0]?.id || "";
@@ -1320,7 +1802,8 @@ function openSubmission(submissionId) {
   const submission = state.submissions.find((item) => item.id === submissionId);
   if (!submission) return;
   closeCareerEditor(false);
-  state.view = isDeleted(submission) ? "trash" : submission.status === "archived" ? "archive" : "active";
+  state.view = "roadmaps";
+  state.roadmapView = submissionBucket(submission);
   state.selectedMemberId = "";
   state.editingMemberId = "";
   state.filters = { search: "", role: "all", cycle: "all", status: "all" };
@@ -1363,25 +1846,20 @@ function addQuestionMeta(target, question, section) {
   if (question?.id && question?.label) target[question.id] = { label: question.label, section };
 }
 
-function statusCounts() {
-  const counts = Object.fromEntries(STATUS_OPTIONS.map(([id]) => [id, 0]));
-  state.submissions.forEach((item) => {
-    if (isDeleted(item)) return;
-    const status = item.status || "to_read";
-    counts[status] = (counts[status] || 0) + 1;
-  });
-  return counts;
-}
-
 function metric(value, label, tone, status) {
-  const view = status === "archived" ? "archive" : "active";
-  const active = state.view === view && state.filters.status === status;
+  const active = state.view === "roadmaps" && state.roadmapView === "queue" && state.filters.status === status;
   return `<button class="metric ${tone} ${active ? "active" : ""}" data-status-filter="${status}" type="button" aria-pressed="${active}"><strong>${value || 0}</strong><span>${escapeHtml(label)}</span></button>`;
 }
 
 function submissionLabel(item) {
   const name = item.employeeName || item.answers?.employee_name || "Sans nom";
   return `${name} · ${item.selectedRoleLabel || "Role"} · ${item.cycleId || ""}`;
+}
+
+function submissionMenuLabel(item) {
+  const name = item.employeeName || item.answers?.employee_name || "Sans nom";
+  const date = item.submittedAt ? formatDate(item.submittedAt) : "Sans date";
+  return `${STATUS_LABELS[item.status] || "A traiter"} · ${name} · ${date} · ${item.selectedRoleLabel || "Role"}`;
 }
 
 function memberForSubmission(submission) {
@@ -1522,10 +2000,18 @@ function formatDateOnly(value) {
 
 function todayInputValue() {
   const today = new Date();
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, "0");
-  const day = String(today.getDate()).padStart(2, "0");
+  return localDateInputValue(today);
+}
+
+function localDateInputValue(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function startOfLocalDay(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
 function clampProgress(value) {
@@ -1543,6 +2029,10 @@ function truncate(value, length) {
   return text.length > length ? `${text.slice(0, Math.max(0, length - 3))}...` : text;
 }
 
+function initials(value) {
+  return String(value || "?").trim().split(/\s+/).slice(0, 2).map((part) => part[0] || "").join("").toUpperCase();
+}
+
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -1558,6 +2048,10 @@ function sortTeamMembers(a, b) {
 function dateValue(value) {
   if (!value) return 0;
   if (typeof value.toDate === "function") return value.toDate().getTime();
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split("-").map(Number);
+    return new Date(year, month - 1, day).getTime();
+  }
   return new Date(value).getTime() || 0;
 }
 

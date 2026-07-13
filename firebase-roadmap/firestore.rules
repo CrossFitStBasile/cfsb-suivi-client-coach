@@ -93,6 +93,10 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    match /managementTasks/{taskId} {
+      allow read, create, update, delete: if isOwner();
+    }
+
     match /revenueScenarios/{scenarioId} {
       allow create: if signedIn()
         && request.resource.data.authorUid == request.auth.uid;

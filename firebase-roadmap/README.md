@@ -17,11 +17,16 @@ Il ne remplace pas la production GitHub Pages + Apps Script. Aucun deploiement p
 - Hosting: prototype owners deploye pour la recette privee.
 - Donnees reelles: copie de migration importee; la Google Sheet reste la production officielle.
 
-## Fonctions du prototype owners
+## Fonctions du Dashboard Equipe
 
-- pipeline cliquable par statut et filtres par role, trimestre et recherche;
+- vue `A faire` inspiree du Dashboard Coach, avec actions de Michael et Gabriel;
+- actions automatiquement projetees depuis les roadmaps a traiter et les etapes de carriere bloquees ou proches de leur echeance;
+- actions manuelles avec membre, responsable, priorite et date, pouvant etre reportees ou terminees;
+- module Roadmaps separe en `A traiter`, `Rencontres faites`, `Archives` et `Corbeille`;
+- pipeline cliquable dont les compteurs respectent les filtres par role, trimestre et recherche;
+- menus de soumissions enrichis du statut, de la date et de l'heure pour distinguer les doublons;
 - compte rendu de rencontre simplifie avec prochaine action et date de suivi;
-- dossier longitudinal par membre avec toutes ses roadmaps actives et archivees;
+- dossier longitudinal par membre avec vue d'ensemble, actions, roadmaps et parcours;
 - ligne du temps `Parcours CFSB` avec objectifs, echeances, responsables, progression et notes d'evolution datees;
 - conversion d'une prochaine action de roadmap en etape de parcours, sans double saisie;
 - association ou reassignation manuelle d'une soumission au bon membre;
@@ -61,7 +66,7 @@ Les identifiants Firestore sont derives des identifiants Apps Script. Une relanc
 
 1. Valider la connexion Google avec les deux comptes owners reels.
 2. Comparer les soumissions, notes et archives avec la production actuelle.
-3. Tester les modifications de notes, statuts, archives, membres d'equipe et parcours de carriere.
+3. Tester les actions owners, notes, statuts, archives, membres d'equipe et parcours de carriere.
 4. Refaire un export/import de copie juste avant la recette finale.
 5. Garder la Google Sheet et GitHub Pages comme production jusqu'a l'approbation finale.
 

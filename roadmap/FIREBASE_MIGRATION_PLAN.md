@@ -54,6 +54,9 @@ Creer une application Roadmap interactive et fiable dans un projet Firebase dist
 - Le prototype owners est deploye sur Firebase Hosting pour une recette privee, sans modifier les liens de production.
 - Le dashboard owners interactif ajoute un pipeline cliquable, une corbeille reversible, un dossier longitudinal par membre, une reassignation manuelle des soumissions et un compte rendu simplifie.
 - Chaque dossier membre comprend maintenant un `Parcours CFSB`: etapes de carriere modifiables, dates cibles, responsables, progression, criteres de reussite et journal d'evolution date.
+- Le prototype owners est devenu un `Dashboard Equipe` structure comme le Dashboard Coach: vue `A faire`, dossiers d'equipe et module Roadmaps distinct.
+- Les rencontres faites ne surchargent plus la file active. Les actions a lire, planifier, suivre ou archiver alimentent automatiquement la vue quotidienne.
+- Michael et Gabriel peuvent aussi creer des actions manuelles, les assigner, les reporter et les terminer.
 
 ## 5. Decisions Made
 
@@ -161,7 +164,7 @@ Completion criteria: portail utile sans dependance forte entre les deux bases Fi
 | Modele de donnees cible | Documentation | Codex | Prepare | `firebase-roadmap/DATA_MODEL.md` |
 | Regles Firestore initiales | Code | Codex | Deployees | `firebase-roadmap/firestore.rules` |
 | Lot d'importation local | Outil | Codex | Prepare et importe | `firebase-roadmap/scripts/build-import-bundle.mjs` |
-| Prototype owners Firebase | Application | Codex | Deploye pour recette | `https://cfsb-roadmap-trimestrielle.web.app` |
+| Dashboard Equipe Firebase | Application | Codex | Deploye pour recette | `https://cfsb-roadmap-trimestrielle.web.app` |
 | Formulaire employe Firebase | Application | Codex | A faire | - |
 | Recette | Validation | Michael et Gabriel | A faire | - |
 
@@ -205,3 +208,4 @@ Completion criteria: portail utile sans dependance forte entre les deux bases Fi
 | 2026-07-12 | Auth Google activee, deux profils owners crees et prototype owners deploye sur Firebase Hosting | Codex | Michael et Gabriel valident leur connexion et les donnees importees |
 | 2026-07-13 | Prototype owners enrichi et redeploye: dossiers membres, pipeline interactif, compte rendu simplifie, corbeille et suppression controlee | Codex | Michael et Gabriel valident les actions sur quelques dossiers avant le nettoyage en lot |
 | 2026-07-13 | Ajout du Parcours CFSB interactif dans les dossiers membres: etapes, progression, notes datees et lien avec les roadmaps | Codex | Valider le parcours sur un dossier pilote avant de le generaliser a toute l'equipe |
+| 2026-07-13 | Refonte du prototype owners en Dashboard Equipe: file d'actions, dossiers membres, roadmaps a traiter, rencontres faites et taches manuelles | Codex | Michael et Gabriel valident l'usage quotidien avant la Phase 2 du formulaire employe |
