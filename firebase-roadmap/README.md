@@ -37,6 +37,9 @@ Le Dashboard Equipe est deploye sur Firebase Hosting avec connexion Google owner
 - creation facultative d'une action owner a partir du soutien promis pendant une rencontre;
 - lien prive configurable vers le document Roadmap Google Drive de chaque membre, sans importer son contenu dans Firebase;
 - outil protege de projection des revenus pour les coachs, avec scenarios nommes et sauvegardes dans leur dossier;
+- portail membre `Mon parcours CFSB` avec mandat de carriere, historique des roadmaps, etapes de parcours, comptes rendus explicitement partages et outils personnels;
+- activation progressive du portail par courriel Google depuis le dossier membre, sans exposer les notes owners ni les rencontres brutes;
+- lien profond vers le Dashboard Coach uniquement par identifiant stable, sans lecture ni ecriture dans son projet Firestore;
 - ancien Laboratoire revenus conserve intact pendant la validation du module Firebase;
 - separation de l'equipe active et des dossiers archives, avec archivage et restauration sans perte d'historique;
 - ligne du temps `Parcours CFSB` avec objectifs, echeances, responsables, progression et notes d'evolution datees;
@@ -68,6 +71,18 @@ npm run test:live
 ## Configuration Web
 
 La configuration Firebase Web est publique par conception et se trouve dans `public/firebase-config.js`. Les secrets Google Chat, Apps Script et autres integrations serveur ne doivent jamais etre ajoutes ici.
+
+## Portail CFSB modulaire
+
+Le Dashboard Equipe reste proprietaire des membres, roadmaps, rencontres, parcours et projections. Le Dashboard Coach reste proprietaire des clients et des operations de coaching. Le contrat entre les deux applications est documente dans `../PORTAL_CONTRACT.md`.
+
+- Portail membre: `https://cfsb-roadmap-trimestrielle.web.app/portal`
+- Liaison locale: `teamMemberId`
+- Liaison vers Coach: `memberPortalProfiles/{teamMemberId}.coachDashboardId`
+- Aucun parametre d'URL ne remplace les regles Firestore.
+- Les deux applications se testent et se deploient separement.
+
+Un owner active le portail dans le dossier d'un membre avec son courriel Google. A la premiere connexion, l'invitation cree un profil membre limite a ce seul dossier. Les notes owners, les brouillons et les rencontres completes restent invisibles; seul un document de `memberSharedSummaries` devient consultable.
 
 ## Preparer un lot d'importation local
 

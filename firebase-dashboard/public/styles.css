@@ -141,6 +141,12 @@ button[data-working="true"]::after {
   gap: 10px;
 }
 
+.portal-link {
+  display: block;
+  text-align: center;
+  text-decoration: none;
+}
+
 .main {
   padding: 28px 36px 72px;
   max-width: 1420px;

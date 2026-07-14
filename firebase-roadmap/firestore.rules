@@ -20,13 +20,39 @@ service cloud.firestore {
       return activeUser() && profile().data.role in ['owner', 'admin'];
     }
 
+    function isMember() {
+      return activeUser()
+        && profile().data.role == 'member'
+        && profile().data.teamMemberId is string;
+    }
+
+    function ownsTeamMember(teamMemberId) {
+      return isMember() && profile().data.teamMemberId == teamMemberId;
+    }
+
+    function validPortalInvitation(teamMemberId) {
+      return signedIn()
+        && teamMemberId is string
+        && exists(/databases/$(database)/documents/portalInvitations/$(teamMemberId))
+        && get(/databases/$(database)/documents/portalInvitations/$(teamMemberId)).data.active == true
+        && get(/databases/$(database)/documents/portalInvitations/$(teamMemberId)).data.email == request.auth.token.email;
+    }
+
     function ownsDocument(uid) {
       return signedIn() && uid == request.auth.uid;
     }
 
     match /users/{userId} {
-      allow read: if signedIn() && request.auth.uid == userId;
-      allow create, update, delete: if isOwner();
+      allow read: if (signedIn() && request.auth.uid == userId) || isOwner();
+      allow create: if isOwner() || (
+        signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.active == true
+        && request.resource.data.role == 'member'
+        && request.resource.data.email == request.auth.token.email
+        && validPortalInvitation(request.resource.data.teamMemberId)
+      );
+      allow update, delete: if isOwner();
     }
 
     match /roadmapForms/{formVersion} {
@@ -45,12 +71,26 @@ service cloud.firestore {
     }
 
     match /teamMembers/{memberId} {
-      allow read: if resource.data.active == true || isOwner();
+      allow read: if resource.data.active == true || isOwner() || ownsTeamMember(memberId);
       allow create, update, delete: if isOwner();
     }
 
     match /teamMemberPrivate/{memberId} {
       allow read, create, update, delete: if isOwner();
+    }
+
+    match /memberPortalProfiles/{memberId} {
+      allow read: if isOwner() || ownsTeamMember(memberId);
+      allow create, update, delete: if isOwner();
+    }
+
+    match /portalInvitations/{memberId} {
+      allow read: if isOwner() || (
+        signedIn()
+        && resource.data.active == true
+        && resource.data.email == request.auth.token.email
+      );
+      allow create, update, delete: if isOwner();
     }
 
     match /roadmapDrafts/{draftId} {
@@ -74,7 +114,9 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.authorUid == request.auth.uid
         && request.resource.data.status == 'submitted';
-      allow read: if isOwner() || ownsDocument(resource.data.authorUid);
+      allow read: if isOwner()
+        || ownsDocument(resource.data.authorUid)
+        || ownsTeamMember(resource.data.teamMemberId);
       allow update, delete: if isOwner();
 
       match /events/{eventId} {
@@ -89,12 +131,43 @@ service cloud.firestore {
     }
 
     match /careerMilestones/{milestoneId} {
-      allow read, create, update, delete: if isOwner();
+      allow read: if isOwner() || ownsTeamMember(resource.data.teamMemberId);
+      allow create, update, delete: if isOwner();
     }
 
     match /careerUpdates/{updateId} {
-      allow read, create: if isOwner();
+      allow read: if isOwner() || ownsTeamMember(resource.data.teamMemberId);
+      allow create: if isOwner();
       allow update, delete: if false;
+    }
+
+    match /memberCareerPlans/{memberId} {
+      allow read: if isOwner() || ownsTeamMember(memberId);
+      allow create: if isOwner() || (
+        ownsTeamMember(memberId)
+        && request.resource.data.teamMemberId == memberId
+        && request.resource.data.updatedByUid == request.auth.uid
+      );
+      allow update: if isOwner() || (
+        ownsTeamMember(memberId)
+        && resource.data.teamMemberId == memberId
+        && request.resource.data.teamMemberId == memberId
+        && request.resource.data.updatedByUid == request.auth.uid
+      );
+      allow delete: if isOwner();
+    }
+
+    match /memberCareerPlanEvents/{eventId} {
+      allow read: if isOwner() || ownsTeamMember(resource.data.teamMemberId);
+      allow create: if activeUser()
+        && (isOwner() || ownsTeamMember(request.resource.data.teamMemberId))
+        && request.resource.data.createdByUid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /memberSharedSummaries/{summaryId} {
+      allow read: if isOwner() || ownsTeamMember(resource.data.teamMemberId);
+      allow create, update, delete: if isOwner();
     }
 
     match /teamMeetings/{meetingId} {
@@ -113,7 +186,27 @@ service cloud.firestore {
     }
 
     match /revenueScenarios/{scenarioId} {
-      allow read, create, update, delete: if isOwner();
+      allow read: if isOwner() || (
+        ownsTeamMember(resource.data.teamMemberId)
+        && resource.data.visibility in ['member', 'shared']
+      );
+      allow create: if isOwner() || (
+        ownsTeamMember(request.resource.data.teamMemberId)
+        && request.resource.data.authorUid == request.auth.uid
+        && request.resource.data.visibility == 'member'
+      );
+      allow update: if isOwner() || (
+        ownsTeamMember(resource.data.teamMemberId)
+        && resource.data.authorUid == request.auth.uid
+        && request.resource.data.teamMemberId == resource.data.teamMemberId
+        && request.resource.data.authorUid == resource.data.authorUid
+        && request.resource.data.visibility == 'member'
+      );
+      allow delete: if isOwner() || (
+        ownsTeamMember(resource.data.teamMemberId)
+        && resource.data.authorUid == request.auth.uid
+        && resource.data.visibility == 'member'
+      );
     }
 
     match /notificationJobs/{jobId} {

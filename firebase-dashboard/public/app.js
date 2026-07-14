@@ -41,14 +41,26 @@ const functions = getFunctions(firebaseApp, "us-central1");
 const provider = new GoogleAuthProvider();
 const sendQuestionnaireFunction = httpsCallable(functions, "sendQuestionnaire");
 
+const PORTAL_CONTRACT_VERSION = "cfsb-portal-v1";
+const TEAM_PORTAL_URL = "https://cfsb-roadmap-trimestrielle.web.app/portal";
+const TEAM_MEMBER_BY_COACH_ID = {
+  "15935": "marc-andre-menard",
+  "15928": "iheb-yahyaoui",
+  "17242": "camille-proulx",
+  "15902": "david-olivier",
+  "15893": "gabriel-mayer-bedard",
+  "15937": "hugo-lelievre",
+  "15936": "raphael-samson"
+};
+
 const PILOT_COACHES = [
-  { id: "15935", coachRxId: "15935", name: "Marc-Andre Menard", active: true },
-  { id: "15928", coachRxId: "15928", name: "Iheb Yahyaoui", active: true },
-  { id: "17242", coachRxId: "17242", name: "Camille Proulx", active: true },
-  { id: "15902", coachRxId: "15902", name: "David Olivier", active: true },
-  { id: "15893", coachRxId: "15893", name: "Gabriel Mayer Bedard", active: true },
-  { id: "15937", coachRxId: "15937", name: "Hugo Lelievre", active: true },
-  { id: "15936", coachRxId: "15936", name: "Raphael Samson", active: true }
+  { id: "15935", coachRxId: "15935", teamMemberId: "marc-andre-menard", name: "Marc-Andre Menard", active: true },
+  { id: "15928", coachRxId: "15928", teamMemberId: "iheb-yahyaoui", name: "Iheb Yahyaoui", active: true },
+  { id: "17242", coachRxId: "17242", teamMemberId: "camille-proulx", name: "Camille Proulx", active: true },
+  { id: "15902", coachRxId: "15902", teamMemberId: "david-olivier", name: "David Olivier", active: true },
+  { id: "15893", coachRxId: "15893", teamMemberId: "gabriel-mayer-bedard", name: "Gabriel Mayer Bedard", active: true },
+  { id: "15937", coachRxId: "15937", teamMemberId: "hugo-lelievre", name: "Hugo Lelievre", active: true },
+  { id: "15936", coachRxId: "15936", teamMemberId: "raphael-samson", name: "Raphael Samson", active: true }
 ];
 
 const SAMPLE_CLIENTS = [
@@ -206,7 +218,12 @@ async function loadProfile(user) {
 }
 
 function chooseInitialCoach() {
-  if (state.profile.role === "admin") return state.coaches[0]?.id || "";
+  if (state.profile.role === "admin") {
+    const requestedCoachId = new URLSearchParams(window.location.search).get("coach") || "";
+    return state.coaches.some((coach) => coach.id === requestedCoachId)
+      ? requestedCoachId
+      : state.coaches[0]?.id || "";
+  }
   return state.profile.coachId || "";
 }
 
@@ -330,6 +347,7 @@ function render() {
           ${tabs.map(([id, label]) => `<button class="${state.tab === id ? "active" : ""}" data-tab="${id}">${label}</button>`).join("")}
         </nav>
         <div class="side-footer">
+          ${renderTeamPortalLink()}
           ${state.profile.role === "admin" ? renderCoachSelect() : ""}
           <button class="secondary" data-action="logout">Deconnexion</button>
         </div>
@@ -357,6 +375,23 @@ function render() {
     </div>
   `;
   renderToast();
+}
+
+function tabTitle() {
+  return tabs.find(([id]) => id === state.tab)?.[1] || "Dashboard";
+}
+
+function tabDescription() {
+  const descriptions = {
+    todo: "Les actions qui demandent ton attention.",
+    clients: "Les dossiers clients rattaches au coach selectionne.",
+    questionnaires: "Les questionnaires a envoyer, lire ou suivre.",
+    rebooking: "Les renouvellements et prochaines etapes clients.",
+    performance: "Les impacts et resultats de la periode.",
+    alumni: "Les anciens clients a garder dans le radar.",
+    guide: "Les reperes pour utiliser et administrer le dashboard."
+  };
+  return descriptions[state.tab] || "Vue operationnelle du coach selectionne.";
 }
 
 function renderPrimaryAction() {
@@ -394,6 +429,26 @@ function renderCoachSelect() {
       </select>
     </label>
   `;
+}
+
+function renderTeamPortalLink() {
+  const coach = activeCoachRecord();
+  const teamMemberId = coach?.teamMemberId || TEAM_MEMBER_BY_COACH_ID[state.selectedCoachId] || "";
+  const canOpen = Boolean(teamMemberId) && (
+    state.profile.role === "admin"
+    || (state.profile.coachId === state.selectedCoachId && coach?.teamPortalEnabled === true)
+  );
+  if (!canOpen) return "";
+  const url = `${TEAM_PORTAL_URL}?member=${encodeURIComponent(teamMemberId)}&source=coach&contract=${encodeURIComponent(PORTAL_CONTRACT_VERSION)}`;
+  return `<a class="secondary portal-link" href="${escapeHtml(url)}" target="_blank" rel="noopener">Mon parcours CFSB</a>`;
+}
+
+function syncCoachUrl() {
+  if (state.profile?.role !== "admin") return;
+  const url = new URL(window.location.href);
+  if (state.selectedCoachId) url.searchParams.set("coach", state.selectedCoachId);
+  else url.searchParams.delete("coach");
+  window.history.replaceState({}, "", url);
 }
 
 function renderActiveTab() {
@@ -1046,6 +1101,7 @@ document.addEventListener("change", (event) => {
   if (!actionEl) return;
   if (actionEl.dataset.action === "selectCoach") {
     state.selectedCoachId = actionEl.value;
+    syncCoachUrl();
     subscribeCoachData();
     render();
   }

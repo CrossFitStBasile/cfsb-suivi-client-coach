@@ -13,7 +13,9 @@
 Profil d'acces au dashboard owners.
 
 - `active`: boolean
-- `role`: `owner`, `admin` ou `viewer`
+- `role`: `owner`, `admin`, `viewer` ou `member`
+- `teamMemberId`: requis pour un profil `member`; limite l'acces a ce seul dossier
+- `invitationId`: invitation utilisee lors de la premiere activation membre
 - `displayName`
 - `email`
 - `createdAt`
@@ -153,6 +155,86 @@ Metadonnees reservees aux owners et separees de l'organigramme public.
 
 Le document porte le meme identifiant permanent que `teamMembers/{memberId}`. Le lien Drive n'est jamais publie avec les donnees lues par le formulaire employe.
 
+## `memberPortalProfiles/{memberId}`
+
+Configuration partageable du portail membre. Le document porte le meme identifiant permanent que `teamMembers/{memberId}`.
+
+- `teamMemberId`
+- `memberName`
+- `roadmapDocumentUrl`: lien Drive volontairement visible au membre
+- `coachDashboardId`: identifiant stable du Dashboard Coach
+- `portalEmail`
+- `portalEnabled`
+- `portalContractVersion`
+- `updatedAt`
+- `updatedByUid`
+- `updatedByName`
+
+## `portalInvitations/{memberId}`
+
+Autorisation d'activation du portail avec un compte Google precis.
+
+- `teamMemberId`
+- `memberName`
+- `email`
+- `active`
+- `portalContractVersion`
+- `suspendedByArchive`: vrai lorsqu'un archivage a retire l'acces
+- `createdAt`
+- `updatedAt`
+
+Une invitation ne donne acces qu'au dossier dont l'identifiant correspond. L'archivage du membre desactive aussi l'invitation et les profils membres deja lies.
+
+## `memberCareerPlans/{memberId}`
+
+Mandat de carriere modifiable par le membre et les owners.
+
+- `teamMemberId`
+- `roleGoal`
+- `visionOneYear`
+- `ninetyDayFocus`
+- `commitments`
+- `successMeasures`
+- `supportNeeded`
+- `skillsToDevelop`
+- `certifications`
+- `portalContractVersion`
+- `createdAt`
+- `createdByUid`
+- `updatedAt`
+- `updatedByUid`
+
+Chaque sauvegarde utilise une verification de version pour eviter qu'une session ecrase silencieusement une modification plus recente.
+
+## `memberCareerPlanEvents/{eventId}`
+
+Historique append-only de chaque sauvegarde du mandat.
+
+- `teamMemberId`
+- `summary`
+- `changedFields`
+- `createdAt`
+- `createdByUid`
+- `createdByName`
+
+## `memberSharedSummaries/{meetingId}`
+
+Compte rendu volontairement publie a partir d'une rencontre owner finalisee.
+
+- `meetingId`
+- `teamMemberId`
+- `teamMemberName`
+- `meetingDate`
+- `headline`
+- `summary`
+- `commitments`
+- `ownerSupport`
+- `publishedAt`
+- `publishedByUid`
+- `updatedAt`
+
+La collection ne contient jamais le brouillon complet de `teamMeetings`. Retirer un compte rendu du portail ne modifie pas la rencontre privee.
+
 ## Suppression et restauration
 
 - Terminer conserve la roadmap dans l'historique et le dossier longitudinal du membre.
@@ -269,6 +351,7 @@ Les actions `completed` et `cancelled` quittent la liste ouverte, mais restent c
 - `teamMemberId`
 - `teamMemberName`
 - `scenarioName`
+- `visibility`: `owner` pour une projection interne, `member` pour un scenario personnel, ou `shared` pour une future publication explicite
 - `modelVersion`: version des taux et formules utilisees
 - `inputs`: niveau, objectif, semaines, efficacite administrative, modele semi-prive et mix de services
 - `results`: revenus, heures, taux horaire reel, ecart annuel et point de discussion calcules au moment de la sauvegarde
@@ -277,7 +360,7 @@ Les actions `completed` et `cancelled` quittent la liste ouverte, mais restent c
 - `updatedByUid`
 - `updatedByName`
 
-Cette collection est reservee aux owners. L'ancien laboratoire statique demeure intact; les scenarios Firebase constituent l'historique persistant rattache au dossier membre.
+Les owners voient tous les scenarios. Un membre voit et modifie seulement les scenarios `member` qu'il a lui-meme crees pour son propre `teamMemberId`. Les projections owners existantes restent privees. L'ancien laboratoire statique demeure intact.
 
 ## `notificationJobs/{jobId}`
 

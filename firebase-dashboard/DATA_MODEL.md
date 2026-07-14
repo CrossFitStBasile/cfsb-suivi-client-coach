@@ -20,6 +20,8 @@ Profil d'acces Firebase Auth.
 - `active`
 - `rebookingUrl`
 - `ghlUserId`
+- `teamMemberId`: reference stable vers le dossier du Dashboard Equipe
+- `teamPortalEnabled`: rend le raccourci `Mon parcours CFSB` visible au coach
 - `createdAt`
 - `updatedAt`
 
@@ -154,3 +156,4 @@ Journal append-only des actions importantes.
 - Un envoi en `prepared` ne compte pas comme relance et ne doit pas generer de fausse action coach.
 - Les champs manuels `manualMembershipEndDate` et `kiloPlannedRecurrenceEndDate` restent manuels: aucune date de fin de membership ne doit etre calculee automatiquement.
 - Les tokens GoHighLevel et les liens de rebooking tokenises ne doivent pas etre places dans GitHub Pages ou dans le code public.
+- `teamMemberId` est une reference de navigation seulement. Le Dashboard Coach ne doit jamais lire ou ecrire directement dans Firestore du Dashboard Equipe.

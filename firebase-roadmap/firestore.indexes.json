@@ -82,6 +82,31 @@
         { "fieldPath": "teamMemberId", "order": "ASCENDING" },
         { "fieldPath": "updatedAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "revenueScenarios",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "teamMemberId", "order": "ASCENDING" },
+        { "fieldPath": "visibility", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "memberCareerPlanEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "teamMemberId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "memberSharedSummaries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "teamMemberId", "order": "ASCENDING" },
+        { "fieldPath": "meetingDate", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

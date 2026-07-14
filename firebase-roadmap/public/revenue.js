@@ -15,8 +15,11 @@ import {
   getDocs,
   getFirestore,
   onSnapshot,
+  orderBy,
+  query,
   serverTimestamp,
-  setDoc
+  setDoc,
+  where
 } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
 
@@ -345,6 +348,7 @@ const SERVICES = [
 const state = {
   user: null,
   profile: null,
+  ownerMode: false,
   teamMembers: [],
   scenarios: [],
   selectedMemberId: "",
@@ -374,9 +378,10 @@ onAuthStateChanged(auth, async (user) => {
   }
   state.user = user;
   state.profile = null;
+  state.ownerMode = false;
 
   if (!user) {
-    showAccessGate("Connecte-toi avec un compte owner pour utiliser les projections.", true);
+    showAccessGate("Connecte-toi avec ton compte CFSB pour utiliser les projections.", true);
     return;
   }
 
@@ -387,8 +392,10 @@ onAuthStateChanged(auth, async (user) => {
       return;
     }
     state.profile = { id: profileSnapshot.id, ...profileSnapshot.data() };
-    if (!state.profile.active || !["owner", "admin"].includes(state.profile.role)) {
-      showAccessGate("Ce compte ne possede pas un acces owner actif.", false);
+    state.ownerMode = ["owner", "admin"].includes(state.profile.role);
+    const memberMode = state.profile.role === "member" && Boolean(state.profile.teamMemberId);
+    if (!state.profile.active || (!state.ownerMode && !memberMode)) {
+      showAccessGate("Ce compte ne possede pas un acces actif aux projections.", false);
       return;
     }
 
@@ -432,6 +439,10 @@ async function unlockCalculator() {
 
   $("#logoutButton").onclick = () => signOut(auth);
   await loadTeamMembers();
+  if (!state.ownerMode && !state.teamMembers.length) {
+    showAccessGate("Ton dossier n'est pas admissible a l'outil de projection de revenus.", false);
+    return;
+  }
   subscribeScenarios();
   refreshIcons();
 }
@@ -770,11 +781,21 @@ function roadmapPrompt(scenario) {
 }
 
 async function loadTeamMembers() {
-  const snapshot = await getDocs(collection(db, "teamMembers"));
-  state.teamMembers = snapshot.docs
-    .map((item) => ({ id: item.id, ...item.data() }))
-    .filter((member) => member.active !== false && memberHasRevenueTool(member))
-    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "fr"));
+  if (state.ownerMode) {
+    const snapshot = await getDocs(collection(db, "teamMembers"));
+    state.teamMembers = snapshot.docs
+      .map((item) => ({ id: item.id, ...item.data() }))
+      .filter((member) => member.active !== false && memberHasRevenueTool(member))
+      .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "fr"));
+  } else {
+    const memberSnapshot = await getDoc(doc(db, "teamMembers", state.profile.teamMemberId));
+    const member = memberSnapshot.exists()
+      ? { id: memberSnapshot.id, ...memberSnapshot.data() }
+      : null;
+    state.teamMembers = member && member.active !== false && memberHasRevenueTool(member)
+      ? [member]
+      : [];
+  }
 
   const requestedMemberId = new URLSearchParams(window.location.search).get("member") || "";
   if (requestedMemberId && state.teamMembers.some((member) => member.id === requestedMemberId)) {
@@ -802,14 +823,22 @@ function renderMemberSelect() {
     select.disabled = true;
     return;
   }
-  select.disabled = false;
+  select.disabled = !state.ownerMode;
   select.innerHTML = state.teamMembers.map((member) => `
     <option value="${escapeHtml(member.id)}" ${member.id === state.selectedMemberId ? "selected" : ""}>${escapeHtml(member.name || "Sans nom")}</option>
   `).join("");
 }
 
 function subscribeScenarios() {
-  unsubscribeScenarios = onSnapshot(collection(db, "revenueScenarios"), (snapshot) => {
+  const scenarioSource = state.ownerMode
+    ? collection(db, "revenueScenarios")
+    : query(
+        collection(db, "revenueScenarios"),
+        where("teamMemberId", "==", state.selectedMemberId),
+        where("visibility", "==", "member"),
+        orderBy("updatedAt", "desc")
+      );
+  unsubscribeScenarios = onSnapshot(scenarioSource, (snapshot) => {
     state.scenarios = snapshot.docs
       .map((item) => ({ id: item.id, ...item.data() }))
       .sort((a, b) => dateValue(b.updatedAt) - dateValue(a.updatedAt));
@@ -840,7 +869,13 @@ function syncScenarioButtons() {
 
 function updateDashboardLink() {
   const link = $("#dashboardBackLink");
-  link.href = state.selectedMemberId ? `./?member=${encodeURIComponent(state.selectedMemberId)}` : "./";
+  link.href = state.ownerMode
+    ? (state.selectedMemberId ? `./?member=${encodeURIComponent(state.selectedMemberId)}` : "./")
+    : "./portal";
+  link.innerHTML = state.ownerMode
+    ? '<i data-lucide="arrow-left"></i> Dashboard equipe'
+    : '<i data-lucide="arrow-left"></i> Mon parcours';
+  refreshIcons();
 }
 
 function scenarioInputs() {
@@ -894,16 +929,17 @@ async function saveScenario() {
   const scenarioName = $("#scenarioNameInput").value.trim() || defaultScenarioName();
   const payload = {
     authorUid: existing?.authorUid || state.user.uid,
-    authorName: existing?.authorName || state.profile.displayName || state.user.displayName || state.user.email || "Owner",
+    authorName: existing?.authorName || state.profile.displayName || state.user.displayName || state.user.email || "Membre",
     teamMemberId: member.id,
     teamMemberName: member.name || "",
+    visibility: state.ownerMode ? (existing?.visibility || "owner") : "member",
     scenarioName,
     modelVersion: REVENUE_MODEL_VERSION,
     inputs: scenarioInputs(),
     results: scenarioResults(),
     updatedAt: serverTimestamp(),
     updatedByUid: state.user.uid,
-    updatedByName: state.profile.displayName || state.user.displayName || state.user.email || "Owner"
+    updatedByName: state.profile.displayName || state.user.displayName || state.user.email || "Membre"
   };
   if (!existing) payload.createdAt = serverTimestamp();
 
@@ -1094,6 +1130,7 @@ function bindControls() {
     });
   });
   $("#scenarioMemberSelect").addEventListener("change", (event) => {
+    if (!state.ownerMode) return;
     state.selectedMemberId = event.target.value;
     state.currentScenarioId = "";
     state.scenarioDirty = true;

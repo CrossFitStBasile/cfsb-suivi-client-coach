@@ -11,6 +11,7 @@ import {
   deleteField,
   doc,
   getDoc,
+  getDocs,
   getFirestore,
   limit,
   onSnapshot,
@@ -18,6 +19,7 @@ import {
   query,
   runTransaction,
   serverTimestamp,
+  where,
   writeBatch
 } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
@@ -112,6 +114,18 @@ const MEETING_PILLAR_OPTIONS = [
   ["other", "Autre"]
 ];
 const MEETING_PILLAR_LABELS = Object.fromEntries(MEETING_PILLAR_OPTIONS);
+const PORTAL_CONTRACT_VERSION = "cfsb-portal-v1";
+const TEAM_PORTAL_PATH = "./portal.html";
+const COACH_DASHBOARD_URL = "https://cfsb-dashboard-coach-aa9a4.web.app/";
+const COACH_ID_BY_MEMBER = {
+  "marc-andre-menard": "15935",
+  "iheb-yahyaoui": "15928",
+  "camille-proulx": "17242",
+  "david-olivier": "15902",
+  "gabriel-mayer-bedard": "15893",
+  "hugo-lelievre": "15937",
+  "raphael-samson": "15936"
+};
 
 const state = {
   user: null,
@@ -120,11 +134,14 @@ const state = {
   ownerNotes: {},
   teamMembers: [],
   teamMemberPrivate: {},
+  memberPortalProfiles: {},
+  portalInvitations: {},
   departments: [],
   forms: {},
   careerMilestones: [],
   careerUpdates: [],
   teamMeetings: [],
+  memberSharedSummaries: [],
   managementTasks: [],
   auditLogs: [],
   clientErrors: [],
@@ -281,6 +298,14 @@ function subscribeData() {
     state.teamMemberPrivate = Object.fromEntries(snapshot.docs.map((item) => [item.id, item.data()]));
     renderFromData();
   }, dataError));
+  state.unsubscribers.push(onSnapshot(collection(db, "memberPortalProfiles"), (snapshot) => {
+    state.memberPortalProfiles = Object.fromEntries(snapshot.docs.map((item) => [item.id, item.data()]));
+    renderFromData();
+  }, dataError));
+  state.unsubscribers.push(onSnapshot(collection(db, "portalInvitations"), (snapshot) => {
+    state.portalInvitations = Object.fromEntries(snapshot.docs.map((item) => [item.id, item.data()]));
+    renderFromData();
+  }, dataError));
   state.unsubscribers.push(onSnapshot(collection(db, "orgDepartments"), (snapshot) => {
     state.departments = snapshot.docs.map(fromDoc).sort((a, b) => Number(a.sortOrder || 999) - Number(b.sortOrder || 999));
     renderFromData();
@@ -299,6 +324,10 @@ function subscribeData() {
   }, dataError));
   state.unsubscribers.push(onSnapshot(collection(db, "teamMeetings"), (snapshot) => {
     state.teamMeetings = snapshot.docs.map(fromDoc).sort(sortTeamMeetings);
+    renderFromData();
+  }, dataError));
+  state.unsubscribers.push(onSnapshot(collection(db, "memberSharedSummaries"), (snapshot) => {
+    state.memberSharedSummaries = snapshot.docs.map(fromDoc).sort((a, b) => dateValue(b.meetingDate || b.publishedAt) - dateValue(a.meetingDate || a.publishedAt));
     renderFromData();
   }, dataError));
   state.unsubscribers.push(onSnapshot(collection(db, "managementTasks"), (snapshot) => {
@@ -522,7 +551,7 @@ function renderActivityView() {
       </label>
       <label class="field">Element
         <select id="activityEntityFilter">
-          ${[["all", "Tous"], ["roadmapSubmission", "Roadmaps"], ["managementTask", "Actions"], ["teamMember", "Equipe"], ["teamMeeting", "Rencontres"], ["careerMilestone", "Parcours"], ["revenueScenario", "Projections"], ["clientError", "Systeme"]].map(([id, label]) => `<option value="${id}" ${state.activityEntity === id ? "selected" : ""}>${label}</option>`).join("")}
+          ${[["all", "Tous"], ["roadmapSubmission", "Roadmaps"], ["managementTask", "Actions"], ["teamMember", "Equipe"], ["teamMeeting", "Rencontres"], ["memberCareerPlan", "Mandats"], ["careerMilestone", "Parcours"], ["revenueScenario", "Projections"], ["clientError", "Systeme"]].map(([id, label]) => `<option value="${id}" ${state.activityEntity === id ? "selected" : ""}>${label}</option>`).join("")}
         </select>
       </label>
     </section>
@@ -585,6 +614,10 @@ function activityActionMeta(action) {
     team_meeting_created: ["Brouillon de rencontre cree", "message-square-plus", "blue"],
     team_meeting_finalized: ["Rencontre 1:1 finalisee", "messages-square", "green"],
     team_meeting_draft_deleted: ["Brouillon de rencontre supprime", "trash-2", "neutral"],
+    meeting_summary_shared: ["Compte rendu partage avec le membre", "share-2", "green"],
+    meeting_summary_updated: ["Compte rendu partage mis a jour", "save", "blue"],
+    meeting_summary_withdrawn: ["Compte rendu retire du portail", "eye-off", "neutral"],
+    member_career_plan_saved: ["Mandat de carriere mis a jour", "notebook-tabs", "blue"],
     revenue_scenario_created: ["Projection de revenus creee", "calculator", "green"],
     revenue_scenario_updated: ["Projection de revenus modifiee", "calculator", "blue"],
     revenue_scenario_deleted: ["Projection de revenus supprimee", "trash-2", "neutral"],
@@ -615,6 +648,9 @@ function activityTargetLabel(log) {
   }
   if (log.entityType === "teamMeeting") {
     return state.teamMembers.find((item) => item.id === log.details?.teamMemberId)?.name || "Rencontre 1:1";
+  }
+  if (log.entityType === "memberCareerPlan") {
+    return state.teamMembers.find((item) => item.id === log.details?.teamMemberId || item.id === log.entityId)?.name || "Mandat de carriere";
   }
   if (log.entityType === "revenueScenario") {
     return [log.details?.teamMemberName, log.details?.scenarioName].filter(Boolean).join(" · ") || "Projection de revenus";
@@ -946,6 +982,9 @@ function renderTeamMemberCard(member) {
 
 function renderMemberForm(editing, isCreating = false) {
   const archived = editing ? isArchivedTeamMember(editing) : false;
+  const portalProfile = editing ? state.memberPortalProfiles[editing.id] || {} : {};
+  const invitation = editing ? state.portalInvitations[editing.id] || {} : {};
+  const coachDashboardId = portalProfile.coachDashboardId || COACH_ID_BY_MEMBER[editing?.id] || "";
   return `
     <form class="panel member-form" id="memberForm">
       <h2>${editing ? "Modifier le membre" : "Ajouter un membre"}</h2>
@@ -961,6 +1000,13 @@ function renderMemberForm(editing, isCreating = false) {
       <label class="field">Titre affiche<input name="displayTitle" required value="${escapeAttr(editing?.displayTitle || "")}"></label>
       <label class="field">Direction de carriere visee<input name="careerTarget" value="${escapeAttr(editing?.careerTarget || "")}" placeholder="Coach professionnel, leadership, specialite..."></label>
       <label class="field">Document Roadmap dans Drive<input name="roadmapDocumentUrl" type="url" value="${escapeAttr(editing ? memberRoadmapDocumentUrl(editing) : "")}" placeholder="https://docs.google.com/..."></label>
+      <fieldset class="member-portal-settings">
+        <legend>Portail CFSB</legend>
+        <p>Ces champs relient les applications sans partager leurs bases de donnees.</p>
+        <label class="field">Identifiant Dashboard Coach<input name="coachDashboardId" value="${escapeAttr(coachDashboardId)}" placeholder="Ex.: 15935"></label>
+        <label class="field">Courriel Google du membre<input name="portalEmail" type="email" value="${escapeAttr(invitation.email || portalProfile.portalEmail || editing?.email || "")}" placeholder="nom@exemple.com"></label>
+        <label class="portal-toggle"><input name="portalEnabled" type="checkbox" ${invitation.active ? "checked" : ""}><span><strong>Autoriser Mon parcours CFSB</strong><small>Le membre pourra activer son espace avec ce compte Google.</small></span></label>
+      </fieldset>
       <label class="field">Roles du formulaire<input name="roleIds" value="${escapeAttr((editing?.roleIds || []).join(", "))}" placeholder="coach_professionnel"></label>
       <label class="field">Autres noms reconnus<input name="aliases" value="${escapeAttr((editing?.aliases || []).join(", "))}" placeholder="Nom sans accent, ancien nom"></label>
       <label class="field">Ordre<input name="sortOrder" type="number" min="0" step="1" value="${escapeAttr(editing?.sortOrder ?? 100)}"></label>
@@ -1030,6 +1076,8 @@ function renderMemberOverview(member, submissions, tasks, meetings, milestones, 
   const latestMeeting = meetings.find((item) => item.status === "finalized") || meetings[0] || null;
   const activeMilestones = milestones.filter((item) => ["planned", "in_progress", "blocked"].includes(item.status)).slice(0, 3);
   const roadmapDocumentUrl = memberRoadmapDocumentUrl(member);
+  const portalEnabled = Boolean(state.portalInvitations[member.id]?.active);
+  const coachDashboardId = memberCoachDashboardId(member);
   return `
     <section class="member-overview-grid">
       <article class="panel member-overview-panel attention-panel">
@@ -1062,6 +1110,8 @@ function renderMemberOverview(member, submissions, tasks, meetings, milestones, 
       <article class="panel member-overview-panel">
         <div class="section-heading"><div><h3>Documents et outils</h3><p>Acces rapide pendant une rencontre.</p></div>${roadmapDocumentUrl ? `<a class="inline-link" href="${escapeAttr(safeExternalUrl(roadmapDocumentUrl))}" target="_blank" rel="noopener">Ouvrir Drive</a>` : ""}</div>
         <div class="member-resource-actions">
+          <a class="resource-button" href="${TEAM_PORTAL_PATH}?member=${encodeURIComponent(member.id)}"><span><i data-lucide="user-round-cog"></i><strong>Mon parcours CFSB</strong><small>${portalEnabled ? "Acces membre active · ouvrir l'apercu partage" : "Apercu owner · acces membre non active"}</small></span><i data-lucide="arrow-right"></i></a>
+          ${coachDashboardId ? `<a class="resource-button" href="${COACH_DASHBOARD_URL}?coach=${encodeURIComponent(coachDashboardId)}" target="_blank" rel="noopener"><span><i data-lucide="dumbbell"></i><strong>Operations coach</strong><small>Ouvrir ses clients et suivis dans le Dashboard Coach</small></span><i data-lucide="external-link"></i></a>` : ""}
           ${roadmapDocumentUrl ? `<a class="resource-button" href="${escapeAttr(safeExternalUrl(roadmapDocumentUrl))}" target="_blank" rel="noopener"><span><i data-lucide="file-text"></i><strong>Document Roadmap</strong><small>Prise de notes partagee dans Google Drive</small></span><i data-lucide="external-link"></i></a>` : `<button class="resource-button muted" data-edit-member="${escapeAttr(member.id)}" type="button"><span><i data-lucide="link"></i><strong>Ajouter le document Drive</strong><small>Le lien n'est pas encore configure.</small></span><i data-lucide="pencil"></i></button>`}
           ${memberHasRevenueTool(member) ? `<a class="resource-button" href="./revenue.html?member=${encodeURIComponent(member.id)}"><span><i data-lucide="calculator"></i><strong>Projection de revenus</strong><small>Construire et enregistrer un scenario salarial</small></span><i data-lucide="arrow-right"></i></a>` : ""}
         </div>
@@ -1203,9 +1253,33 @@ function renderMeetingEditor() {
               `}
             </footer>
           </form>
+          ${finalized ? renderSharedSummaryEditor(meeting, member) : ""}
         </div>
       </section>
     </div>
+  `;
+}
+
+function renderSharedSummaryEditor(meeting, member) {
+  const summary = sharedSummaryForMeeting(meeting.id) || {};
+  const published = Boolean(summary.id);
+  return `
+    <form class="meeting-form shared-summary-form" id="sharedSummaryForm">
+      <input type="hidden" name="meetingId" value="${escapeAttr(meeting.id)}">
+      <section class="meeting-form-section shared-summary-section">
+        <div class="meeting-section-heading"><span><i data-lucide="share-2"></i></span><div><h3>Compte rendu partage avec ${escapeHtml(member.name)}</h3><p>Cette section est separee des notes owners. Seul ce contenu apparaitra dans Mon parcours CFSB.</p></div></div>
+        <div class="meeting-form-grid">
+          <label class="field field-wide">Titre du compte rendu<input name="headline" value="${escapeAttr(summary.headline || `Rencontre du ${formatShortDate(meeting.meetingDate || meeting.finalizedAt)}`)}" placeholder="Ex.: Priorite des 90 prochains jours"></label>
+          <label class="field field-wide">Resume partage<textarea name="summary" rows="4" placeholder="Le contexte et les decisions utiles au membre...">${escapeHtml(summary.summary || "")}</textarea></label>
+          <label class="field field-wide">Engagements du membre<textarea name="commitments" rows="3" placeholder="Ce que le membre a choisi de mettre en action...">${escapeHtml(summary.commitments || meeting.memberCommitment || "")}</textarea></label>
+          <label class="field field-wide">Soutien de la direction<textarea name="ownerSupport" rows="3" placeholder="Ce que Michael ou Gabriel s'engage a fournir...">${escapeHtml(summary.ownerSupport || meeting.leaderSupport || "")}</textarea></label>
+        </div>
+        <div class="shared-summary-actions">
+          <button class="button primary" type="submit"><i data-lucide="${published ? "save" : "send"}"></i> ${published ? "Mettre a jour" : "Partager le compte rendu"}</button>
+          ${published ? `<button class="button danger" id="withdrawSharedSummary" type="button"><i data-lucide="eye-off"></i> Retirer du portail</button><span>Partage ${summary.publishedAt ? formatDate(summary.publishedAt) : "recemment"}</span>` : `<span>Rien n'est visible par le membre avant de cliquer sur Partager.</span>`}
+        </div>
+      </section>
+    </form>
   `;
 }
 
@@ -1720,6 +1794,8 @@ function bindAppEvents() {
   document.querySelector("#saveMeetingNowButton")?.addEventListener("click", () => saveMeetingDraft());
   document.querySelector("#finalizeMeetingButton")?.addEventListener("click", finalizeTeamMeeting);
   document.querySelector("#deleteMeetingDraftButton")?.addEventListener("click", deleteMeetingDraft);
+  document.querySelector("#sharedSummaryForm")?.addEventListener("submit", saveSharedMeetingSummary);
+  document.querySelector("#withdrawSharedSummary")?.addEventListener("click", withdrawSharedMeetingSummary);
   document.querySelectorAll("[data-member-action-view]").forEach((button) => button.addEventListener("click", () => {
     state.memberActionView = button.dataset.memberActionView;
     renderApp();
@@ -2009,6 +2085,90 @@ async function deleteMeetingDraft() {
     renderApp();
   } catch (error) {
     showToast(`Brouillon non supprime: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function saveSharedMeetingSummary(event) {
+  event.preventDefault();
+  if (state.busy) return;
+  const meeting = state.teamMeetings.find((item) => item.id === state.meetingEditorId);
+  const member = state.teamMembers.find((item) => item.id === meeting?.teamMemberId);
+  if (!meeting || meeting.status !== "finalized" || !member) return;
+  const data = new FormData(event.currentTarget);
+  const headline = String(data.get("headline") || "").trim();
+  const summaryText = String(data.get("summary") || "").trim();
+  const commitments = String(data.get("commitments") || "").trim();
+  const ownerSupport = String(data.get("ownerSupport") || "").trim();
+  if (!summaryText && !commitments && !ownerSupport) {
+    showToast("Ajoute au moins un resume, un engagement ou un soutien avant de partager.");
+    return;
+  }
+  const existing = sharedSummaryForMeeting(meeting.id);
+  const summaryRef = doc(db, "memberSharedSummaries", meeting.id);
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.set(summaryRef, {
+      meetingId: meeting.id,
+      teamMemberId: member.id,
+      teamMemberName: member.name,
+      meetingDate: meeting.meetingDate || meeting.finalizedAt || serverTimestamp(),
+      headline: headline || `Rencontre du ${formatShortDate(meeting.meetingDate || meeting.finalizedAt)}`,
+      summary: summaryText,
+      commitments,
+      ownerSupport,
+      portalContractVersion: PORTAL_CONTRACT_VERSION,
+      publishedAt: existing?.publishedAt || serverTimestamp(),
+      publishedByUid: existing?.publishedByUid || state.user.uid,
+      publishedByName: existing?.publishedByName || actorName(),
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    }, { merge: true });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload(existing ? "meeting_summary_updated" : "meeting_summary_shared", meeting.id, { teamMemberId: member.id }));
+    await batch.commit();
+    const localSummary = {
+      id: meeting.id,
+      meetingId: meeting.id,
+      teamMemberId: member.id,
+      teamMemberName: member.name,
+      meetingDate: meeting.meetingDate,
+      headline,
+      summary: summaryText,
+      commitments,
+      ownerSupport,
+      publishedAt: existing?.publishedAt || new Date(),
+      publishedByName: existing?.publishedByName || actorName(),
+      updatedAt: new Date()
+    };
+    state.memberSharedSummaries = [localSummary, ...state.memberSharedSummaries.filter((item) => item.id !== meeting.id)];
+    showToast(existing ? "Compte rendu partage mis a jour." : "Compte rendu partage avec le membre.");
+    renderApp();
+  } catch (error) {
+    showToast(`Compte rendu non partage: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function withdrawSharedMeetingSummary() {
+  const meeting = state.teamMeetings.find((item) => item.id === state.meetingEditorId);
+  const summary = sharedSummaryForMeeting(meeting?.id);
+  if (!meeting || !summary || state.busy) return;
+  if (!window.confirm("Retirer ce compte rendu de Mon parcours CFSB? Les notes owners resteront intactes.")) return;
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.delete(doc(db, "memberSharedSummaries", meeting.id));
+    batch.set(doc(collection(db, "auditLogs")), auditPayload("meeting_summary_withdrawn", meeting.id, { teamMemberId: meeting.teamMemberId }));
+    await batch.commit();
+    state.memberSharedSummaries = state.memberSharedSummaries.filter((item) => item.id !== meeting.id);
+    showToast("Compte rendu retire du portail membre.");
+    renderApp();
+  } catch (error) {
+    showToast(`Compte rendu non retire: ${friendlyError(error)}`);
   } finally {
     state.busy = false;
   }
@@ -2685,12 +2845,27 @@ async function saveTeamMember(event) {
   const memberId = existingId || slug(name);
   if (!name || !memberId) return;
   const existingMember = state.teamMembers.find((item) => item.id === existingId) || null;
+  const roadmapDocumentUrl = normalizeExternalUrl(data.get("roadmapDocumentUrl"));
+  const coachDashboardId = String(data.get("coachDashboardId") || "").trim();
+  const portalEmail = String(data.get("portalEmail") || "").trim().toLowerCase();
+  const portalEnabled = data.get("portalEnabled") === "on";
+  if (portalEnabled && !portalEmail) {
+    showToast("Ajoute le courriel Google du membre avant d'activer le portail.");
+    return;
+  }
   state.busy = true;
   try {
     if (!existingId) {
       const existing = await getDoc(doc(db, "teamMembers", memberId));
       if (existing.exists()) throw new Error("Un dossier existe deja pour ce nom. Modifie le membre existant.");
     }
+    if (portalEnabled) {
+      const invitationMatches = await getDocs(query(collection(db, "portalInvitations"), where("email", "==", portalEmail)));
+      const conflictingInvitation = invitationMatches.docs.find((item) => item.id !== memberId && item.data().active === true);
+      if (conflictingInvitation) throw new Error("Ce courriel est deja associe a un autre portail membre actif.");
+    }
+    const linkedUsersSnapshot = await getDocs(query(collection(db, "users"), where("teamMemberId", "==", memberId)));
+    const linkedUserRefs = linkedUsersSnapshot.docs.map((item) => item.ref);
     const batch = writeBatch(db);
     const memberPayload = {
       name,
@@ -2711,15 +2886,47 @@ async function saveTeamMember(event) {
     if (!existingId) memberPayload.createdAt = serverTimestamp();
     const memberRef = doc(db, "teamMembers", memberId);
     const privateRef = doc(db, "teamMemberPrivate", memberId);
+    const portalProfileRef = doc(db, "memberPortalProfiles", memberId);
+    const invitationRef = doc(db, "portalInvitations", memberId);
     const privatePayload = {
-      roadmapDocumentUrl: normalizeExternalUrl(data.get("roadmapDocumentUrl")),
+      roadmapDocumentUrl,
       updatedAt: serverTimestamp(),
       updatedByUid: state.user.uid,
       updatedByName: actorName()
     };
     if (!existingId) privatePayload.createdAt = serverTimestamp();
+    const portalProfilePayload = {
+      teamMemberId: memberId,
+      memberName: name,
+      roadmapDocumentUrl,
+      coachDashboardId,
+      portalEmail,
+      portalEnabled,
+      portalContractVersion: PORTAL_CONTRACT_VERSION,
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    };
+    const invitationPayload = {
+      teamMemberId: memberId,
+      memberName: name,
+      email: portalEmail,
+      active: portalEnabled && Boolean(portalEmail),
+      portalContractVersion: PORTAL_CONTRACT_VERSION,
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    };
+    if (!existingId) {
+      portalProfilePayload.createdAt = serverTimestamp();
+      invitationPayload.createdAt = serverTimestamp();
+    }
     const auditRef = doc(collection(db, "auditLogs"));
-    const audit = auditPayload("team_member_saved", memberId);
+    const audit = auditPayload("team_member_saved", memberId, {
+      portalEnabled,
+      coachDashboardId,
+      portalContractVersion: PORTAL_CONTRACT_VERSION
+    });
     if (existingMember) {
       const saved = await runVersionedWrite({
         reference: memberRef,
@@ -2728,6 +2935,13 @@ async function saveTeamMember(event) {
         write(transaction) {
           transaction.set(memberRef, memberPayload, { merge: true });
           transaction.set(privateRef, privatePayload, { merge: true });
+          transaction.set(portalProfileRef, portalProfilePayload, { merge: true });
+          transaction.set(invitationRef, invitationPayload, { merge: true });
+          linkedUserRefs.forEach((reference) => transaction.update(reference, {
+            active: portalEnabled,
+            email: portalEmail || deleteField(),
+            updatedAt: serverTimestamp()
+          }));
           transaction.set(auditRef, audit);
         }
       });
@@ -2740,6 +2954,8 @@ async function saveTeamMember(event) {
     } else {
       batch.set(memberRef, memberPayload, { merge: true });
       batch.set(privateRef, privatePayload, { merge: true });
+      batch.set(portalProfileRef, portalProfilePayload, { merge: true });
+      batch.set(invitationRef, invitationPayload, { merge: true });
       batch.set(auditRef, audit);
       await batch.commit();
     }
@@ -2764,6 +2980,8 @@ async function archiveTeamMember(memberId) {
   state.busy = true;
   try {
     const memberRef = doc(db, "teamMembers", member.id);
+    const invitationRef = doc(db, "portalInvitations", member.id);
+    const linkedUsersSnapshot = await getDocs(query(collection(db, "users"), where("teamMemberId", "==", member.id)));
     const auditRef = doc(collection(db, "auditLogs"));
     const memberUpdate = {
       active: false,
@@ -2780,6 +2998,17 @@ async function archiveTeamMember(memberId) {
       label: "ce dossier membre",
       write(transaction) {
         transaction.update(memberRef, memberUpdate);
+        transaction.set(invitationRef, {
+          active: false,
+          suspendedByArchive: true,
+          updatedAt: serverTimestamp(),
+          updatedByUid: state.user.uid,
+          updatedByName: actorName()
+        }, { merge: true });
+        linkedUsersSnapshot.docs.forEach((item) => transaction.update(item.ref, {
+          active: false,
+          updatedAt: serverTimestamp()
+        }));
         transaction.set(auditRef, auditPayload("team_member_archived", member.id, { openTaskCount }));
       }
     });
@@ -3241,7 +3470,7 @@ function openTaskSource(taskId) {
 function auditPayload(action, entityId, details = {}) {
   return {
     action,
-    entityType: action.startsWith("team_meeting_") ? "teamMeeting" : action.startsWith("team_") ? "teamMember" : action.startsWith("career_") ? "careerMilestone" : action.startsWith("management_") ? "managementTask" : action.startsWith("client_error_") ? "clientError" : "roadmapSubmission",
+    entityType: action.startsWith("team_meeting_") || action.startsWith("meeting_summary_") ? "teamMeeting" : action.startsWith("team_") ? "teamMember" : action.startsWith("member_career_plan_") ? "memberCareerPlan" : action.startsWith("career_") ? "careerMilestone" : action.startsWith("management_") ? "managementTask" : action.startsWith("client_error_") ? "clientError" : "roadmapSubmission",
     entityId,
     actorUid: state.user.uid,
     actorName: actorName(),
@@ -3464,6 +3693,10 @@ function meetingsForMember(memberId) {
   return state.teamMeetings.filter((meeting) => meeting.teamMemberId === memberId).sort(sortTeamMeetings);
 }
 
+function sharedSummaryForMeeting(meetingId) {
+  return state.memberSharedSummaries.find((summary) => summary.meetingId === meetingId || summary.id === meetingId) || null;
+}
+
 function meetingIsEditable(meeting) {
   if (!meeting || meeting.status === "finalized") return false;
   const member = state.teamMembers.find((item) => item.id === meeting.teamMemberId);
@@ -3641,7 +3874,11 @@ function sortTeamMeetings(a, b) {
 }
 
 function memberRoadmapDocumentUrl(member) {
-  return normalizeExternalUrl(state.teamMemberPrivate[member?.id]?.roadmapDocumentUrl || member?.roadmapDocumentUrl || "");
+  return normalizeExternalUrl(state.memberPortalProfiles[member?.id]?.roadmapDocumentUrl || state.teamMemberPrivate[member?.id]?.roadmapDocumentUrl || member?.roadmapDocumentUrl || "");
+}
+
+function memberCoachDashboardId(member) {
+  return String(state.memberPortalProfiles[member?.id]?.coachDashboardId || COACH_ID_BY_MEMBER[member?.id] || "").trim();
 }
 
 function memberHasRevenueTool(member) {

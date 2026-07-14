@@ -26,6 +26,8 @@ Cette base contient:
 
 La V1 Firebase remplace le prototype lent Apps Script pour l'interface quotidienne: les clics, les fiches clients, les to-do, les questionnaires, le rebooking, les impacts et les alumni vivent maintenant dans Firestore.
 
+Le Dashboard Coach demeure une application independante du Dashboard Equipe. Il peut ouvrir `Mon parcours CFSB` avec un lien profond versionne, mais il ne lit ni n'ecrit dans le projet Firestore de l'equipe. Cette frontiere permet de faire evoluer et deployer chaque dashboard sans bloquer l'autre.
+
 Les actions qui exigent un secret serveur restent volontairement non exposees dans le front-end. L'envoi SMS GoHighLevel du questionnaire est donc prepare/journalise dans Firebase, puis devra etre branche par Cloud Functions pour ajouter le tag GHL `dashboardcoach` sans publier de token.
 
 ## Premiere activation
@@ -62,6 +64,17 @@ URL de production Firebase:
 ```text
 https://cfsb-dashboard-coach-aa9a4.web.app
 ```
+
+## Liaison avec le Portail CFSB
+
+- Contrat: `../PORTAL_CONTRACT.md`
+- Identifiant Coach: `coachId`
+- Reference vers Equipe: `coaches/{coachId}.teamMemberId`
+- Activation du raccourci membre: `coaches/{coachId}.teamPortalEnabled = true`
+- Les admins voient le raccourci pour valider l'integration avant l'activation coach.
+- Le lien transporte un identifiant, jamais un droit d'acces.
+
+Le portail est heberge et securise par le projet Firebase `cfsb-roadmap-trimestrielle`. Aucun SDK, regle ou deploiement de ce projet ne doit etre ajoute ici.
 
 ## Limites connues V1
 

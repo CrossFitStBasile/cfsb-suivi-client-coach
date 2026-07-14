@@ -582,6 +582,14 @@ body.modal-open { overflow: hidden; }
 .member-form { position: sticky; top: 88px; padding: 16px; }
 .member-form h2 { margin: 0 0 14px; font-size: 18px; }
 .member-form .field { margin-bottom: 10px; }
+.member-portal-settings { margin: 14px 0; padding: 12px; border: 1px solid #bdd3cb; border-radius: 6px; background: #f3f8f6; }
+.member-portal-settings legend { padding: 0 6px; color: var(--green-dark); font-size: 12px; font-weight: 850; }
+.member-portal-settings > p { margin: 0 0 11px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.portal-toggle { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; margin-top: 4px; cursor: pointer; }
+.portal-toggle input { width: 17px; height: 17px; margin: 1px 0 0; accent-color: var(--green); }
+.portal-toggle span { display: grid; gap: 2px; }
+.portal-toggle strong { font-size: 11px; }
+.portal-toggle small { color: var(--muted); font-size: 10px; line-height: 1.4; }
 .member-form-status { display: grid; grid-template-columns: 30px minmax(0, 1fr); align-items: center; gap: 9px; margin: 12px 0; padding: 10px; border-left: 3px solid var(--green); background: var(--wash); color: var(--green-dark); }
 .member-form-status.archived { border-left-color: #76817c; background: #f0f2f1; color: #4e5a55; }
 .member-form-status > svg { width: 20px; height: 20px; }
@@ -704,6 +712,12 @@ body.modal-open { overflow: hidden; }
 .meeting-linked-task { display: flex; align-items: center; gap: 7px; margin: 11px 0 0; color: var(--green-dark); font-size: 12px; font-weight: 750; }
 .meeting-form-actions { position: sticky; bottom: 0; z-index: 4; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 13px 16px; border: 1px solid var(--line); border-radius: 7px; background: rgba(255, 255, 255, 0.97); box-shadow: 0 -8px 24px rgba(35, 46, 41, 0.08); }
 .meeting-finalized-meta { margin-left: auto; color: var(--muted); font-size: 11px; }
+.shared-summary-form { margin-top: 0; padding-bottom: 16px; }
+.shared-summary-section { border-color: #a9cfc2; background: #f5faf8; }
+.shared-summary-section .meeting-section-heading > span { background: var(--green); }
+.shared-summary-section input, .shared-summary-section textarea { background: #fff; }
+.shared-summary-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.shared-summary-actions > span { margin-left: auto; color: var(--muted); font-size: 10px; }
 
 .career-view { display: grid; gap: 14px; }
 .career-summary { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px; border-left: 4px solid var(--green); }
