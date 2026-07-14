@@ -49,6 +49,10 @@ service cloud.firestore {
       allow create, update, delete: if isOwner();
     }
 
+    match /teamMemberPrivate/{memberId} {
+      allow read, create, update, delete: if isOwner();
+    }
+
     match /roadmapDrafts/{draftId} {
       allow create: if signedIn()
         && request.resource.data.authorUid == request.auth.uid
@@ -93,14 +97,23 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    match /teamMeetings/{meetingId} {
+      allow read: if isOwner();
+      allow create: if isOwner()
+        && request.resource.data.status == 'draft';
+      allow update: if isOwner()
+        && resource.data.status == 'draft'
+        && request.resource.data.status in ['draft', 'finalized'];
+      allow delete: if isOwner()
+        && resource.data.status == 'draft';
+    }
+
     match /managementTasks/{taskId} {
       allow read, create, update, delete: if isOwner();
     }
 
     match /revenueScenarios/{scenarioId} {
-      allow create: if signedIn()
-        && request.resource.data.authorUid == request.auth.uid;
-      allow read, update, delete: if isOwner() || ownsDocument(resource.data.authorUid);
+      allow read, create, update, delete: if isOwner();
     }
 
     match /notificationJobs/{jobId} {

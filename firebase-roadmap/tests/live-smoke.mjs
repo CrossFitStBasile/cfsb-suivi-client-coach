@@ -2,9 +2,12 @@ const baseUrl = (process.env.ROADMAP_LIVE_URL || "https://cfsb-roadmap-trimestri
 
 const checks = [
   ["/", ["Dashboard Equipe CFSB", "./app.js"]],
-  ["/app.js", ["renderActivityView", "clientErrors", "runTransaction"]],
+  ["/app.js", ["renderActivityView", "teamMeetings", "teamMemberPrivate", "renderMeetingEditor"]],
   ["/workflow.js", ["entityVersionToken", "hasVersionConflict"]],
-  ["/styles.css", [".activity-list", ".conflict-alert"]]
+  ["/styles.css", [".activity-list", ".meeting-editor", "[hidden]"]],
+  ["/revenue.html", ["Projection de revenus", "scenarioMemberSelect", "./revenue.js"]],
+  ["/revenue.js", ["REVENUE_MODEL_VERSION", "saveScenario", "revenueScenarios"]],
+  ["/revenue.css", [".scenario-panel", ".revenue-table", ".revenue-metrics"]]
 ];
 
 for (const [path, markers] of checks) {

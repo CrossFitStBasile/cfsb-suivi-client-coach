@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="fr-CA">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <meta name="theme-color" content="#f3f1ec">
+    <link rel="icon" href="data:,">
+    <title>Projection de revenus - Dashboard Equipe CFSB</title>
+    <link rel="stylesheet" href="./styles.css">
+    <link rel="stylesheet" href="./revenue.css">
+  </head>
+  <body>
+    <div id="accessGate" class="auth-shell">
+      <section class="auth-panel">
+        <div class="brand-mark">CF</div>
+        <p class="eyebrow">CrossFit St-Basile</p>
+        <h1>Projection de revenus</h1>
+        <p id="accessMessage">Verification de ton acces owner...</p>
+        <button class="button primary" id="loginButton" type="button" hidden>
+          <i data-lucide="log-in"></i>
+          Connexion Google
+        </button>
+      </section>
+    </div>
+
+    <div class="app-shell" id="calculatorShell" hidden>
+      <header class="topbar">
+        <div class="brand-line">
+          <div class="brand-mark">CF</div>
+          <div>
+            <strong>Projection de revenus</strong>
+            <span>Dashboard Equipe CFSB</span>
+          </div>
+        </div>
+        <div class="top-actions">
+          <a class="button" id="dashboardBackLink" href="./"><i data-lucide="arrow-left"></i> Dashboard</a>
+          <button class="button icon-only" id="resetLabButton" type="button" title="Reinitialiser le scenario" aria-label="Reinitialiser le scenario"><i data-lucide="rotate-ccw"></i></button>
+          <button class="button" id="copyRevenueSummaryButton" type="button"><i data-lucide="copy"></i> Copier le resume</button>
+          <button class="button icon-only" id="logoutButton" type="button" title="Deconnexion" aria-label="Deconnexion"><i data-lucide="log-out"></i></button>
+        </div>
+      </header>
+
+      <main class="revenue-container">
+        <section class="revenue-hero">
+          <div>
+            <span>Equipe / Projection</span>
+            <h1>Revenu vise, heures reelles, efficacite administrative.</h1>
+            <p>
+              Un outil de projection base sur la grille de remuneration CFSB: volume paye,
+              heures terrain, admin incluse et taux horaire reel.
+            </p>
+          </div>
+        </section>
+
+        <section class="panel scenario-panel" aria-labelledby="scenarioPanelTitle">
+          <div class="scenario-heading">
+            <div>
+              <p class="eyebrow">Dossier membre</p>
+              <h2 id="scenarioPanelTitle">Scenario sauvegarde</h2>
+            </div>
+            <p id="scenarioStatus" class="scenario-status" aria-live="polite">Nouveau scenario non enregistre</p>
+          </div>
+          <div class="scenario-grid">
+            <label class="field">
+              <span>Membre de l'equipe</span>
+              <select id="scenarioMemberSelect"></select>
+            </label>
+            <label class="field">
+              <span>Nom du scenario</span>
+              <input id="scenarioNameInput" type="text" maxlength="100" placeholder="Ex. Objectif automne 2026">
+            </label>
+            <button class="button primary scenario-save" id="saveScenarioButton" type="button"><i data-lucide="save"></i> Enregistrer</button>
+          </div>
+          <div class="saved-scenario-row">
+            <label class="field">
+              <span>Scenarios existants</span>
+              <select id="savedScenarioSelect"><option value="">Aucun scenario sauvegarde</option></select>
+            </label>
+            <button class="button" id="loadScenarioButton" type="button" disabled><i data-lucide="folder-open"></i> Charger</button>
+            <button class="button danger icon-only" id="deleteScenarioButton" type="button" disabled title="Supprimer le scenario" aria-label="Supprimer le scenario"><i data-lucide="trash-2"></i></button>
+          </div>
+        </section>
+
+        <nav class="revenue-journey" aria-label="Parcours du simulateur">
+          <span>1. Profil</span>
+          <span>2. Semi-prive</span>
+          <span>3. Services</span>
+          <span>4. Admin</span>
+          <span>5. Recapitulatif</span>
+        </nav>
+
+        <section class="section revenue-step">
+          <div class="section-header">
+            <h2>1. Profil et cible</h2>
+            <p>Commence par le niveau de formation et le revenu annuel vise.</p>
+          </div>
+          <div class="section-body">
+            <div class="revenue-form-grid">
+              <label class="field">
+                <span>Niveau de formation</span>
+                <select id="levelSelect"></select>
+              </label>
+
+              <label class="field">
+                <span>Objectif annuel souhaite</span>
+                <input class="input" id="targetAnnualInput" type="number" min="0" step="1000" value="70000">
+              </label>
+
+              <label class="field">
+                <span>Semaines payees par an</span>
+                <input class="input" id="weeksInput" type="number" min="1" max="52" step="0.1" value="51.6">
+              </label>
+
+              <div class="revenue-guidance">
+                <strong>Pourquoi cette etape</strong>
+                <span>Le niveau de formation ajuste les taux de base et la capacite estimee en semi-prive. L'objectif donne le point de comparaison du recapitulatif.</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section revenue-step">
+          <div class="section-header">
+            <h2>2. Semi-prive et CSM</h2>
+            <p>Valide le modele semi-prive avant de regarder tout le reste, parce que c'est le plus gros levier.</p>
+          </div>
+          <div class="section-body">
+            <div class="revenue-form-grid semi-step-grid">
+              <label class="field">
+                <span>Mode semi-prive</span>
+                <select id="semiModelSelect">
+                  <option value="hybrid">Hybride SP + CSM</option>
+                  <option value="standard">Standard par client</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>Statut semi-prive</span>
+                <select id="semiTierSelect"></select>
+              </label>
+
+              <div class="efficiency-card semi-model-card" id="semiModelCard"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section revenue-step">
+          <div class="section-header">
+            <h2>3. Mix de services hebdomadaire</h2>
+            <p>Entre seulement ce que tu veux tester. Les lignes a zero restent disponibles sans voler l'attention.</p>
+          </div>
+          <div class="section-body">
+            <div class="revenue-table-wrap">
+              <table class="revenue-table">
+                <thead>
+                  <tr>
+                    <th>Service</th>
+                    <th>Type</th>
+                    <th>Taux</th>
+                    <th>Volume / sem.</th>
+                    <th>Heures terrain</th>
+                    <th>Admin incluse</th>
+                    <th>Total</th>
+                  </tr>
+                </thead>
+                <tbody id="serviceRows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="section revenue-step">
+          <div class="section-header">
+            <h2>4. Efficacite administrative</h2>
+            <p>Cette section sert a rendre visible le temps de soutien inclus: preparation, suivi, notes, check-ups et relances.</p>
+          </div>
+          <div class="section-body">
+            <div class="admin-assessment-grid">
+              <div class="admin-assessment-controls">
+                <label class="field">
+                  <span>Efficacite administrative</span>
+                  <input id="adminEfficiencyInput" type="range" min="1" max="5" step="1" value="3">
+                </label>
+                <div class="efficiency-card" id="efficiencyCard"></div>
+
+                <label class="field">
+                  <span>Admin incluse fixe par semaine</span>
+                  <input class="input" id="fixedAdminInput" type="number" min="0" step="0.25" value="2">
+                  <small>Temps de soutien inclus dans la remuneration globale: organisation, messages, preparation et suivi general.</small>
+                </label>
+              </div>
+
+              <div class="admin-task-grid compact-admin-grid">
+                <article>
+                  <strong>Programmation et preparation</strong>
+                  <span>Planifier les seances, adapter les exercices, anticiper le materiel et les contraintes.</span>
+                </article>
+                <article>
+                  <strong>Notes et dossier client</strong>
+                  <span>Documenter les progres, blessures, absences, objectifs et ajustements importants.</span>
+                </article>
+                <article>
+                  <strong>Suivi et communication</strong>
+                  <span>Messages, relances, coordination avec Caroline, Michael, Gabriel ou les autres coachs.</span>
+                </article>
+                <article>
+                  <strong>CSM semi-prive</strong>
+                  <span>Prospection, check-ups trimestriels, retention du portefeuille et notes de suivi loggees.</span>
+                </article>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section revenue-step">
+          <div class="section-header">
+            <h2>5. Recapitulatif de discussion</h2>
+            <p>Utilise ces chiffres pour ouvrir la conversation: est-ce que le mix est rentable, durable et coherent avec le role?</p>
+          </div>
+          <div class="section-body">
+            <div class="revenue-metrics" id="resultMetrics"></div>
+            <div class="reality-panel" id="realityPanel"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+    <script type="module" src="./revenue.js"></script>
+  </body>
+</html>

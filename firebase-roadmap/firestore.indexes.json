@@ -66,6 +66,22 @@
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "dueDate", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "teamMeetings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "teamMemberId", "order": "ASCENDING" },
+        { "fieldPath": "meetingDate", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "revenueScenarios",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "teamMemberId", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

@@ -57,6 +57,9 @@ Creer une application Roadmap interactive et fiable dans un projet Firebase dist
 - Le prototype owners est devenu un `Dashboard Equipe` structure comme le Dashboard Coach: vue `A faire`, dossiers d'equipe et module Roadmaps distinct.
 - Les rencontres faites ne surchargent plus la file active. Les actions a lire, planifier, suivre ou archiver alimentent automatiquement la vue quotidienne.
 - Michael et Gabriel peuvent aussi creer des actions manuelles, les assigner, les reporter et les terminer.
+- Les dossiers membres integrent maintenant des rencontres 1:1 privees: brouillon automatique, canevas mensuel CFSB, note finalisee immutable et historique complet.
+- Le document Roadmap Drive demeure externe et est accessible par un lien prive configure dans le dossier owner.
+- Le Laboratoire revenus est porte dans Firebase comme outil owner, avec scenarios persistants par coach, sans retirer l'ancien prototype.
 
 ## 5. Decisions Made
 
@@ -68,6 +71,9 @@ Creer une application Roadmap interactive et fiable dans un projet Firebase dist
 | 2026-07-12 | Conserver chaque version du formulaire comme document immuable | Les archives restent lisibles sans dupliquer 200 Ko dans chaque soumission | Historique durable avec chargement plus rapide | Codex |
 | 2026-07-12 | Utiliser des imports idempotents | Eviter les doublons lors des reprises de migration | Meme identifiant source = meme document cible | Codex |
 | 2026-07-12 | Limiter le prototype a deux profils owners actifs | Proteger les donnees pendant la recette | Connexion Google et autorisation Firestore requises | Michael + Codex |
+| 2026-07-13 | Garder les notes 1:1 et les liens Drive dans des collections owners privees | Eviter d'exposer des informations de gestion dans l'organigramme public | `teamMeetings` et `teamMemberPrivate` sont reserves aux owners | Michael + Codex |
+| 2026-07-13 | Conserver les documents Roadmap dans Drive | Les membres peuvent continuer a y prendre leurs propres notes | Firebase stocke seulement le lien, pas le contenu | Michael + Codex |
+| 2026-07-13 | Conserver l'ancien calculateur pendant la validation du module Firebase | Eviter toute perte et permettre la comparaison des resultats | Nouveau module parallele avec scenarios sauvegardes | Michael + Codex |
 
 ## 6. Phased Plan
 
@@ -209,3 +215,4 @@ Completion criteria: portail utile sans dependance forte entre les deux bases Fi
 | 2026-07-13 | Prototype owners enrichi et redeploye: dossiers membres, pipeline interactif, compte rendu simplifie, corbeille et suppression controlee | Codex | Michael et Gabriel valident les actions sur quelques dossiers avant le nettoyage en lot |
 | 2026-07-13 | Ajout du Parcours CFSB interactif dans les dossiers membres: etapes, progression, notes datees et lien avec les roadmaps | Codex | Valider le parcours sur un dossier pilote avant de le generaliser a toute l'equipe |
 | 2026-07-13 | Refonte du prototype owners en Dashboard Equipe: file d'actions, dossiers membres, roadmaps a traiter, rencontres faites et taches manuelles | Codex | Michael et Gabriel valident l'usage quotidien avant la Phase 2 du formulaire employe |
+| 2026-07-13 | Ajout des rencontres 1:1 privees, des liens Drive externes et des projections de revenus persistantes par coach | Codex | Tester le module sur quelques dossiers, puis ajouter progressivement les liens Drive valides |

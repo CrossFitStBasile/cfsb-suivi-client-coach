@@ -40,6 +40,14 @@ export function teamMemberBucket(member) {
   return isArchivedTeamMember(member) ? "archived" : "active";
 }
 
+export function isFinalizedTeamMeeting(meeting) {
+  return meeting?.status === "finalized";
+}
+
+export function teamMeetingBucket(meeting) {
+  return isFinalizedTeamMeeting(meeting) ? "history" : "draft";
+}
+
 export function entityVersionToken(entity) {
   const value = entity?.updatedAt || entity?.createdAt || entity?.submittedAt;
   if (!value) return "";

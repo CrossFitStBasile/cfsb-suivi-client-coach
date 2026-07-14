@@ -1,4 +1,6 @@
 .venv/
+node_modules/
+firebase-roadmap/pnpm-lock.yaml
 __pycache__/
 *.pyc
 test-results/

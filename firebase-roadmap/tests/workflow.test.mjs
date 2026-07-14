@@ -6,11 +6,13 @@ import {
   effectiveWorkflowStatus,
   hasVersionConflict,
   isArchivedTeamMember,
+  isFinalizedTeamMeeting,
   isHistoricalManagementTask,
   isOpenManagementTask,
   roadmapActionDefinition,
   roadmapCreatesTask,
   submissionBucket,
+  teamMeetingBucket,
   teamMemberBucket
 } from "../public/workflow.js";
 
@@ -77,4 +79,11 @@ test("team members are separated into active and archived dossiers", () => {
   assert.equal(isArchivedTeamMember({ active: true, archivedAt: "2026-07-13" }), true);
   assert.equal(teamMemberBucket({ active: true }), "active");
   assert.equal(teamMemberBucket({ active: false }), "archived");
+});
+
+test("team meetings stay in drafts until they are explicitly finalized", () => {
+  assert.equal(isFinalizedTeamMeeting({ status: "draft" }), false);
+  assert.equal(teamMeetingBucket({ status: "draft" }), "draft");
+  assert.equal(isFinalizedTeamMeeting({ status: "finalized" }), true);
+  assert.equal(teamMeetingBucket({ status: "finalized" }), "history");
 });

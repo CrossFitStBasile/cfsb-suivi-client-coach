@@ -1,0 +1,414 @@
+.revenue-container {
+  width: min(1320px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 28px 0 64px;
+}
+
+.revenue-hero {
+  padding: 18px 0 24px;
+}
+
+.revenue-hero > div {
+  display: grid;
+  gap: 9px;
+}
+
+.revenue-hero span {
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.revenue-hero h1 {
+  max-width: 780px;
+  margin: 0;
+  font-size: 42px;
+  line-height: 1.06;
+  letter-spacing: 0;
+}
+
+.revenue-hero p {
+  max-width: 850px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.scenario-panel {
+  margin-bottom: 16px;
+  overflow: hidden;
+  border-top: 4px solid var(--green);
+}
+
+.scenario-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 18px 13px;
+  border-bottom: 1px solid var(--line);
+  background: #fbfcfb;
+}
+
+.scenario-heading h2,
+.section-header h2 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 0;
+}
+
+.scenario-heading .eyebrow {
+  margin-bottom: 5px;
+}
+
+.scenario-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.scenario-status.saved { color: var(--green); }
+.scenario-status.error { color: var(--red); }
+
+.scenario-grid {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.8fr) minmax(240px, 1.2fr) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 15px 18px;
+}
+
+.scenario-save {
+  min-width: 145px;
+}
+
+.saved-scenario-row {
+  display: grid;
+  grid-template-columns: minmax(300px, 1fr) auto 42px;
+  align-items: end;
+  gap: 8px;
+  padding: 13px 18px 16px;
+  border-top: 1px solid #edf0ee;
+  background: #fbfcfb;
+}
+
+.revenue-journey {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.revenue-journey span {
+  min-height: 44px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-top: 3px solid #a9b5b0;
+  border-radius: 6px;
+  background: #fff;
+  color: #4d5b55;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.revenue-journey span:nth-child(2) { border-top-color: var(--blue); }
+.revenue-journey span:nth-child(3) { border-top-color: var(--green); }
+.revenue-journey span:nth-child(4) { border-top-color: var(--amber); }
+.revenue-journey span:nth-child(5) { border-top-color: #7b5f8b; }
+
+.section.revenue-step {
+  margin-bottom: 14px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(35, 46, 41, 0.04);
+}
+
+.section-header {
+  padding: 15px 18px;
+  border-bottom: 1px solid var(--line);
+  background: #fbfcfb;
+}
+
+.section-header p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.section-body {
+  padding: 17px 18px;
+}
+
+.revenue-form-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+
+.semi-step-grid {
+  grid-template-columns: minmax(220px, 0.7fr) minmax(220px, 0.7fr) minmax(320px, 1.4fr);
+}
+
+.revenue-guidance {
+  display: grid;
+  align-content: center;
+  gap: 7px;
+  padding: 13px;
+  border: 1px solid #bad5cc;
+  border-left: 4px solid var(--green);
+  border-radius: 6px;
+  background: var(--wash);
+}
+
+.revenue-guidance strong,
+.efficiency-card strong {
+  color: var(--green-dark);
+}
+
+.revenue-guidance span,
+.efficiency-card span,
+.efficiency-card small {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.efficiency-card {
+  display: grid;
+  gap: 6px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--blue);
+  border-radius: 6px;
+  background: #f2f7fa;
+}
+
+.efficiency-card strong { font-size: 14px; }
+.efficiency-card small { font-size: 12px; }
+
+.revenue-table-wrap {
+  overflow-x: auto;
+}
+
+.revenue-table {
+  width: 100%;
+  min-width: 950px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.revenue-table th,
+.revenue-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.revenue-table tbody tr:last-child td { border-bottom: 0; }
+
+.revenue-table th {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.revenue-table td:first-child { min-width: 270px; }
+.revenue-table td:first-child strong,
+.revenue-table td:first-child span { display: block; }
+
+.revenue-table td:first-child span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.revenue-table tr.active-service-row {
+  background: #eef7f3;
+}
+
+.revenue-table tr.active-service-row td:first-child {
+  border-left: 4px solid var(--green);
+  padding-left: 8px;
+}
+
+.revenue-table tr.active-service-row td:last-child {
+  color: var(--green-dark);
+  font-weight: 850;
+}
+
+.revenue-table tr.active-service-row .table-input {
+  border-color: #9cc8b8;
+  background: #fff;
+}
+
+.table-input {
+  width: 100%;
+  min-width: 82px;
+  min-height: 36px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #fff;
+}
+
+.table-input:focus {
+  border-color: var(--green);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(18, 108, 89, 0.12);
+}
+
+.table-input:disabled {
+  color: #5f6c66;
+  background: #f2f4f3;
+}
+
+.unit-note {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.admin-assessment-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.75fr) minmax(0, 1.25fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.admin-assessment-controls {
+  display: grid;
+  gap: 12px;
+}
+
+.field small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.admin-task-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.admin-task-grid article,
+.reality-panel article {
+  display: grid;
+  gap: 7px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.admin-task-grid article:nth-child(2) { border-top: 3px solid var(--blue); }
+.admin-task-grid article:nth-child(3) { border-top: 3px solid var(--amber); }
+.admin-task-grid article:nth-child(4) { border-top: 3px solid var(--green); }
+
+.admin-task-grid span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.revenue-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.revenue-metric {
+  min-height: 88px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-top: 3px solid #a9b5b0;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.revenue-metric.good {
+  border-color: #9fcbbb;
+  border-top-color: var(--green);
+  background: #eef7f3;
+}
+
+.revenue-metric.warn {
+  border-color: #dfc889;
+  border-top-color: var(--amber);
+  background: #fff8e8;
+}
+
+.revenue-metric strong {
+  display: block;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.revenue-metric span {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.reality-panel {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.reality-panel article:first-child { border-top: 3px solid var(--green); }
+.reality-panel article:nth-child(2) { border-top: 3px solid var(--blue); }
+.reality-panel article:nth-child(3) { border-top: 3px solid #7b5f8b; }
+
+.reality-panel p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+@media (max-width: 900px) {
+  .revenue-form-grid,
+  .semi-step-grid,
+  .admin-assessment-grid,
+  .reality-panel { grid-template-columns: 1fr; }
+
+  .revenue-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .scenario-grid { grid-template-columns: 1fr 1fr; }
+  .scenario-save { width: 100%; }
+}
+
+@media (max-width: 680px) {
+  .revenue-container { width: min(100% - 16px, 1320px); padding-top: 16px; }
+  .revenue-hero h1 { font-size: 32px; }
+  .revenue-hero p { font-size: 14px; }
+  .revenue-journey { display: flex; overflow-x: auto; }
+  .revenue-journey span { min-width: 150px; }
+  .scenario-heading { align-items: flex-start; flex-direction: column; }
+  .scenario-status { text-align: left; }
+  .scenario-grid,
+  .saved-scenario-row,
+  .admin-task-grid,
+  .revenue-metrics { grid-template-columns: 1fr; }
+  .saved-scenario-row .button { width: 100%; }
+  .saved-scenario-row .icon-only { width: 100%; }
+  .section-body { padding: 14px; }
+  .top-actions { flex-wrap: wrap; }
+  #copyRevenueSummaryButton { flex: 1; }
+}

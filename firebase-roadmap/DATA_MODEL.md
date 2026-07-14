@@ -141,6 +141,18 @@ Les anciens champs structures, dates et `followupNotes` sont conserves pour ne p
 
 L'identifiant du document est permanent. Un changement de nom ne doit jamais creer un nouveau dossier. Chaque soumission est reliee par `teamMemberId`; le nom et le courriel ne servent qu'au rapprochement initial ou a la correction manuelle.
 
+## `teamMemberPrivate/{memberId}`
+
+Metadonnees reservees aux owners et separees de l'organigramme public.
+
+- `roadmapDocumentUrl`: lien vers le document Drive utilise pendant les rencontres
+- `createdAt`
+- `updatedAt`
+- `updatedByUid`
+- `updatedByName`
+
+Le document porte le meme identifiant permanent que `teamMembers/{memberId}`. Le lien Drive n'est jamais publie avec les donnees lues par le formulaire employe.
+
 ## Suppression et restauration
 
 - Terminer conserve la roadmap dans l'historique et le dossier longitudinal du membre.
@@ -185,6 +197,42 @@ Note d'evolution immutable rattachee a une etape de carriere.
 
 Les mises a jour sont conservees separement afin qu'une nouvelle note n'ecrase jamais l'historique d'evolution.
 
+## `teamMeetings/{meetingId}`
+
+Note privee d'une rencontre 1:1 rattachee au dossier permanent du membre. Cette collection est reservee aux owners.
+
+- `teamMemberId`
+- `teamMemberName`
+- `meetingType`: `one_on_one`
+- `templateVersion`
+- `status`: `draft` ou `finalized`
+- `meetingDate`: date de la rencontre, sans creer de rendez-vous dans le dashboard
+- `facilitatorName`: leader qui mene la rencontre
+- `checkIn`
+- `previousCommitmentStatus`: `not_applicable`, `kept`, `partial` ou `not_kept`
+- `previousCommitmentNotes`
+- `pillar`: `money`, `skill`, `relationship` ou `other`
+- `pillarNotes`
+- `leverageAction`
+- `memberCommitment`
+- `successMeasure`
+- `leaderSupport`
+- `additionalNotes`
+- `signals`
+- `sourceRoadmapId`: roadmap trimestrielle consultee pendant la preparation, si applicable
+- `supportTaskId`: action owner creee depuis le soutien promis, si applicable
+- `createdAt`
+- `createdByUid`
+- `createdByName`
+- `updatedAt`
+- `updatedByUid`
+- `updatedByName`
+- `finalizedAt`
+- `finalizedByUid`
+- `finalizedByName`
+
+Un brouillon est modifiable et sauvegarde automatiquement. Une rencontre finalisee demeure en lecture seule afin de proteger l'historique. Aucun champ de prochaine date n'est requis puisque les rendez-vous sont planifies dans le logiciel de reservation CFSB.
+
 ## `managementTasks/{taskId}`
 
 Action de gestion creee manuellement par Michael ou Gabriel. Les actions directement issues des Roadmaps et des etapes de carriere sont projetees automatiquement dans l'interface sans dupliquer les donnees sources.
@@ -217,13 +265,19 @@ Les actions `completed` et `cancelled` quittent la liste ouverte, mais restent c
 ## `revenueScenarios/{scenarioId}`
 
 - `authorUid`
+- `authorName`
 - `teamMemberId`
-- `cycleId`
+- `teamMemberName`
 - `scenarioName`
-- `inputs`
-- `results`
+- `modelVersion`: version des taux et formules utilisees
+- `inputs`: niveau, objectif, semaines, efficacite administrative, modele semi-prive et mix de services
+- `results`: revenus, heures, taux horaire reel, ecart annuel et point de discussion calcules au moment de la sauvegarde
 - `createdAt`
 - `updatedAt`
+- `updatedByUid`
+- `updatedByName`
+
+Cette collection est reservee aux owners. L'ancien laboratoire statique demeure intact; les scenarios Firebase constituent l'historique persistant rattache au dossier membre.
 
 ## `notificationJobs/{jobId}`
 

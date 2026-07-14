@@ -33,6 +33,11 @@ Le Dashboard Equipe est deploye sur Firebase Hosting avec connexion Google owner
 - menus de soumissions enrichis du statut, de la date et de l'heure pour distinguer les doublons;
 - fin de rencontre simplifiee: une action de suivi facultative, sans date de rencontre a saisir;
 - dossier longitudinal par membre avec vue d'ensemble, actions, roadmaps et parcours;
+- onglet `Rencontres` dans chaque dossier avec brouillons sauvegardes automatiquement, canevas 1:1 CFSB, finalisation explicite et historique prive pour Michael et Gabriel;
+- creation facultative d'une action owner a partir du soutien promis pendant une rencontre;
+- lien prive configurable vers le document Roadmap Google Drive de chaque membre, sans importer son contenu dans Firebase;
+- outil protege de projection des revenus pour les coachs, avec scenarios nommes et sauvegardes dans leur dossier;
+- ancien Laboratoire revenus conserve intact pendant la validation du module Firebase;
 - separation de l'equipe active et des dossiers archives, avec archivage et restauration sans perte d'historique;
 - ligne du temps `Parcours CFSB` avec objectifs, echeances, responsables, progression et notes d'evolution datees;
 - conversion d'une prochaine action de roadmap en etape de parcours, sans double saisie;
@@ -41,7 +46,7 @@ Le Dashboard Equipe est deploye sur Firebase Hosting avec connexion Google owner
 - conservation des anciennes notes owners dans un bloc historique;
 - impression du dossier de rencontre et affichage de la version du formulaire;
 - formulaires modaux proteges contre les rafraichissements Firestore pendant une saisie, avec fermeture par `Echap` et focus clavier contenu;
-- journal `Activite` reliant chaque changement au dossier, a la roadmap, a l'action ou au parcours concerne;
+- journal `Activite` reliant chaque changement au dossier, a la roadmap, a l'action, a la rencontre, au parcours ou a la projection concernee;
 - etat de sante owner avec consignation et resolution des erreurs du navigateur;
 - detection des modifications simultanees pour empecher Michael et Gabriel de s'ecraser silencieusement;
 - tests de flux unitaires, controle responsive et smoke test de l'URL de production.
@@ -92,7 +97,7 @@ Les identifiants Firestore sont derives des identifiants Apps Script. Une relanc
 
 1. Valider la connexion Google avec les deux comptes owners reels.
 2. Comparer les soumissions, notes et archives avec la production actuelle.
-3. Tester les actions owners, notes, statuts, archives, membres d'equipe et parcours de carriere.
+3. Tester les actions owners, rencontres 1:1, liens Drive, projections, statuts, archives, membres d'equipe et parcours de carriere.
 4. Refaire un export/import de copie juste avant la recette finale.
 5. Garder la Google Sheet et GitHub Pages comme production jusqu'a l'approbation finale.
 

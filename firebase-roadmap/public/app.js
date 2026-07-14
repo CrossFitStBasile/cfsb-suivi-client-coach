@@ -8,6 +8,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js";
 import {
   collection,
+  deleteField,
   doc,
   getDoc,
   getFirestore,
@@ -38,6 +39,7 @@ const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: "select_account" });
+const INITIAL_MEMBER_ID = new URLSearchParams(window.location.search).get("member") || "";
 
 const STATUS_OPTIONS = [
   ["to_read", "A lire"],
@@ -72,6 +74,7 @@ const TASK_FILTER_OPTIONS = [
   ["urgent", "Priorite haute"],
   ["roadmap", "Roadmaps"],
   ["career", "Parcours"],
+  ["meeting", "Rencontres 1:1"],
   ["manual", "Manuelles"]
 ];
 const CAREER_STATUS_OPTIONS = [
@@ -93,6 +96,22 @@ const CAREER_CATEGORY_OPTIONS = [
 const CAREER_OWNER_OPTIONS = ["Membre", "Michael", "Gabriel", "Membre + direction"];
 const CAREER_STATUS_LABELS = Object.fromEntries(CAREER_STATUS_OPTIONS);
 const CAREER_CATEGORY_LABELS = Object.fromEntries(CAREER_CATEGORY_OPTIONS);
+const MEETING_TEMPLATE_VERSION = "cfsb-1on1-v1";
+const MEETING_FACILITATORS = ["Gabriel", "Michael"];
+const MEETING_COMMITMENT_OPTIONS = [
+  ["not_applicable", "Aucun engagement precedent"],
+  ["kept", "Tenu"],
+  ["partial", "Partiellement tenu"],
+  ["not_kept", "Non tenu"]
+];
+const MEETING_PILLAR_OPTIONS = [
+  ["", "Aucun pilier selectionne"],
+  ["money", "Argent"],
+  ["skill", "Competence"],
+  ["relationship", "Relation"],
+  ["other", "Autre"]
+];
+const MEETING_PILLAR_LABELS = Object.fromEntries(MEETING_PILLAR_OPTIONS);
 
 const state = {
   user: null,
@@ -100,21 +119,27 @@ const state = {
   submissions: [],
   ownerNotes: {},
   teamMembers: [],
+  teamMemberPrivate: {},
   departments: [],
   forms: {},
   careerMilestones: [],
   careerUpdates: [],
+  teamMeetings: [],
   managementTasks: [],
   auditLogs: [],
   clientErrors: [],
-  view: "todo",
+  view: INITIAL_MEMBER_ID ? "team" : "todo",
   roadmapView: "queue",
   selectedId: "",
   selectedMemberId: "",
+  initialMemberResolved: false,
   editingMemberId: "",
   memberProfileSection: "overview",
   careerEditorId: "",
   careerDraft: null,
+  meetingEditorId: "",
+  meetingEditorVersion: "",
+  meetingSaveState: "saved",
   roadmapCompletionId: "",
   teamActionMemberId: "",
   taskEditorId: "",
@@ -143,6 +168,8 @@ const appRoot = document.querySelector("#app");
 const toastRoot = document.querySelector("#toast");
 let toastTimer = null;
 let loggingClientError = false;
+let meetingAutosaveTimer = null;
+let meetingAutosavePromise = null;
 document.addEventListener("keydown", handleGlobalKeydown);
 window.addEventListener("error", (event) => logClientError(event.error || event.message, "window_error"));
 window.addEventListener("unhandledrejection", (event) => logClientError(event.reason, "unhandled_rejection"));
@@ -240,6 +267,18 @@ function subscribeData() {
   }, dataError));
   state.unsubscribers.push(onSnapshot(collection(db, "teamMembers"), (snapshot) => {
     state.teamMembers = snapshot.docs.map(fromDoc).sort(sortTeamMembers);
+    if (!state.initialMemberResolved) {
+      state.initialMemberResolved = true;
+      if (INITIAL_MEMBER_ID && state.teamMembers.some((item) => item.id === INITIAL_MEMBER_ID)) {
+        state.view = "team";
+        state.selectedMemberId = INITIAL_MEMBER_ID;
+        state.teamRosterView = teamMemberBucket(state.teamMembers.find((item) => item.id === INITIAL_MEMBER_ID));
+      }
+    }
+    renderFromData();
+  }, dataError));
+  state.unsubscribers.push(onSnapshot(collection(db, "teamMemberPrivate"), (snapshot) => {
+    state.teamMemberPrivate = Object.fromEntries(snapshot.docs.map((item) => [item.id, item.data()]));
     renderFromData();
   }, dataError));
   state.unsubscribers.push(onSnapshot(collection(db, "orgDepartments"), (snapshot) => {
@@ -256,6 +295,10 @@ function subscribeData() {
   }, dataError));
   state.unsubscribers.push(onSnapshot(collection(db, "careerUpdates"), (snapshot) => {
     state.careerUpdates = snapshot.docs.map(fromDoc).sort((a, b) => dateValue(b.createdAt) - dateValue(a.createdAt));
+    renderFromData();
+  }, dataError));
+  state.unsubscribers.push(onSnapshot(collection(db, "teamMeetings"), (snapshot) => {
+    state.teamMeetings = snapshot.docs.map(fromDoc).sort(sortTeamMeetings);
     renderFromData();
   }, dataError));
   state.unsubscribers.push(onSnapshot(collection(db, "managementTasks"), (snapshot) => {
@@ -319,6 +362,7 @@ function renderApp() {
         </main>
       </div>
       ${state.careerEditorId ? renderCareerEditor() : ""}
+      ${state.meetingEditorId ? renderMeetingEditor() : ""}
       ${state.roadmapCompletionId ? renderRoadmapCompletionModal() : ""}
       ${state.teamActionMemberId ? renderTeamActionModal() : ""}
       ${state.taskEditorId ? renderTaskEditorModal() : ""}
@@ -478,7 +522,7 @@ function renderActivityView() {
       </label>
       <label class="field">Element
         <select id="activityEntityFilter">
-          ${[["all", "Tous"], ["roadmapSubmission", "Roadmaps"], ["managementTask", "Actions"], ["teamMember", "Equipe"], ["careerMilestone", "Parcours"], ["clientError", "Systeme"]].map(([id, label]) => `<option value="${id}" ${state.activityEntity === id ? "selected" : ""}>${label}</option>`).join("")}
+          ${[["all", "Tous"], ["roadmapSubmission", "Roadmaps"], ["managementTask", "Actions"], ["teamMember", "Equipe"], ["teamMeeting", "Rencontres"], ["careerMilestone", "Parcours"], ["revenueScenario", "Projections"], ["clientError", "Systeme"]].map(([id, label]) => `<option value="${id}" ${state.activityEntity === id ? "selected" : ""}>${label}</option>`).join("")}
         </select>
       </label>
     </section>
@@ -538,6 +582,12 @@ function activityActionMeta(action) {
     team_member_saved: ["Dossier membre enregistre", "user-round-check", "green"],
     team_member_archived: ["Dossier membre archive", "archive", "neutral"],
     team_member_restored: ["Dossier membre restaure", "rotate-ccw", "green"],
+    team_meeting_created: ["Brouillon de rencontre cree", "message-square-plus", "blue"],
+    team_meeting_finalized: ["Rencontre 1:1 finalisee", "messages-square", "green"],
+    team_meeting_draft_deleted: ["Brouillon de rencontre supprime", "trash-2", "neutral"],
+    revenue_scenario_created: ["Projection de revenus creee", "calculator", "green"],
+    revenue_scenario_updated: ["Projection de revenus modifiee", "calculator", "blue"],
+    revenue_scenario_deleted: ["Projection de revenus supprimee", "trash-2", "neutral"],
     career_milestone_saved: ["Etape de parcours enregistree", "route", "blue"],
     career_update_added: ["Note d'evolution ajoutee", "message-square-plus", "green"],
     career_milestone_archived: ["Etape de parcours archivee", "archive", "neutral"],
@@ -563,6 +613,12 @@ function activityTargetLabel(log) {
   if (log.entityType === "teamMember") {
     return state.teamMembers.find((item) => item.id === log.entityId)?.name || "Dossier equipe";
   }
+  if (log.entityType === "teamMeeting") {
+    return state.teamMembers.find((item) => item.id === log.details?.teamMemberId)?.name || "Rencontre 1:1";
+  }
+  if (log.entityType === "revenueScenario") {
+    return [log.details?.teamMemberName, log.details?.scenarioName].filter(Boolean).join(" · ") || "Projection de revenus";
+  }
   if (log.entityType === "careerMilestone") {
     const milestone = state.careerMilestones.find((item) => item.id === log.entityId);
     return milestone?.title || state.teamMembers.find((item) => item.id === log.details?.teamMemberId)?.name || "Parcours CFSB";
@@ -576,8 +632,8 @@ function activityTargetLabel(log) {
 
 function renderTaskCard(task) {
   const member = task.teamMemberId ? state.teamMembers.find((item) => item.id === task.teamMemberId) : null;
-  const sourceLabel = task.sourceType === "roadmap" ? "Roadmap" : task.sourceType === "career" ? "Parcours" : "Action manuelle";
-  const sourceIcon = task.sourceType === "roadmap" ? "clipboard-list" : task.sourceType === "career" ? "route" : "check-square";
+  const sourceLabel = task.sourceType === "roadmap" ? "Roadmap" : task.sourceType === "career" ? "Parcours" : task.sourceType === "meeting" ? "Rencontre 1:1" : "Action manuelle";
+  const sourceIcon = task.sourceType === "roadmap" ? "clipboard-list" : task.sourceType === "career" ? "route" : task.sourceType === "meeting" ? "messages-square" : "check-square";
   const overdue = taskIsOverdue(task);
   const openAttribute = task.persisted ? `data-edit-task="${escapeAttr(task.id)}"` : `data-open-task-source="${escapeAttr(task.id)}"`;
   return `
@@ -904,6 +960,7 @@ function renderMemberForm(editing, isCreating = false) {
       </label>
       <label class="field">Titre affiche<input name="displayTitle" required value="${escapeAttr(editing?.displayTitle || "")}"></label>
       <label class="field">Direction de carriere visee<input name="careerTarget" value="${escapeAttr(editing?.careerTarget || "")}" placeholder="Coach professionnel, leadership, specialite..."></label>
+      <label class="field">Document Roadmap dans Drive<input name="roadmapDocumentUrl" type="url" value="${escapeAttr(editing ? memberRoadmapDocumentUrl(editing) : "")}" placeholder="https://docs.google.com/..."></label>
       <label class="field">Roles du formulaire<input name="roleIds" value="${escapeAttr((editing?.roleIds || []).join(", "))}" placeholder="coach_professionnel"></label>
       <label class="field">Autres noms reconnus<input name="aliases" value="${escapeAttr((editing?.aliases || []).join(", "))}" placeholder="Nom sans accent, ancien nom"></label>
       <label class="field">Ordre<input name="sortOrder" type="number" min="0" step="1" value="${escapeAttr(editing?.sortOrder ?? 100)}"></label>
@@ -926,9 +983,9 @@ function renderMemberProfile() {
   const submissions = submissionsForMember(member).filter((item) => !isDeleted(item));
   const milestones = milestonesForMember(member, true).filter((item) => !item.archivedAt);
   const activeMilestones = milestones.filter((item) => ["in_progress", "blocked"].includes(item.status));
-  const completedMilestones = milestones.filter((item) => item.status === "completed");
   const nextMilestone = nextCareerMilestone(milestones);
   const tasks = tasksForMember(member.id);
+  const meetings = meetingsForMember(member.id);
   const archived = isArchivedTeamMember(member);
   return `
     <section class="member-profile">
@@ -951,25 +1008,28 @@ function renderMemberProfile() {
       </header>
       <section class="member-metrics">
         ${profileMetric(tasks.length, "Actions ouvertes")}
+        ${profileMetric(meetings.length, "Rencontres 1:1")}
         ${profileMetric(submissions.length, "Roadmaps")}
         ${profileMetric(activeMilestones.length, "Etapes actives")}
-        ${profileMetric(completedMilestones.length, "Etapes realisees")}
       </section>
       <nav class="member-section-tabs" aria-label="Sections du dossier membre">
         <button class="tab-button ${state.memberProfileSection === "overview" ? "active" : ""}" data-member-section="overview" type="button"><i data-lucide="layout-dashboard"></i> Vue d'ensemble</button>
         <button class="tab-button ${state.memberProfileSection === "actions" ? "active" : ""}" data-member-section="actions" type="button"><i data-lucide="list-checks"></i> Actions (${tasks.length})</button>
+        <button class="tab-button ${state.memberProfileSection === "meetings" ? "active" : ""}" data-member-section="meetings" type="button"><i data-lucide="messages-square"></i> Rencontres (${meetings.length})</button>
         <button class="tab-button ${state.memberProfileSection === "roadmaps" ? "active" : ""}" data-member-section="roadmaps" type="button"><i data-lucide="clipboard-list"></i> Roadmaps (${submissions.length})</button>
         <button class="tab-button ${state.memberProfileSection === "career" ? "active" : ""}" data-member-section="career" type="button"><i data-lucide="route"></i> Parcours CFSB (${milestones.length})</button>
       </nav>
-      ${state.memberProfileSection === "roadmaps" ? renderRoadmapHistory(submissions) : state.memberProfileSection === "career" ? renderCareerTimeline(member) : state.memberProfileSection === "actions" ? renderMemberActions(member, tasks) : renderMemberOverview(member, submissions, tasks, milestones, nextMilestone)}
+      ${state.memberProfileSection === "roadmaps" ? renderRoadmapHistory(submissions) : state.memberProfileSection === "career" ? renderCareerTimeline(member) : state.memberProfileSection === "actions" ? renderMemberActions(member, tasks) : state.memberProfileSection === "meetings" ? renderMemberMeetings(member, meetings) : renderMemberOverview(member, submissions, tasks, meetings, milestones, nextMilestone)}
     </section>
   `;
 }
 
-function renderMemberOverview(member, submissions, tasks, milestones, nextMilestone) {
+function renderMemberOverview(member, submissions, tasks, meetings, milestones, nextMilestone) {
   const latest = submissions[0] || null;
   const recent = submissions.slice(0, 3);
+  const latestMeeting = meetings.find((item) => item.status === "finalized") || meetings[0] || null;
   const activeMilestones = milestones.filter((item) => ["planned", "in_progress", "blocked"].includes(item.status)).slice(0, 3);
+  const roadmapDocumentUrl = memberRoadmapDocumentUrl(member);
   return `
     <section class="member-overview-grid">
       <article class="panel member-overview-panel attention-panel">
@@ -988,11 +1048,164 @@ function renderMemberOverview(member, submissions, tasks, milestones, nextMilest
         </div>
         ${activeMilestones.length ? `<div class="mini-milestones">${activeMilestones.map((item) => `<button data-open-career="${escapeAttr(item.id)}" type="button">${careerStatusPill(item.status)}<span>${escapeHtml(item.title)}</span><strong>${clampProgress(item.progress)}%</strong></button>`).join("")}</div>` : ""}
       </article>
+      <article class="panel member-overview-panel">
+        <div class="section-heading"><div><h3>Derniere rencontre 1:1</h3><p>${latestMeeting ? `${formatShortDate(latestMeeting.meetingDate || latestMeeting.createdAt)} · ${escapeHtml(latestMeeting.facilitatorName || "Leader a preciser")}` : "Aucune rencontre enregistree."}</p></div><button class="inline-link" data-member-section="meetings" type="button">Historique</button></div>
+        ${latestMeeting ? `
+          <button class="meeting-overview-card" data-open-meeting="${escapeAttr(latestMeeting.id)}" type="button">
+            <span>${meetingStatusPill(latestMeeting.status)}</span>
+            <strong>${escapeHtml(MEETING_PILLAR_LABELS[latestMeeting.pillar] || "Rencontre generale")}</strong>
+            <small>${escapeHtml(truncate(latestMeeting.memberCommitment || latestMeeting.leverageAction || latestMeeting.checkIn || "Consulter la note de rencontre.", 170))}</small>
+            <i data-lucide="arrow-right"></i>
+          </button>
+        ` : `<div class="empty-state compact-empty"><i data-lucide="messages-square"></i><div>Commence une premiere rencontre depuis l'onglet Rencontres.</div></div>`}
+      </article>
+      <article class="panel member-overview-panel">
+        <div class="section-heading"><div><h3>Documents et outils</h3><p>Acces rapide pendant une rencontre.</p></div>${roadmapDocumentUrl ? `<a class="inline-link" href="${escapeAttr(safeExternalUrl(roadmapDocumentUrl))}" target="_blank" rel="noopener">Ouvrir Drive</a>` : ""}</div>
+        <div class="member-resource-actions">
+          ${roadmapDocumentUrl ? `<a class="resource-button" href="${escapeAttr(safeExternalUrl(roadmapDocumentUrl))}" target="_blank" rel="noopener"><span><i data-lucide="file-text"></i><strong>Document Roadmap</strong><small>Prise de notes partagee dans Google Drive</small></span><i data-lucide="external-link"></i></a>` : `<button class="resource-button muted" data-edit-member="${escapeAttr(member.id)}" type="button"><span><i data-lucide="link"></i><strong>Ajouter le document Drive</strong><small>Le lien n'est pas encore configure.</small></span><i data-lucide="pencil"></i></button>`}
+          ${memberHasRevenueTool(member) ? `<a class="resource-button" href="./revenue.html?member=${encodeURIComponent(member.id)}"><span><i data-lucide="calculator"></i><strong>Projection de revenus</strong><small>Construire et enregistrer un scenario salarial</small></span><i data-lucide="arrow-right"></i></a>` : ""}
+        </div>
+      </article>
       <article class="panel member-overview-panel overview-wide">
         <div class="section-heading"><div><h3>Roadmaps recentes</h3><p>${latest ? `Derniere reception le ${formatShortDate(latest.submittedAt)}.` : "Aucune roadmap recue."}</p></div><button class="inline-link" data-member-section="roadmaps" type="button">Historique complet</button></div>
         ${recent.length ? `<div class="recent-roadmaps">${recent.map((item) => `<button data-open-submission="${escapeAttr(item.id)}" type="button"><span>${statusPill(item.status)}</span><strong>${escapeHtml(item.cycleId || "Sans trimestre")}</strong><small>${formatDate(item.submittedAt)} · ${completionInfo(item).percent}% complete</small><i data-lucide="arrow-right"></i></button>`).join("")}</div>` : `<div class="empty-state compact-empty"><i data-lucide="clipboard-x"></i><div>Aucune roadmap au dossier.</div></div>`}
       </article>
     </section>
+  `;
+}
+
+function renderMemberMeetings(member, meetings) {
+  const drafts = meetings.filter((item) => item.status !== "finalized");
+  const finalized = meetings.filter((item) => item.status === "finalized");
+  const archived = isArchivedTeamMember(member);
+  return `
+    <section class="meeting-history-view">
+      <header class="panel meeting-history-header">
+        <div>
+          <p class="eyebrow">Mentorat individuel</p>
+          <h3>Rencontres 1:1</h3>
+          <p>Notes privees pour Michael et Gabriel. Les rendez-vous continuent d'etre planifies dans votre logiciel habituel.</p>
+        </div>
+        ${archived ? `<span class="meeting-archive-note"><i data-lucide="archive"></i>Dossier archive · historique en lecture seule</span>` : `<button class="button primary" id="addTeamMeeting" type="button"><i data-lucide="message-square-plus"></i> Nouvelle rencontre</button>`}
+      </header>
+      ${drafts.length ? `
+        <section class="panel meeting-draft-section">
+          <div class="section-heading"><div><h3>Brouillons en cours</h3><p>Continue la prise de notes sans perdre ce qui a deja ete ecrit.</p></div><span class="meeting-count">${drafts.length}</span></div>
+          <div class="meeting-card-grid">${drafts.map(renderMeetingCard).join("")}</div>
+        </section>
+      ` : ""}
+      <section class="panel meeting-timeline-panel">
+        <div class="section-heading"><div><h3>Historique des rencontres</h3><p>Les notes finalisees sont conservees du plus recent au plus ancien.</p></div><span class="meeting-count">${finalized.length}</span></div>
+        ${finalized.length ? `<div class="meeting-timeline">${finalized.map(renderMeetingCard).join("")}</div>` : `<div class="empty-state"><i data-lucide="messages-square"></i><div>Aucune rencontre finalisee dans ce dossier.</div></div>`}
+      </section>
+    </section>
+  `;
+}
+
+function renderMeetingCard(meeting) {
+  const summary = meeting.memberCommitment || meeting.leverageAction || meeting.pillarNotes || meeting.checkIn || "Aucun resume saisi.";
+  return `
+    <button class="meeting-card ${meeting.status === "finalized" ? "finalized" : "draft"}" data-open-meeting="${escapeAttr(meeting.id)}" type="button">
+      <span class="meeting-card-date"><strong>${formatShortDate(meeting.meetingDate || meeting.createdAt)}</strong><small>${escapeHtml(meeting.facilitatorName || "Leader a preciser")}</small></span>
+      <span class="meeting-card-main"><span>${meetingStatusPill(meeting.status)}${meeting.pillar ? `<em>${escapeHtml(MEETING_PILLAR_LABELS[meeting.pillar] || "Autre")}</em>` : ""}</span><strong>${meeting.status === "finalized" ? "Rencontre finalisee" : "Brouillon a poursuivre"}</strong><small>${escapeHtml(truncate(summary, 220))}</small></span>
+      <i data-lucide="chevron-right"></i>
+    </button>
+  `;
+}
+
+function renderMeetingEditor() {
+  const meeting = state.teamMeetings.find((item) => item.id === state.meetingEditorId);
+  const member = state.teamMembers.find((item) => item.id === meeting?.teamMemberId || item.id === state.selectedMemberId);
+  if (!meeting || !member) return "";
+  const finalized = meeting.status === "finalized";
+  const memberArchived = isArchivedTeamMember(member);
+  const editable = !finalized && !memberArchived;
+  const previous = meetingsForMember(member.id).find((item) => item.id !== meeting.id && item.status === "finalized") || null;
+  const submissions = submissionsForMember(member).filter((item) => !isDeleted(item));
+  const roadmapDocumentUrl = memberRoadmapDocumentUrl(member);
+  const disabled = editable ? "" : "disabled";
+  return `
+    <div class="career-modal meeting-modal" role="dialog" aria-modal="true" aria-labelledby="meetingEditorTitle">
+      <div class="career-modal-backdrop" data-close-meeting aria-hidden="true"></div>
+      <section class="meeting-editor panel">
+        <header class="career-editor-header meeting-editor-header">
+          <div><p class="eyebrow">${escapeHtml(member.name)} · Rencontre 1:1</p><h2 id="meetingEditorTitle">${editable ? "Prise de notes en direct" : "Note de rencontre"}</h2></div>
+          <div class="meeting-header-actions">
+            ${finalized ? meetingStatusPill("finalized") : memberArchived ? `<span class="meeting-status-pill draft"><i data-lucide="archive"></i>Dossier archive</span>` : `<span class="meeting-save-status ${escapeAttr(state.meetingSaveState)}" id="meetingSaveStatus">${meetingSaveStatusLabel()}</span>`}
+            <button class="button icon-only" data-close-meeting type="button" title="Fermer" aria-label="Fermer"><i data-lucide="x"></i></button>
+          </div>
+        </header>
+        <div class="meeting-editor-scroll">
+          ${previous ? `
+            <aside class="meeting-previous-context">
+              <span class="meeting-context-icon"><i data-lucide="history"></i></span>
+              <div><strong>Dernier engagement</strong><p>${escapeHtml(previous.memberCommitment || "Aucun engagement note.")}</p>${previous.successMeasure ? `<small>Mesure: ${escapeHtml(previous.successMeasure)}</small>` : ""}</div>
+              <button class="inline-link" data-open-meeting="${escapeAttr(previous.id)}" type="button">Relire la rencontre</button>
+            </aside>
+          ` : ""}
+          <form id="meetingForm" class="meeting-form" data-meeting-id="${escapeAttr(meeting.id)}">
+            <input type="hidden" name="meetingId" value="${escapeAttr(meeting.id)}">
+            <section class="meeting-form-section meeting-form-meta">
+              <div class="meeting-section-heading"><span>Prep</span><div><h3>Cadre de la rencontre</h3><p>La date documente l'historique; elle ne planifie aucun rendez-vous.</p></div></div>
+              <div class="meeting-form-grid">
+                <label class="field">Date de la rencontre<input name="meetingDate" type="date" value="${escapeAttr(dateInputValue(meeting.meetingDate) || todayInputValue())}" ${disabled}></label>
+                <label class="field">Leader qui mene<select name="facilitatorName" ${disabled}>${MEETING_FACILITATORS.map((name) => `<option value="${escapeAttr(name)}" ${(meeting.facilitatorName || "Gabriel") === name ? "selected" : ""}>${escapeHtml(name)}</option>`).join("")}</select></label>
+                <label class="field field-wide">Roadmap trimestrielle consultee <span class="field-optional">facultatif</span><select name="sourceRoadmapId" ${disabled}><option value="">Aucune</option>${submissions.map((submission) => `<option value="${escapeAttr(submission.id)}" ${meeting.sourceRoadmapId === submission.id ? "selected" : ""}>${escapeHtml(submissionLabel(submission))}</option>`).join("")}</select></label>
+              </div>
+              ${roadmapDocumentUrl ? `<a class="meeting-drive-link" href="${escapeAttr(safeExternalUrl(roadmapDocumentUrl))}" target="_blank" rel="noopener"><i data-lucide="file-text"></i><span><strong>Ouvrir le document Roadmap de ${escapeHtml(member.name)}</strong><small>Le document Drive demeure separe et peut etre utilise par le coach pendant la rencontre.</small></span><i data-lucide="external-link"></i></a>` : `<button class="meeting-drive-link missing" data-edit-member="${escapeAttr(member.id)}" type="button"><i data-lucide="link"></i><span><strong>Ajouter le lien vers son document Drive</strong><small>Aucun document n'est encore associe a ce dossier.</small></span><i data-lucide="pencil"></i></button>`}
+            </section>
+            <section class="meeting-form-section">
+              <div class="meeting-section-heading"><span>1</span><div><h3>Check-in humain</h3><p>Comment ca va vraiment? Qu'est-ce qui pese ou qui eclaire en ce moment?</p></div></div>
+              <label class="field"><span class="visually-hidden">Check-in humain</span><textarea name="checkIn" rows="4" placeholder="Notes sur l'etat humain, l'energie et le contexte..." ${disabled}>${escapeHtml(meeting.checkIn || "")}</textarea></label>
+            </section>
+            <section class="meeting-form-section">
+              <div class="meeting-section-heading"><span>2</span><div><h3>Revue des engagements</h3><p>Reviens sur ce qui avait ete convenu au dernier 1:1.</p></div></div>
+              <div class="meeting-form-grid">
+                <label class="field">Statut<select name="previousCommitmentStatus" ${disabled}>${MEETING_COMMITMENT_OPTIONS.map(([id, label]) => `<option value="${id}" ${(meeting.previousCommitmentStatus || "not_applicable") === id ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label>
+                <label class="field field-wide">Ce qui a fonctionne ou bloque<textarea name="previousCommitmentNotes" rows="3" placeholder="Faits, apprentissages et obstacles..." ${disabled}>${escapeHtml(meeting.previousCommitmentNotes || "")}</textarea></label>
+              </div>
+            </section>
+            <section class="meeting-form-section">
+              <div class="meeting-section-heading"><span>3</span><div><h3>Un pilier ce mois-ci</h3><p>Choisis un seul angle pour aller en profondeur.</p></div></div>
+              <div class="meeting-form-grid">
+                <label class="field">Pilier<select name="pillar" ${disabled}>${MEETING_PILLAR_OPTIONS.map(([id, label]) => `<option value="${id}" ${(meeting.pillar || "") === id ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label>
+                <label class="field field-wide">Observations et reflexions<textarea name="pillarNotes" rows="4" placeholder="Argent, competence ou relation: ce qui merite d'etre travaille maintenant..." ${disabled}>${escapeHtml(meeting.pillarNotes || "")}</textarea></label>
+              </div>
+            </section>
+            <section class="meeting-form-section">
+              <div class="meeting-section-heading"><span>4</span><div><h3>Levier principal</h3><p>Quelle action pourrait debloquer le reste?</p></div></div>
+              <label class="field"><span class="visually-hidden">Levier principal</span><textarea name="leverageAction" rows="3" placeholder="Une action a haut impact..." ${disabled}>${escapeHtml(meeting.leverageAction || "")}</textarea></label>
+            </section>
+            <section class="meeting-form-section">
+              <div class="meeting-section-heading"><span>5</span><div><h3>Engagement du membre</h3><p>Un engagement concret et une facon claire de constater qu'il est realise.</p></div></div>
+              <div class="meeting-form-grid">
+                <label class="field field-wide">Engagement<textarea name="memberCommitment" rows="3" placeholder="Sur quoi le membre s'engage..." ${disabled}>${escapeHtml(meeting.memberCommitment || "")}</textarea></label>
+                <label class="field field-wide">Comment saura-t-on que c'est fait?<textarea name="successMeasure" rows="2" placeholder="Resultat observable ou mesure simple..." ${disabled}>${escapeHtml(meeting.successMeasure || "")}</textarea></label>
+              </div>
+            </section>
+            <section class="meeting-form-section">
+              <div class="meeting-section-heading"><span>6</span><div><h3>Soutien promis par le leader</h3><p>Ce que Michael ou Gabriel fera concretement pour aider.</p></div></div>
+              <label class="field"><span class="visually-hidden">Soutien promis</span><textarea name="leaderSupport" rows="3" placeholder="Introduction, budget, feedback, ressource ou autre soutien..." ${disabled}>${escapeHtml(meeting.leaderSupport || "")}</textarea></label>
+              ${editable ? `<label class="meeting-task-option"><input name="createSupportTask" type="checkbox" ${meeting.leaderSupport ? "checked" : ""}><span><strong>Ajouter ce soutien dans A faire lors de la finalisation</strong><small>Une action sera creee pour le leader qui mene la rencontre.</small></span></label>` : meeting.supportTaskId ? `<p class="meeting-linked-task"><i data-lucide="list-checks"></i>Le soutien promis a ete ajoute dans A faire.</p>` : ""}
+            </section>
+            <section class="meeting-form-section">
+              <div class="meeting-section-heading"><span>+</span><div><h3>Notes additionnelles</h3><p>Conserve seulement les signaux utiles pour la prochaine conversation.</p></div></div>
+              <div class="meeting-form-grid">
+                <label class="field field-wide">Notes libres<textarea name="additionalNotes" rows="4" placeholder="Contexte ou detail important..." ${disabled}>${escapeHtml(meeting.additionalNotes || "")}</textarea></label>
+                <label class="field field-wide">Signaux a suivre<textarea name="signals" rows="3" placeholder="Element a surveiller sans en faire necessairement une action..." ${disabled}>${escapeHtml(meeting.signals || "")}</textarea></label>
+              </div>
+            </section>
+            <footer class="meeting-form-actions">
+              ${!editable ? `<button class="button" data-close-meeting type="button"><i data-lucide="x"></i> Fermer</button><span class="meeting-finalized-meta">${finalized ? `Finalisee ${meeting.finalizedAt ? `le ${formatDate(meeting.finalizedAt)}` : ""} par ${escapeHtml(meeting.finalizedByName || meeting.updatedByName || "un owner")}` : "Dossier archive · restaure le membre pour poursuivre ce brouillon."}</span>` : `
+                <button class="button primary" id="finalizeMeetingButton" type="button"><i data-lucide="check-circle-2"></i> Finaliser la rencontre</button>
+                <button class="button" id="saveMeetingNowButton" type="button"><i data-lucide="save"></i> Enregistrer maintenant</button>
+                <button class="button danger push-right" id="deleteMeetingDraftButton" type="button"><i data-lucide="trash-2"></i> Supprimer le brouillon</button>
+              `}
+            </footer>
+          </form>
+        </div>
+      </section>
+    </div>
   `;
 }
 
@@ -1342,6 +1555,7 @@ function bindAppEvents() {
   document.querySelector("#reloadButton")?.addEventListener("click", () => window.location.reload());
   document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => {
     closeCareerEditor(false);
+    closeMeetingEditor(false, false);
     closeRoadmapCompletion(false);
     closeTeamAction(false);
     closeTaskEditor(false);
@@ -1460,6 +1674,7 @@ function bindAppEvents() {
     renderApp();
   }));
   document.querySelectorAll("[data-edit-member]").forEach((button) => button.addEventListener("click", () => {
+    closeMeetingEditor(false, false);
     state.view = "team";
     state.selectedMemberId = "";
     state.editingMemberId = button.dataset.editMember;
@@ -1497,6 +1712,14 @@ function bindAppEvents() {
     state.memberProfileSection = button.dataset.memberSection;
     renderApp();
   }));
+  document.querySelector("#addTeamMeeting")?.addEventListener("click", createTeamMeeting);
+  document.querySelectorAll("[data-open-meeting]").forEach((button) => button.addEventListener("click", () => openMeetingEditor(button.dataset.openMeeting)));
+  document.querySelectorAll("[data-close-meeting]").forEach((button) => button.addEventListener("click", () => closeMeetingEditor()));
+  document.querySelector("#meetingForm")?.addEventListener("input", scheduleMeetingAutosave);
+  document.querySelector("#meetingForm")?.addEventListener("change", scheduleMeetingAutosave);
+  document.querySelector("#saveMeetingNowButton")?.addEventListener("click", () => saveMeetingDraft());
+  document.querySelector("#finalizeMeetingButton")?.addEventListener("click", finalizeTeamMeeting);
+  document.querySelector("#deleteMeetingDraftButton")?.addEventListener("click", deleteMeetingDraft);
   document.querySelectorAll("[data-member-action-view]").forEach((button) => button.addEventListener("click", () => {
     state.memberActionView = button.dataset.memberActionView;
     renderApp();
@@ -1555,6 +1778,258 @@ function closeCareerEditor(shouldRender = true) {
   if (shouldRender) renderApp();
 }
 
+async function closeMeetingEditor(shouldRender = true, saveBeforeClose = true) {
+  window.clearTimeout(meetingAutosaveTimer);
+  meetingAutosaveTimer = null;
+  if (saveBeforeClose && state.meetingEditorId && document.querySelector("#meetingForm") && meetingIsEditable(state.teamMeetings.find((item) => item.id === state.meetingEditorId))) {
+    await saveMeetingDraft({ silent: true });
+  }
+  state.meetingEditorId = "";
+  state.meetingEditorVersion = "";
+  state.meetingSaveState = "saved";
+  if (shouldRender) renderApp();
+}
+
+async function createTeamMeeting() {
+  const member = state.teamMembers.find((item) => item.id === state.selectedMemberId);
+  if (!member || isArchivedTeamMember(member) || state.busy) return;
+  const meetingRef = doc(collection(db, "teamMeetings"));
+  const payload = {
+    teamMemberId: member.id,
+    teamMemberName: member.name,
+    meetingType: "one_on_one",
+    templateVersion: MEETING_TEMPLATE_VERSION,
+    status: "draft",
+    meetingDate: todayInputValue(),
+    facilitatorName: "Gabriel",
+    previousCommitmentStatus: "not_applicable",
+    pillar: "",
+    createdAt: serverTimestamp(),
+    createdByUid: state.user.uid,
+    createdByName: actorName(),
+    updatedAt: serverTimestamp(),
+    updatedByUid: state.user.uid,
+    updatedByName: actorName()
+  };
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.set(meetingRef, payload);
+    batch.set(doc(collection(db, "auditLogs")), auditPayload("team_meeting_created", meetingRef.id, { teamMemberId: member.id }));
+    await batch.commit();
+    const snapshot = await getDoc(meetingRef);
+    const meeting = snapshot.exists() ? fromDoc(snapshot) : { id: meetingRef.id, ...payload, createdAt: new Date(), updatedAt: new Date() };
+    state.teamMeetings = [meeting, ...state.teamMeetings.filter((item) => item.id !== meeting.id)].sort(sortTeamMeetings);
+    state.meetingEditorId = meeting.id;
+    state.meetingEditorVersion = entityVersionToken(meeting);
+    state.meetingSaveState = "saved";
+    renderApp();
+  } catch (error) {
+    showToast(`Rencontre non creee: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function openMeetingEditor(meetingId) {
+  if (state.meetingEditorId && state.meetingEditorId !== meetingId) await closeMeetingEditor(false);
+  const meeting = state.teamMeetings.find((item) => item.id === meetingId);
+  if (!meeting) return;
+  const member = state.teamMembers.find((item) => item.id === meeting.teamMemberId);
+  if (!member) return showToast("Le dossier membre associe n'est plus disponible.");
+  state.view = "team";
+  state.selectedMemberId = member.id;
+  state.teamRosterView = teamMemberBucket(member);
+  state.memberProfileSection = "meetings";
+  state.meetingEditorId = meeting.id;
+  state.meetingEditorVersion = entityVersionToken(meeting);
+  state.meetingSaveState = "saved";
+  renderApp();
+}
+
+function scheduleMeetingAutosave() {
+  const meeting = state.teamMeetings.find((item) => item.id === state.meetingEditorId);
+  if (!meetingIsEditable(meeting)) return;
+  window.clearTimeout(meetingAutosaveTimer);
+  setMeetingSaveState("pending");
+  meetingAutosaveTimer = window.setTimeout(() => saveMeetingDraft({ silent: true }), 850);
+}
+
+async function saveMeetingDraft(options = {}) {
+  if (meetingAutosavePromise) return meetingAutosavePromise;
+  meetingAutosavePromise = persistMeetingDraft(options).finally(() => {
+    meetingAutosavePromise = null;
+  });
+  return meetingAutosavePromise;
+}
+
+async function persistMeetingDraft({ silent = false } = {}) {
+  window.clearTimeout(meetingAutosaveTimer);
+  meetingAutosaveTimer = null;
+  const meeting = state.teamMeetings.find((item) => item.id === state.meetingEditorId);
+  const form = document.querySelector("#meetingForm");
+  if (!form || !meetingIsEditable(meeting)) return true;
+  const payload = meetingFormPayload(form);
+  const reference = doc(db, "teamMeetings", meeting.id);
+  setMeetingSaveState("saving");
+  try {
+    await runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(reference);
+      if (!snapshot.exists()) throw new Error("Cette rencontre n'existe plus.");
+      const current = snapshot.data();
+      if (current.status === "finalized") throw new Error("Cette rencontre a deja ete finalisee.");
+      if (hasVersionConflict(current, state.meetingEditorVersion)) throw versionConflictError(current);
+      transaction.set(reference, payload, { merge: true });
+    });
+    const savedSnapshot = await getDoc(reference);
+    if (savedSnapshot.exists()) {
+      Object.assign(meeting, savedSnapshot.data(), { id: meeting.id });
+      state.meetingEditorVersion = entityVersionToken(meeting);
+    }
+    setMeetingSaveState("saved");
+    if (!silent) showToast("Brouillon enregistre.");
+    return true;
+  } catch (error) {
+    if (error.code === "version-conflict") {
+      setMeetingSaveState("conflict");
+      showToast("Cette note a ete modifiee ailleurs. Ferme-la pour charger la version recente.");
+    } else {
+      setMeetingSaveState("error");
+      if (!silent) showToast(`Brouillon non enregistre: ${friendlyError(error)}`);
+    }
+    return false;
+  }
+}
+
+function meetingFormPayload(form) {
+  const data = new FormData(form);
+  return {
+    meetingDate: String(data.get("meetingDate") || todayInputValue()),
+    facilitatorName: MEETING_FACILITATORS.includes(String(data.get("facilitatorName"))) ? String(data.get("facilitatorName")) : "Gabriel",
+    sourceRoadmapId: String(data.get("sourceRoadmapId") || ""),
+    checkIn: String(data.get("checkIn") || "").trim(),
+    previousCommitmentStatus: MEETING_COMMITMENT_OPTIONS.some(([id]) => id === data.get("previousCommitmentStatus")) ? String(data.get("previousCommitmentStatus")) : "not_applicable",
+    previousCommitmentNotes: String(data.get("previousCommitmentNotes") || "").trim(),
+    pillar: MEETING_PILLAR_OPTIONS.some(([id]) => id === data.get("pillar")) ? String(data.get("pillar")) : "",
+    pillarNotes: String(data.get("pillarNotes") || "").trim(),
+    leverageAction: String(data.get("leverageAction") || "").trim(),
+    memberCommitment: String(data.get("memberCommitment") || "").trim(),
+    successMeasure: String(data.get("successMeasure") || "").trim(),
+    leaderSupport: String(data.get("leaderSupport") || "").trim(),
+    additionalNotes: String(data.get("additionalNotes") || "").trim(),
+    signals: String(data.get("signals") || "").trim(),
+    updatedAt: serverTimestamp(),
+    updatedByUid: state.user.uid,
+    updatedByName: actorName()
+  };
+}
+
+async function finalizeTeamMeeting() {
+  const meeting = state.teamMeetings.find((item) => item.id === state.meetingEditorId);
+  const member = state.teamMembers.find((item) => item.id === meeting?.teamMemberId);
+  const form = document.querySelector("#meetingForm");
+  if (!meeting || !member || !form || !meetingIsEditable(meeting) || state.busy) return;
+  const confirmed = window.confirm("Finaliser cette rencontre?\n\nLa note deviendra un element permanent en lecture seule dans l'historique du membre.");
+  if (!confirmed) return;
+  const saved = await saveMeetingDraft({ silent: true });
+  if (!saved) return;
+  const payload = meetingFormPayload(form);
+  const createSupportTask = Boolean(form.elements.createSupportTask?.checked && payload.leaderSupport);
+  const meetingRef = doc(db, "teamMeetings", meeting.id);
+  const taskRef = createSupportTask ? doc(collection(db, "managementTasks")) : null;
+  const auditRef = doc(collection(db, "auditLogs"));
+  state.busy = true;
+  setMeetingSaveState("saving");
+  try {
+    await runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(meetingRef);
+      if (!snapshot.exists()) throw new Error("Cette rencontre n'existe plus.");
+      const current = snapshot.data();
+      if (current.status === "finalized") throw new Error("Cette rencontre est deja finalisee.");
+      if (hasVersionConflict(current, state.meetingEditorVersion)) throw versionConflictError(current);
+      const finalPayload = {
+        ...payload,
+        status: "finalized",
+        finalizedAt: serverTimestamp(),
+        finalizedByUid: state.user.uid,
+        finalizedByName: actorName()
+      };
+      if (taskRef && !current.supportTaskId) {
+        finalPayload.supportTaskId = taskRef.id;
+        transaction.set(taskRef, {
+          title: `Soutien promis a ${member.name}`,
+          description: payload.leaderSupport,
+          teamMemberId: member.id,
+          teamMemberName: member.name,
+          ownerName: payload.facilitatorName,
+          priority: "P2",
+          status: "open",
+          dueDate: "",
+          taskKind: "followup",
+          sourceType: "meeting",
+          sourceMeetingId: meeting.id,
+          createdAt: serverTimestamp(),
+          createdByUid: state.user.uid,
+          createdByName: actorName(),
+          updatedAt: serverTimestamp(),
+          updatedByUid: state.user.uid,
+          updatedByName: actorName()
+        });
+      }
+      transaction.set(meetingRef, finalPayload, { merge: true });
+      transaction.set(auditRef, auditPayload("team_meeting_finalized", meeting.id, { teamMemberId: member.id, supportTaskId: taskRef?.id || "" }));
+    });
+    state.meetingEditorId = "";
+    state.meetingEditorVersion = "";
+    state.meetingSaveState = "saved";
+    showToast(createSupportTask ? "Rencontre finalisee et soutien ajoute a A faire." : "Rencontre finalisee.");
+    renderApp();
+  } catch (error) {
+    setMeetingSaveState(error.code === "version-conflict" ? "conflict" : "error");
+    showToast(`Rencontre non finalisee: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function deleteMeetingDraft() {
+  const meeting = state.teamMeetings.find((item) => item.id === state.meetingEditorId);
+  if (!meetingIsEditable(meeting) || state.busy) return;
+  if (!window.confirm("Supprimer definitivement ce brouillon de rencontre?")) return;
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.delete(doc(db, "teamMeetings", meeting.id));
+    batch.set(doc(collection(db, "auditLogs")), auditPayload("team_meeting_draft_deleted", meeting.id, { teamMemberId: meeting.teamMemberId }));
+    await batch.commit();
+    state.teamMeetings = state.teamMeetings.filter((item) => item.id !== meeting.id);
+    state.meetingEditorId = "";
+    state.meetingEditorVersion = "";
+    showToast("Brouillon supprime.");
+    renderApp();
+  } catch (error) {
+    showToast(`Brouillon non supprime: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+function setMeetingSaveState(value) {
+  state.meetingSaveState = value;
+  const element = document.querySelector("#meetingSaveStatus");
+  if (!element) return;
+  element.className = `meeting-save-status ${value}`;
+  element.textContent = meetingSaveStatusLabel();
+}
+
+function meetingSaveStatusLabel() {
+  if (state.meetingSaveState === "pending") return "Modifications a enregistrer";
+  if (state.meetingSaveState === "saving") return "Enregistrement...";
+  if (state.meetingSaveState === "conflict") return "Version plus recente detectee";
+  if (state.meetingSaveState === "error") return "Echec de sauvegarde";
+  return "Tout est sauvegarde";
+}
+
 function closeRoadmapCompletion(shouldRender = true) {
   state.roadmapCompletionId = "";
   state.roadmapCompletionVersion = "";
@@ -1588,7 +2063,7 @@ function closeTaskEditor(shouldRender = true) {
 }
 
 function hasOpenModal() {
-  return Boolean(state.taskEditorId || state.teamActionMemberId || state.roadmapCompletionId || state.careerEditorId);
+  return Boolean(state.taskEditorId || state.teamActionMemberId || state.roadmapCompletionId || state.careerEditorId || state.meetingEditorId);
 }
 
 function hasProtectedEditor() {
@@ -1611,6 +2086,7 @@ function handleGlobalKeydown(event) {
   if (event.key === "Escape" && hasOpenModal()) {
     event.preventDefault();
     if (state.taskEditorId) closeTaskEditor();
+    else if (state.meetingEditorId) closeMeetingEditor();
     else if (state.teamActionMemberId) closeTeamAction();
     else if (state.roadmapCompletionId) closeRoadmapCompletion();
     else closeCareerEditor();
@@ -2223,6 +2699,7 @@ async function saveTeamMember(event) {
       departmentId: String(data.get("departmentId") || "support"),
       displayTitle: String(data.get("displayTitle") || "").trim(),
       careerTarget: String(data.get("careerTarget") || "").trim(),
+      roadmapDocumentUrl: deleteField(),
       roleIds: String(data.get("roleIds") || "").split(/[,;]+/).map((item) => item.trim()).filter(Boolean),
       aliases: String(data.get("aliases") || "").split(/[,;]+/).map((item) => item.trim()).filter(Boolean),
       sortOrder: Number(data.get("sortOrder") || 100),
@@ -2233,6 +2710,14 @@ async function saveTeamMember(event) {
     };
     if (!existingId) memberPayload.createdAt = serverTimestamp();
     const memberRef = doc(db, "teamMembers", memberId);
+    const privateRef = doc(db, "teamMemberPrivate", memberId);
+    const privatePayload = {
+      roadmapDocumentUrl: normalizeExternalUrl(data.get("roadmapDocumentUrl")),
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    };
+    if (!existingId) privatePayload.createdAt = serverTimestamp();
     const auditRef = doc(collection(db, "auditLogs"));
     const audit = auditPayload("team_member_saved", memberId);
     if (existingMember) {
@@ -2242,6 +2727,7 @@ async function saveTeamMember(event) {
         label: "ce dossier membre",
         write(transaction) {
           transaction.set(memberRef, memberPayload, { merge: true });
+          transaction.set(privateRef, privatePayload, { merge: true });
           transaction.set(auditRef, audit);
         }
       });
@@ -2253,6 +2739,7 @@ async function saveTeamMember(event) {
       }
     } else {
       batch.set(memberRef, memberPayload, { merge: true });
+      batch.set(privateRef, privatePayload, { merge: true });
       batch.set(auditRef, audit);
       await batch.commit();
     }
@@ -2419,7 +2906,7 @@ function filteredManagementTasks() {
   return allOpenManagementTasks().filter((task) => {
     if (state.taskOwnerFilter !== "all" && !normalize(task.ownerName).includes(normalize(state.taskOwnerFilter))) return false;
     if (state.taskFilter === "urgent") return taskIsUrgent(task);
-    if (["roadmap", "career"].includes(state.taskFilter)) return task.sourceType === state.taskFilter;
+    if (["roadmap", "career", "meeting"].includes(state.taskFilter)) return task.sourceType === state.taskFilter;
     if (state.taskFilter === "manual") return task.sourceType === "manual";
     return true;
   });
@@ -2754,7 +3241,7 @@ function openTaskSource(taskId) {
 function auditPayload(action, entityId, details = {}) {
   return {
     action,
-    entityType: action.startsWith("team_") ? "teamMember" : action.startsWith("career_") ? "careerMilestone" : action.startsWith("management_") ? "managementTask" : action.startsWith("client_error_") ? "clientError" : "roadmapSubmission",
+    entityType: action.startsWith("team_meeting_") ? "teamMeeting" : action.startsWith("team_") ? "teamMember" : action.startsWith("career_") ? "careerMilestone" : action.startsWith("management_") ? "managementTask" : action.startsWith("client_error_") ? "clientError" : "roadmapSubmission",
     entityId,
     actorUid: state.user.uid,
     actorName: actorName(),
@@ -2828,6 +3315,22 @@ function openAuditEntity(logId) {
     state.teamRosterView = teamMemberBucket(member);
     state.memberProfileSection = "overview";
     renderApp();
+    return;
+  }
+  if (log.entityType === "teamMeeting") {
+    const meeting = state.teamMeetings.find((item) => item.id === log.entityId);
+    const memberId = meeting?.teamMemberId || log.details?.teamMemberId;
+    if (!meeting || !memberId) return showToast("Cette rencontre n'est plus disponible.");
+    state.view = "team";
+    state.selectedMemberId = memberId;
+    state.teamRosterView = teamMemberBucket(state.teamMembers.find((item) => item.id === memberId));
+    state.memberProfileSection = "meetings";
+    openMeetingEditor(meeting.id);
+    return;
+  }
+  if (log.entityType === "revenueScenario") {
+    const memberId = log.details?.teamMemberId || "";
+    window.location.href = memberId ? `./revenue.html?member=${encodeURIComponent(memberId)}` : "./revenue.html";
     return;
   }
   if (log.entityType === "careerMilestone") {
@@ -2957,6 +3460,16 @@ function submissionsForMember(member) {
     .sort((a, b) => dateValue(b.submittedAt) - dateValue(a.submittedAt));
 }
 
+function meetingsForMember(memberId) {
+  return state.teamMeetings.filter((meeting) => meeting.teamMemberId === memberId).sort(sortTeamMeetings);
+}
+
+function meetingIsEditable(meeting) {
+  if (!meeting || meeting.status === "finalized") return false;
+  const member = state.teamMembers.find((item) => item.id === meeting.teamMemberId);
+  return Boolean(member && !isArchivedTeamMember(member));
+}
+
 function milestonesForMember(member, includeArchived = false) {
   return state.careerMilestones
     .filter((milestone) => milestone.teamMemberId === member.id && (includeArchived || !milestone.archivedAt))
@@ -3022,6 +3535,11 @@ function statusPill(status) {
 
 function careerStatusPill(status) {
   return `<span class="career-status-pill ${careerStatusTone(status)}">${escapeHtml(CAREER_STATUS_LABELS[status] || "A preciser")}</span>`;
+}
+
+function meetingStatusPill(status) {
+  const finalized = status === "finalized";
+  return `<span class="meeting-status-pill ${finalized ? "finalized" : "draft"}"><i data-lucide="${finalized ? "check-circle-2" : "file-pen-line"}"></i>${finalized ? "Finalisee" : "Brouillon"}</span>`;
 }
 
 function careerStatusTone(status) {
@@ -3116,6 +3634,34 @@ function fromDoc(snapshot) {
 
 function sortTeamMembers(a, b) {
   return Number(a.sortOrder || 999) - Number(b.sortOrder || 999) || String(a.name || "").localeCompare(String(b.name || ""));
+}
+
+function sortTeamMeetings(a, b) {
+  return dateValue(b.meetingDate || b.createdAt) - dateValue(a.meetingDate || a.createdAt) || dateValue(b.updatedAt) - dateValue(a.updatedAt);
+}
+
+function memberRoadmapDocumentUrl(member) {
+  return normalizeExternalUrl(state.teamMemberPrivate[member?.id]?.roadmapDocumentUrl || member?.roadmapDocumentUrl || "");
+}
+
+function memberHasRevenueTool(member) {
+  const haystack = normalize([member.departmentId, member.displayTitle, ...(member.roleIds || [])].join(" "));
+  return haystack.includes("coach") || haystack.includes("coaching") || haystack.includes("entraineur");
+}
+
+function normalizeExternalUrl(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  try {
+    const url = new URL(text);
+    return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
+function safeExternalUrl(value) {
+  return normalizeExternalUrl(value) || "#";
 }
 
 function dateValue(value) {
