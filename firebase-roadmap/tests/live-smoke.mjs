@@ -2,7 +2,8 @@ const baseUrl = (process.env.ROADMAP_LIVE_URL || "https://cfsb-roadmap-trimestri
 
 const checks = [
   ["/", ["Dashboard Equipe CFSB", "./app.js"]],
-  ["/app.js", ["renderActivityView", "teamMeetings", "teamMemberPrivate", "renderMeetingEditor", "renderPilotageView"]],
+  ["/app.js", ["renderActivityView", "teamMeetings", "teamMemberPrivate", "renderMeetingEditor", "renderPilotageView", "renderDevelopmentView", "developmentPrograms"]],
+  ["/development.js", ["developmentAssignmentProgress", "latestPublishedPrograms", "canCompleteDevelopmentStep"]],
   ["/workflow.js", ["entityVersionToken", "hasVersionConflict"]],
   ["/pilotage.js", ["startOfWeekIso", "metricStatus", "pilotageSummary"]],
   ["/health.js", ["dashboardHealthReport", "missingDocumentMembers", "latestImportAt"]],
@@ -11,7 +12,7 @@ const checks = [
   ["/form-model.js", ["currentCycleId", "matchingTeamMember", "completionForRole"]],
   ["/formulaire.css", [".firebase-auth-actions", ".firebase-cloud-state", ".role-list"]],
   ["/roadmap-config.json", ["roadmap-trimestrielle-cfsb", "coach_professionnel", "entretien_menager"]],
-  ["/styles.css", [".activity-list", ".meeting-editor", ".pilotage-shell", "[hidden]"]],
+  ["/styles.css", [".activity-list", ".meeting-editor", ".pilotage-shell", ".development-assignment-layout", "[hidden]"]],
   ["/revenue.html", ["Projection de revenus", "scenarioMemberSelect", "./revenue.js"]],
   ["/revenue.js", ["REVENUE_MODEL_VERSION", "saveScenario", "revenueScenarios"]],
   ["/revenue.css", [".scenario-panel", ".revenue-table", ".revenue-metrics"]],

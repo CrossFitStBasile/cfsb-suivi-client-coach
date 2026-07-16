@@ -48,6 +48,10 @@ Le Dashboard Equipe est deploye sur Firebase Hosting avec connexion Google owner
 - separation de l'equipe active et des dossiers archives, avec archivage et restauration sans perte d'historique;
 - ligne du temps `Parcours CFSB` avec objectifs, echeances, responsables, progression et notes d'evolution datees;
 - conversion d'une prochaine action de roadmap en etape de parcours, sans double saisie;
+- module owner-only `Developpement equipe` pour creer des programmes d'onboarding, de formation continue ou d'evaluation sans precharger de contenu non valide;
+- publication versionnee des programmes: une nouvelle version conserve les anciennes assignations et rend la version precedente historique;
+- assignation d'une version publiee a un membre, progression par etape, pause, reprise, historique et preuve Drive facultative ou obligatoire selon l'etape;
+- acces au suivi de developpement depuis le dossier longitudinal de chaque membre;
 - association ou reassignation manuelle d'une soumission au bon membre;
 - historique consultable, corbeille reversible et suppression definitive confirmee;
 - conservation des anciennes notes owners dans un bloc historique;

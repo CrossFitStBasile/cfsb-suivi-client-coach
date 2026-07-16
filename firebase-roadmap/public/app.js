@@ -47,13 +47,32 @@ import {
 } from "./pilotage.js";
 import { dashboardHealthReport } from "./health.js";
 import { personNameKey } from "./form-model.js";
+import {
+  DEVELOPMENT_ASSIGNMENT_STATUSES,
+  DEVELOPMENT_PROGRAM_TYPES,
+  DEVELOPMENT_STEP_STATUSES,
+  activeDevelopmentAssignments,
+  canCompleteDevelopmentStep,
+  developmentAssignmentProgress,
+  developmentAssignmentsForMember,
+  developmentProgramSnapshot,
+  developmentStepState,
+  effectiveDevelopmentAssignmentStatus,
+  latestPublishedPrograms,
+  nextDevelopmentVersion,
+  normalizeDevelopmentStep,
+  sortDevelopmentPrograms,
+  validateDevelopmentProgram
+} from "./development.js";
 
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: "select_account" });
-const INITIAL_MEMBER_ID = new URLSearchParams(window.location.search).get("member") || "";
+const URL_PARAMS = new URLSearchParams(window.location.search);
+const INITIAL_MEMBER_ID = URL_PARAMS.get("member") || "";
+const LOCAL_DEVELOPMENT_PREVIEW = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname) && URL_PARAMS.get("preview") === "development";
 
 const STATUS_OPTIONS = [
   ["to_read", "A lire"],
@@ -157,6 +176,9 @@ const PILOTAGE_ROCK_STATUSES = [
   ["done", "Terminee"]
 ];
 const PILOTAGE_MEETING_ATTENDEES = ["Michael", "Gabriel"];
+const DEVELOPMENT_PROGRAM_TYPE_LABELS = Object.fromEntries(DEVELOPMENT_PROGRAM_TYPES);
+const DEVELOPMENT_ASSIGNMENT_STATUS_LABELS = Object.fromEntries(DEVELOPMENT_ASSIGNMENT_STATUSES);
+const DEVELOPMENT_STEP_STATUS_LABELS = Object.fromEntries(DEVELOPMENT_STEP_STATUSES);
 
 const state = {
   user: null,
@@ -179,6 +201,8 @@ const state = {
   pilotageRocks: [],
   pilotageIssues: [],
   pilotageMeetings: [],
+  developmentPrograms: [],
+  developmentAssignments: [],
   auditLogs: [],
   clientErrors: [],
   view: INITIAL_MEMBER_ID ? "team" : "todo",
@@ -211,6 +235,14 @@ const state = {
   pilotageQuarter: quarterId(),
   pilotageEditorType: "",
   pilotageEditorId: "",
+  developmentSection: "assignments",
+  developmentAssignmentView: "active",
+  selectedDevelopmentAssignmentId: "",
+  developmentProgramEditorId: "",
+  developmentProgramDraft: null,
+  developmentAssignmentEditorOpen: false,
+  developmentAssignmentPrefillMemberId: "",
+  developmentStepEditorId: "",
   teamSearch: "",
   teamRosterView: "active",
   activitySearch: "",
@@ -219,7 +251,8 @@ const state = {
   filters: { search: "", role: "all", cycle: "all", status: "all" },
   unsubscribers: [],
   busy: false,
-  loadError: ""
+  loadError: "",
+  previewMode: false
 };
 
 const appRoot = document.querySelector("#app");
@@ -232,7 +265,9 @@ document.addEventListener("keydown", handleGlobalKeydown);
 window.addEventListener("error", (event) => logClientError(event.error || event.message, "window_error"));
 window.addEventListener("unhandledrejection", (event) => logClientError(event.reason, "unhandled_rejection"));
 
-onAuthStateChanged(auth, async (user) => {
+if (LOCAL_DEVELOPMENT_PREVIEW) {
+  initializeLocalDevelopmentPreview();
+} else onAuthStateChanged(auth, async (user) => {
   cleanupSubscriptions();
   state.user = user;
   state.profile = null;
@@ -259,6 +294,29 @@ onAuthStateChanged(auth, async (user) => {
     renderAccessDenied(`Impossible de verifier l'acces: ${friendlyError(error)}`);
   }
 });
+
+function initializeLocalDevelopmentPreview() {
+  const steps = [
+    { id: "culture", title: "Etape culture", description: "Attente validee et contexte partage.", category: "Culture CFSB", required: true, evidenceRequired: false, sortOrder: 1 },
+    { id: "observation", title: "Observation terrain", description: "Observation et feedback documentes.", category: "Coaching", required: true, evidenceRequired: true, sortOrder: 2 },
+    { id: "autonomy", title: "Validation autonomie", description: "Le standard est livre sans supervision directe.", category: "Coaching", required: true, evidenceRequired: false, sortOrder: 3 }
+  ];
+  state.user = { uid: "local-preview", displayName: "Apercu local" };
+  state.profile = { role: "owner", active: true, displayName: "Apercu local" };
+  state.previewMode = true;
+  state.view = "development";
+  state.teamMembers = [{ id: "membre-pilote", name: "Membre pilote", displayTitle: "Role a valider", departmentId: "coaching", active: true }];
+  state.developmentPrograms = [
+    { id: "programme-v1", familyId: "programme", title: "Programme pilote", description: "Structure de validation avant l'ajout de la checklist officielle.", programType: "onboarding", ownerName: "Gabriel", roleIds: [], version: 1, status: "published", steps },
+    { id: "formation-draft", familyId: "formation", title: "Formation continue", description: "Brouillon sans contenu metier officiel.", programType: "training", ownerName: "Gabriel", roleIds: [], version: 1, status: "draft", steps: [{ id: "draft-step", title: "Etape a valider", category: "General", required: true, evidenceRequired: false, sortOrder: 1 }] }
+  ];
+  state.developmentAssignments = [
+    { id: "assignment-active", ...developmentProgramSnapshot(state.developmentPrograms[0]), teamMemberId: "membre-pilote", teamMemberName: "Membre pilote", ownerName: "Gabriel", status: "in_progress", stepStates: { culture: { status: "completed", note: "Validee" }, observation: { status: "in_progress", note: "Observation en cours" } }, createdAt: "2026-07-16T12:00:00Z", updatedAt: "2026-07-16T12:00:00Z" },
+    { id: "assignment-completed", ...developmentProgramSnapshot(state.developmentPrograms[0]), teamMemberId: "membre-pilote", teamMemberName: "Membre pilote", ownerName: "Gabriel", status: "completed", stepStates: Object.fromEntries(steps.map((step) => [step.id, { status: "completed" }])), createdAt: "2026-06-01T12:00:00Z", updatedAt: "2026-06-15T12:00:00Z" }
+  ];
+  ensureDevelopmentSelection();
+  renderApp();
+}
 
 function renderLogin() {
   document.body.classList.remove("modal-open");
@@ -395,6 +453,15 @@ function subscribeData() {
     state.pilotageMeetings = snapshot.docs.map(fromDoc).sort((a, b) => String(b.weekStart || "").localeCompare(String(a.weekStart || "")));
     renderFromData();
   }, dataError));
+  state.unsubscribers.push(onSnapshot(collection(db, "developmentPrograms"), (snapshot) => {
+    state.developmentPrograms = sortDevelopmentPrograms(snapshot.docs.map(fromDoc));
+    renderFromData();
+  }, dataError));
+  state.unsubscribers.push(onSnapshot(collection(db, "developmentAssignments"), (snapshot) => {
+    state.developmentAssignments = snapshot.docs.map(fromDoc).sort((a, b) => dateValue(b.updatedAt || b.createdAt) - dateValue(a.updatedAt || a.createdAt));
+    ensureDevelopmentSelection();
+    renderFromData();
+  }, dataError));
   state.unsubscribers.push(onSnapshot(query(collection(db, "auditLogs"), orderBy("createdAt", "desc"), limit(250)), (snapshot) => {
     state.auditLogs = snapshot.docs.map(fromDoc);
     renderFromData();
@@ -428,6 +495,7 @@ function renderApp() {
     pilotage: ["Roadmap Business CFSB", "Zone Pilotage", "La rencontre hebdomadaire, les indicateurs, les priorites et les enjeux de Michael et Gabriel."],
     todo: ["Pilotage quotidien", "A faire", "Les prochaines actions de Michael et Gabriel, rassemblees au meme endroit."],
     team: ["Dossiers longitudinaux", state.selectedMemberId ? "Dossier membre" : "Equipe", state.selectedMemberId ? "Roadmaps, actions et evolution de carriere dans un seul dossier." : "Une vue claire de chaque membre et de ce qui demande votre attention."],
+    development: ["Encadrement des membres", "Developpement equipe", "Onboarding, formation continue et evaluations dans des programmes versionnes."],
     roadmaps: ["Rencontres trimestrielles", "Roadmaps", "Traiter les nouvelles reponses, preparer les rencontres et conserver l'historique."],
     activity: ["Tracabilite owner", "Activite", "Voir les changements importants et l'etat de sante du dashboard."]
   }[state.view] || ["Dashboard Equipe", "Dashboard Equipe", ""];
@@ -438,7 +506,7 @@ function renderApp() {
         <header class="command-topbar">
           <div class="mobile-brand"><span class="brand-mark">CF</span><strong>Dashboard Equipe</strong></div>
           <div class="top-actions">
-            <div class="realtime">Temps reel Firestore</div>
+            <div class="realtime">${state.previewMode ? "Apercu local sans ecriture" : "Temps reel Firestore"}</div>
             <button class="button icon-only" id="reloadButton" type="button" title="Recharger les donnees" aria-label="Recharger les donnees"><i data-lucide="refresh-cw"></i></button>
             <button class="button icon-only" id="logoutButton" type="button" title="Deconnexion" aria-label="Deconnexion"><i data-lucide="log-out"></i></button>
           </div>
@@ -446,10 +514,10 @@ function renderApp() {
         <main class="command-content">
           <section class="command-heading">
             <div><p class="eyebrow">${escapeHtml(viewMeta[0])}</p><h1>${escapeHtml(viewMeta[1])}</h1><p>${escapeHtml(viewMeta[2])}</p></div>
-            <div class="environment-badge">FIREBASE · TEMPS REEL</div>
+            <div class="environment-badge">${state.previewMode ? "APERCU LOCAL" : "FIREBASE · TEMPS REEL"}</div>
           </section>
           ${state.loadError ? `<div class="auth-note">${escapeHtml(state.loadError)}</div>` : ""}
-          ${state.view === "pilotage" ? renderPilotageView() : state.view === "todo" ? renderTodoView() : state.view === "team" ? renderTeamView() : state.view === "roadmaps" ? renderRoadmapModule() : renderActivityView()}
+          ${state.view === "pilotage" ? renderPilotageView() : state.view === "todo" ? renderTodoView() : state.view === "team" ? renderTeamView() : state.view === "development" ? renderDevelopmentView() : state.view === "roadmaps" ? renderRoadmapModule() : renderActivityView()}
         </main>
       </div>
       ${state.careerEditorId ? renderCareerEditor() : ""}
@@ -458,6 +526,9 @@ function renderApp() {
       ${state.teamActionMemberId ? renderTeamActionModal() : ""}
       ${state.taskEditorId ? renderTaskEditorModal() : ""}
       ${state.pilotageEditorType ? renderPilotageEditor() : ""}
+      ${state.developmentProgramEditorId ? renderDevelopmentProgramEditor() : ""}
+      ${state.developmentAssignmentEditorOpen ? renderDevelopmentAssignmentEditor() : ""}
+      ${state.developmentStepEditorId ? renderDevelopmentStepEditor() : ""}
     </div>
   `;
   bindAppEvents();
@@ -471,6 +542,7 @@ function renderCommandSidebar() {
   const health = currentDataHealthReport();
   const healthAlertCategories = [health.unresolvedErrors, health.unlinkedSubmissions, health.missingDocumentMembers, health.missingTargetMetrics].filter((items) => items.length).length;
   const pilotage = currentPilotageSummary();
+  const activeDevelopment = activeDevelopmentAssignments(state.developmentAssignments).length;
   return `
     <aside class="command-sidebar">
       <div class="command-brand">
@@ -481,6 +553,7 @@ function renderCommandSidebar() {
         ${commandNavButton("pilotage", "gauge", "Pilotage", pilotage.openIssues + pilotage.offTrackRocks + pilotage.offTrackMetrics)}
         ${commandNavButton("todo", "list-checks", "A faire", openTasks)}
         ${commandNavButton("team", "users-round", "Equipe", state.teamMembers.filter((item) => !isArchivedTeamMember(item)).length)}
+        ${commandNavButton("development", "graduation-cap", "Developpement", activeDevelopment)}
         ${commandNavButton("roadmaps", "clipboard-list", "Roadmaps", queueCount)}
         ${commandNavButton("activity", "history", "Activite", healthAlertCategories)}
       </nav>
@@ -497,6 +570,262 @@ function commandNavButton(view, icon, label, count) {
     <button class="command-nav-button ${state.view === view ? "active" : ""}" data-view="${view}" type="button">
       <i data-lucide="${icon}"></i><span>${escapeHtml(label)}</span><strong>${count || 0}</strong>
     </button>
+  `;
+}
+
+function renderDevelopmentView() {
+  const active = activeDevelopmentAssignments(state.developmentAssignments);
+  const completed = state.developmentAssignments.filter((assignment) => !assignment.archivedAt && effectiveDevelopmentAssignmentStatus(assignment) === "completed");
+  const published = latestPublishedPrograms(state.developmentPrograms);
+  const pendingSteps = active.reduce((sum, assignment) => sum + developmentAssignmentProgress(assignment).remaining, 0);
+  return `
+    <section class="development-toolbar panel">
+      <nav class="roadmap-tabs" aria-label="Sections du developpement equipe">
+        <button class="tab-button ${state.developmentSection === "assignments" ? "active" : ""}" data-development-section="assignments" type="button"><i data-lucide="list-checks"></i> Suivi <span>${active.length}</span></button>
+        <button class="tab-button ${state.developmentSection === "programs" ? "active" : ""}" data-development-section="programs" type="button"><i data-lucide="library-big"></i> Programmes <span>${published.length}</span></button>
+      </nav>
+      <div class="development-toolbar-actions">
+        ${state.developmentSection === "assignments"
+          ? `<button class="button primary" id="newDevelopmentAssignment" type="button" ${published.length && state.teamMembers.some((member) => !isArchivedTeamMember(member)) ? "" : "disabled"}><i data-lucide="user-round-plus"></i> Assigner un programme</button>`
+          : `<button class="button primary" id="newDevelopmentProgram" type="button"><i data-lucide="plus"></i> Nouveau programme</button>`}
+      </div>
+    </section>
+    <section class="development-metrics">
+      ${profileMetric(active.length, "Programmes actifs")}
+      ${profileMetric(pendingSteps, "Etapes restantes")}
+      ${profileMetric(completed.length, "Programmes termines")}
+      ${profileMetric(published.length, "Programmes publies")}
+    </section>
+    ${state.developmentSection === "programs" ? renderDevelopmentPrograms() : renderDevelopmentAssignments()}
+  `;
+}
+
+function renderDevelopmentPrograms() {
+  const programs = sortDevelopmentPrograms(state.developmentPrograms);
+  return `
+    <section class="panel development-section-panel">
+      <header class="section-heading"><div><h2>Bibliotheque de programmes</h2><p>Les versions publiees restent figees dans chaque assignation.</p></div></header>
+      ${programs.length ? `<div class="development-program-grid">${programs.map(renderDevelopmentProgramCard).join("")}</div>` : `
+        <div class="empty-state development-empty"><i data-lucide="library-big"></i><div><strong>Aucun programme publie</strong><span>La checklist officielle pourra etre creee ici apres sa validation.</span></div><button class="button primary" id="emptyNewDevelopmentProgram" type="button">Creer le premier programme</button></div>
+      `}
+    </section>
+  `;
+}
+
+function renderDevelopmentProgramCard(program) {
+  const statusLabel = { draft: "Brouillon", published: "Publie", superseded: "Ancienne version", archived: "Archive" }[program.status] || humanize(program.status);
+  const assignments = state.developmentAssignments.filter((assignment) => assignment.programId === program.id).length;
+  return `
+    <article class="development-program-card ${escapeAttr(program.status || "draft")}">
+      <header><span class="development-type-pill ${escapeAttr(program.programType || "training")}">${escapeHtml(DEVELOPMENT_PROGRAM_TYPE_LABELS[program.programType] || "Programme")}</span><span class="development-version">v${Number(program.version || 1)}</span></header>
+      <div><h3>${escapeHtml(program.title || "Programme sans titre")}</h3><p>${escapeHtml(program.description || "Aucune description.")}</p></div>
+      <dl><div><dt>Etapes</dt><dd>${(program.steps || []).length}</dd></div><div><dt>Assignations</dt><dd>${assignments}</dd></div><div><dt>Etat</dt><dd>${escapeHtml(statusLabel)}</dd></div></dl>
+      <footer>
+        <button class="button" data-open-development-program="${escapeAttr(program.id)}" type="button"><i data-lucide="${program.status === "draft" ? "pencil" : "eye"}"></i> ${program.status === "draft" ? "Modifier" : "Consulter"}</button>
+        ${program.status === "published" ? `<button class="button" data-new-development-version="${escapeAttr(program.id)}" type="button"><i data-lucide="copy-plus"></i> Nouvelle version</button>` : ""}
+      </footer>
+    </article>
+  `;
+}
+
+function developmentAssignmentsByView() {
+  const completed = state.developmentAssignmentView === "completed";
+  return state.developmentAssignments.filter((assignment) => {
+    if (assignment.archivedAt) return false;
+    return (effectiveDevelopmentAssignmentStatus(assignment) === "completed") === completed;
+  });
+}
+
+function ensureDevelopmentSelection() {
+  if (state.view !== "development" || state.developmentSection !== "assignments") return;
+  const visible = developmentAssignmentsByView();
+  if (!visible.some((assignment) => assignment.id === state.selectedDevelopmentAssignmentId)) {
+    state.selectedDevelopmentAssignmentId = visible[0]?.id || "";
+  }
+}
+
+function renderDevelopmentAssignments() {
+  const assignments = developmentAssignmentsByView();
+  const selected = assignments.find((assignment) => assignment.id === state.selectedDevelopmentAssignmentId) || assignments[0] || null;
+  return `
+    <nav class="development-assignment-tabs" aria-label="Etat des programmes assignes">
+      <button class="tab-button ${state.developmentAssignmentView === "active" ? "active" : ""}" data-development-assignment-view="active" type="button">Actifs <span>${activeDevelopmentAssignments(state.developmentAssignments).length}</span></button>
+      <button class="tab-button ${state.developmentAssignmentView === "completed" ? "active" : ""}" data-development-assignment-view="completed" type="button">Historique <span>${state.developmentAssignments.filter((assignment) => !assignment.archivedAt && effectiveDevelopmentAssignmentStatus(assignment) === "completed").length}</span></button>
+    </nav>
+    <section class="development-assignment-layout">
+      <aside class="panel development-assignment-list">
+        ${assignments.length ? assignments.map((assignment) => renderDevelopmentAssignmentCard(assignment, selected?.id === assignment.id)).join("") : `<div class="empty-state compact-empty"><i data-lucide="${state.developmentAssignmentView === "completed" ? "history" : "user-round-plus"}"></i><div>${state.developmentAssignmentView === "completed" ? "Aucun programme termine." : "Aucun programme actif."}</div></div>`}
+      </aside>
+      ${selected ? renderDevelopmentAssignmentDetail(selected) : `<section class="panel development-assignment-detail"><div class="empty-state"><i data-lucide="list-checks"></i><div>Selectionne ou assigne un programme.</div></div></section>`}
+    </section>
+  `;
+}
+
+function renderDevelopmentAssignmentCard(assignment, selected) {
+  const progress = developmentAssignmentProgress(assignment);
+  const status = effectiveDevelopmentAssignmentStatus(assignment);
+  const member = state.teamMembers.find((item) => item.id === assignment.teamMemberId);
+  return `
+    <button class="development-assignment-card ${selected ? "active" : ""}" data-open-development-assignment="${escapeAttr(assignment.id)}" type="button">
+      <span class="member-avatar">${escapeHtml(initials(member?.name || assignment.teamMemberName || "M"))}</span>
+      <span><strong>${escapeHtml(member?.name || assignment.teamMemberName || "Membre")}</strong><small>${escapeHtml(assignment.programTitle || "Programme")} · v${Number(assignment.programVersion || 1)}</small><span class="development-card-progress"><i style="width:${progress.percent}%"></i></span><small>${progress.completed}/${progress.total} etapes · ${escapeHtml(DEVELOPMENT_ASSIGNMENT_STATUS_LABELS[status] || humanize(status))}</small></span>
+      <i data-lucide="chevron-right"></i>
+    </button>
+  `;
+}
+
+function renderDevelopmentAssignmentDetail(assignment) {
+  const progress = developmentAssignmentProgress(assignment);
+  const status = effectiveDevelopmentAssignmentStatus(assignment);
+  const member = state.teamMembers.find((item) => item.id === assignment.teamMemberId);
+  const grouped = (assignment.steps || []).reduce((groups, raw, index) => {
+    const step = normalizeDevelopmentStep(raw, index);
+    const category = step.category || "General";
+    if (!groups[category]) groups[category] = [];
+    groups[category].push(step);
+    return groups;
+  }, {});
+  return `
+    <section class="panel development-assignment-detail">
+      <header class="development-detail-header">
+        <div><p class="eyebrow">${escapeHtml(DEVELOPMENT_PROGRAM_TYPE_LABELS[assignment.programType] || "Developpement")}</p><h2>${escapeHtml(assignment.programTitle || "Programme")}</h2><p>${escapeHtml(member?.name || assignment.teamMemberName || "Membre")} · Version ${Number(assignment.programVersion || 1)} · Responsable: ${escapeHtml(assignment.ownerName || "Gabriel")}</p></div>
+        <span class="development-status-pill ${escapeAttr(status)}">${escapeHtml(DEVELOPMENT_ASSIGNMENT_STATUS_LABELS[status] || humanize(status))}</span>
+      </header>
+      <section class="development-progress-summary">
+        <div><strong>${progress.percent}%</strong><span>${progress.completed} sur ${progress.total} etapes</span></div>
+        <span class="development-progress-track"><i style="width:${progress.percent}%"></i></span>
+        <div class="development-detail-actions">
+          ${status === "paused" ? `<button class="button" data-toggle-development-assignment="resume" type="button"><i data-lucide="play"></i> Reprendre</button>` : status === "completed" ? `<button class="button" data-toggle-development-assignment="reopen" type="button"><i data-lucide="rotate-ccw"></i> Rouvrir</button>` : `<button class="button" data-toggle-development-assignment="pause" type="button"><i data-lucide="pause"></i> Mettre en pause</button>`}
+          <button class="button" data-open-development-member="${escapeAttr(assignment.teamMemberId || "")}" type="button"><i data-lucide="user-round"></i> Dossier membre</button>
+        </div>
+      </section>
+      <div class="development-step-groups">
+        ${Object.entries(grouped).map(([category, steps]) => `
+          <section class="development-step-group"><header><h3>${escapeHtml(category)}</h3><span>${steps.filter((step) => ["completed", "not_applicable"].includes(developmentStepState(assignment, step.id).status)).length}/${steps.length}</span></header>
+          <div>${steps.map((step) => renderDevelopmentStepRow(assignment, step)).join("")}</div></section>
+        `).join("")}
+      </div>
+      ${assignment.notes ? `<aside class="development-assignment-note"><strong>Contexte</strong><p>${escapeHtml(assignment.notes)}</p></aside>` : ""}
+    </section>
+  `;
+}
+
+function renderDevelopmentStepRow(assignment, step) {
+  const value = developmentStepState(assignment, step.id);
+  const done = ["completed", "not_applicable"].includes(value.status);
+  const locked = ["paused", "completed"].includes(effectiveDevelopmentAssignmentStatus(assignment));
+  return `
+    <button class="development-step-row ${done ? "done" : ""}" ${locked ? "disabled" : `data-open-development-step="${escapeAttr(step.id)}"`} type="button">
+      <span class="development-step-check"><i data-lucide="${done ? "check" : value.status === "in_progress" ? "loader-circle" : "circle"}"></i></span>
+      <span><strong>${escapeHtml(step.title)}</strong>${step.description ? `<small>${escapeHtml(step.description)}</small>` : ""}<em>${step.required ? "Requise" : "Optionnelle"}${step.evidenceRequired ? " · Preuve requise" : ""}</em></span>
+      <span class="development-step-status ${escapeAttr(value.status || "pending")}">${escapeHtml(DEVELOPMENT_STEP_STATUS_LABELS[value.status] || "A faire")}</span>
+      <i data-lucide="chevron-right"></i>
+    </button>
+  `;
+}
+
+function renderDevelopmentProgramEditor() {
+  const draft = state.developmentProgramDraft || developmentProgramDraftFrom(null);
+  const existing = state.developmentPrograms.find((program) => program.id === state.developmentProgramEditorId) || null;
+  const readOnly = Boolean(existing && existing.status !== "draft");
+  const version = draft.version || (draft.familyId ? nextDevelopmentVersion(state.developmentPrograms, draft.familyId) : 1);
+  const roleOptions = developmentRoleOptions();
+  return `
+    <div class="career-modal" role="dialog" aria-modal="true" aria-labelledby="developmentProgramTitle">
+      <div class="career-modal-backdrop" data-close-development-program aria-hidden="true"></div>
+      <section class="career-editor development-program-editor panel">
+        <header class="career-editor-header"><div><p class="eyebrow">Programme versionne</p><h2 id="developmentProgramTitle">${readOnly ? "Consulter le programme" : existing ? "Modifier le brouillon" : "Nouveau programme"}</h2></div><button class="button icon-only" data-close-development-program type="button" aria-label="Fermer"><i data-lucide="x"></i></button></header>
+        <div class="career-editor-scroll">
+          <form id="developmentProgramForm" class="development-program-form">
+            <input type="hidden" name="programId" value="${escapeAttr(existing?.id || "")}">
+            <label class="field">Titre<input name="title" required maxlength="140" value="${escapeAttr(draft.title || "")}" ${readOnly ? "disabled" : ""}></label>
+            <label class="field">Type<select name="programType" ${readOnly ? "disabled" : ""}>${DEVELOPMENT_PROGRAM_TYPES.map(([id, label]) => `<option value="${id}" ${draft.programType === id ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label>
+            <label class="field">Responsable par defaut<select name="ownerName" ${readOnly ? "disabled" : ""}>${OWNER_OPTIONS.map((name) => `<option value="${escapeAttr(name)}" ${draft.ownerName === name ? "selected" : ""}>${escapeHtml(name)}</option>`).join("")}</select></label>
+            <label class="field">Version<input value="${version}" disabled></label>
+            <label class="field field-wide">Description<textarea name="description" ${readOnly ? "disabled" : ""}>${escapeHtml(draft.description || "")}</textarea></label>
+            ${roleOptions.length ? `<fieldset class="development-role-options field-wide"><legend>Roles applicables</legend><div>${roleOptions.map((role) => `<label><input name="roleIds" type="checkbox" value="${escapeAttr(role.id)}" ${(draft.roleIds || []).includes(role.id) ? "checked" : ""} ${readOnly ? "disabled" : ""}><span><strong>${escapeHtml(role.label)}</strong><small>${escapeHtml(role.description || role.id)}</small></span></label>`).join("")}</div></fieldset>` : `<label class="field field-wide">Roles applicables<input name="roleIdsText" value="${escapeAttr((draft.roleIds || []).join(", "))}" placeholder="Roles a ajouter apres validation" ${readOnly ? "disabled" : ""}></label>`}
+            <section class="development-program-steps field-wide">
+              <header><div><h3>Etapes</h3><p>${(draft.steps || []).length} etape(s)</p></div>${readOnly ? "" : `<button class="button" id="addDevelopmentProgramStep" type="button"><i data-lucide="plus"></i> Ajouter une etape</button>`}</header>
+              <div>${(draft.steps || []).map((step, index) => renderDevelopmentProgramStepEditor(step, index, readOnly)).join("")}</div>
+            </section>
+            <footer class="pilotage-editor-actions field-wide">
+              ${readOnly && existing?.status === "published" ? `<button class="button primary" data-new-development-version="${escapeAttr(existing.id)}" type="button"><i data-lucide="copy-plus"></i> Creer une nouvelle version</button>` : ""}
+              ${!readOnly && existing ? `<button class="button danger push-left" id="deleteDevelopmentProgram" type="button"><i data-lucide="trash-2"></i> Supprimer le brouillon</button>` : ""}
+              <button class="button" data-close-development-program type="button">Fermer</button>
+              ${readOnly ? "" : `<button class="button" name="intent" value="draft" type="submit"><i data-lucide="save"></i> Sauvegarder</button><button class="button primary" name="intent" value="publish" type="submit"><i data-lucide="badge-check"></i> Publier</button>`}
+            </footer>
+          </form>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function developmentRoleOptions() {
+  const roles = new Map();
+  Object.values(state.forms).forEach((form) => {
+    (form.config?.roles || []).forEach((role) => {
+      if (role?.id && !roles.has(role.id)) roles.set(role.id, role);
+    });
+  });
+  return [...roles.values()].sort((a, b) => String(a.label || a.id).localeCompare(String(b.label || b.id), "fr"));
+}
+
+function renderDevelopmentProgramStepEditor(rawStep, index, readOnly) {
+  const step = normalizeDevelopmentStep(rawStep, index);
+  return `
+    <article class="development-program-step" data-development-program-step="${index}">
+      <span class="development-step-number">${index + 1}</span>
+      <div class="development-step-fields">
+        <label class="field">Titre<input name="stepTitle_${index}" required value="${escapeAttr(step.title)}" ${readOnly ? "disabled" : ""}></label>
+        <label class="field">Categorie<input name="stepCategory_${index}" value="${escapeAttr(step.category)}" ${readOnly ? "disabled" : ""}></label>
+        <label class="field field-wide">Description<textarea name="stepDescription_${index}" ${readOnly ? "disabled" : ""}>${escapeHtml(step.description)}</textarea></label>
+        <div class="development-step-options field-wide"><label><input name="stepRequired_${index}" type="checkbox" ${step.required ? "checked" : ""} ${readOnly ? "disabled" : ""}> Etape requise</label><label><input name="stepEvidence_${index}" type="checkbox" ${step.evidenceRequired ? "checked" : ""} ${readOnly ? "disabled" : ""}> Preuve requise</label></div>
+      </div>
+      ${readOnly ? "" : `<div class="development-step-order"><button class="button icon-only" data-move-development-step="up" data-step-index="${index}" type="button" title="Monter" ${index === 0 ? "disabled" : ""}><i data-lucide="arrow-up"></i></button><button class="button icon-only" data-move-development-step="down" data-step-index="${index}" type="button" title="Descendre" ${index === state.developmentProgramDraft.steps.length - 1 ? "disabled" : ""}><i data-lucide="arrow-down"></i></button><button class="button icon-only danger" data-remove-development-step="${index}" type="button" title="Retirer"><i data-lucide="trash-2"></i></button></div>`}
+    </article>
+  `;
+}
+
+function renderDevelopmentAssignmentEditor() {
+  const programs = latestPublishedPrograms(state.developmentPrograms);
+  const members = state.teamMembers.filter((member) => !isArchivedTeamMember(member));
+  return `
+    <div class="career-modal" role="dialog" aria-modal="true" aria-labelledby="developmentAssignmentTitle">
+      <div class="career-modal-backdrop" data-close-development-assignment-editor aria-hidden="true"></div>
+      <section class="action-editor panel">
+        <header class="career-editor-header"><div><p class="eyebrow">Developpement equipe</p><h2 id="developmentAssignmentTitle">Assigner un programme</h2></div><button class="button icon-only" data-close-development-assignment-editor type="button" aria-label="Fermer"><i data-lucide="x"></i></button></header>
+        <form id="developmentAssignmentForm" class="action-modal-form">
+          <label class="field">Membre<select id="developmentAssignmentMember" name="teamMemberId" required><option value="">Choisir</option>${members.map((member) => `<option value="${escapeAttr(member.id)}" ${state.developmentAssignmentPrefillMemberId === member.id ? "selected" : ""}>${escapeHtml(member.name)} · ${escapeHtml(member.displayTitle || "Role a preciser")}</option>`).join("")}</select></label>
+          <label class="field">Programme<select id="developmentAssignmentProgram" name="programId" required><option value="">Choisir</option>${programs.map((program) => `<option value="${escapeAttr(program.id)}" data-role-ids="${escapeAttr((program.roleIds || []).join(","))}">${escapeHtml(program.title)} · v${Number(program.version || 1)}</option>`).join("")}</select></label>
+          <label class="field">Responsable<select name="ownerName">${OWNER_OPTIONS.map((name) => `<option value="${escapeAttr(name)}" ${name === "Gabriel" ? "selected" : ""}>${escapeHtml(name)}</option>`).join("")}</select></label>
+          <label class="field">Contexte<textarea name="notes" placeholder="Contexte particulier pour ce membre..."></textarea></label>
+          <footer class="notes-actions"><button class="button" data-close-development-assignment-editor type="button">Annuler</button><button class="button primary" type="submit"><i data-lucide="user-round-plus"></i> Assigner</button></footer>
+        </form>
+      </section>
+    </div>
+  `;
+}
+
+function renderDevelopmentStepEditor() {
+  const assignment = state.developmentAssignments.find((item) => item.id === state.selectedDevelopmentAssignmentId);
+  const step = assignment?.steps?.find((item) => item.id === state.developmentStepEditorId);
+  if (!assignment || !step) return "";
+  const value = developmentStepState(assignment, step.id);
+  return `
+    <div class="career-modal" role="dialog" aria-modal="true" aria-labelledby="developmentStepTitle">
+      <div class="career-modal-backdrop" data-close-development-step aria-hidden="true"></div>
+      <section class="action-editor panel">
+        <header class="career-editor-header"><div><p class="eyebrow">${escapeHtml(step.category || "Etape")}</p><h2 id="developmentStepTitle">${escapeHtml(step.title)}</h2></div><button class="button icon-only" data-close-development-step type="button" aria-label="Fermer"><i data-lucide="x"></i></button></header>
+        <form id="developmentStepForm" class="action-modal-form">
+          ${step.description ? `<p class="development-step-description">${escapeHtml(step.description)}</p>` : ""}
+          <label class="field">Etat<select name="status">${DEVELOPMENT_STEP_STATUSES.map(([id, label]) => `<option value="${id}" ${value.status === id ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label>
+          <label class="field">Note<textarea name="note" placeholder="Observation, feedback ou prochaine action...">${escapeHtml(value.note || "")}</textarea></label>
+          <label class="field">Lien de preuve ${step.evidenceRequired ? "*" : ""}<input name="evidenceUrl" type="url" value="${escapeAttr(value.evidenceUrl || "")}" placeholder="https://docs.google.com/..."></label>
+          <footer class="notes-actions"><button class="button" data-close-development-step type="button">Annuler</button><button class="button primary" type="submit"><i data-lucide="save"></i> Enregistrer</button></footer>
+        </form>
+      </section>
+    </div>
   `;
 }
 
@@ -968,7 +1297,7 @@ function renderActivityView() {
       </label>
       <label class="field">Element
         <select id="activityEntityFilter">
-          ${[["all", "Tous"], ["pilotage", "Pilotage"], ["roadmapSubmission", "Roadmaps"], ["managementTask", "Actions"], ["teamMember", "Equipe"], ["teamMeeting", "Rencontres"], ["memberCareerPlan", "Mandats"], ["careerMilestone", "Parcours"], ["revenueScenario", "Projections"], ["clientError", "Systeme"]].map(([id, label]) => `<option value="${id}" ${state.activityEntity === id ? "selected" : ""}>${label}</option>`).join("")}
+          ${[["all", "Tous"], ["pilotage", "Pilotage"], ["development", "Developpement"], ["roadmapSubmission", "Roadmaps"], ["managementTask", "Actions"], ["teamMember", "Equipe"], ["teamMeeting", "Rencontres"], ["memberCareerPlan", "Mandats"], ["careerMilestone", "Parcours"], ["revenueScenario", "Projections"], ["clientError", "Systeme"]].map(([id, label]) => `<option value="${id}" ${state.activityEntity === id ? "selected" : ""}>${label}</option>`).join("")}
         </select>
       </label>
     </section>
@@ -1146,6 +1475,15 @@ function activityActionMeta(action) {
     pilotage_meeting_saved: ["Reunion hebdomadaire enregistree", "save", "blue"],
     pilotage_meeting_finalized: ["Reunion hebdomadaire finalisee", "badge-check", "green"],
     pilotage_meeting_reopened: ["Reunion hebdomadaire rouverte", "rotate-ccw", "amber"],
+    development_program_created: ["Programme cree", "library-big", "blue"],
+    development_program_updated: ["Programme modifie", "pencil", "blue"],
+    development_program_published: ["Programme publie", "badge-check", "green"],
+    development_program_draft_deleted: ["Brouillon de programme supprime", "trash-2", "neutral"],
+    development_assignment_created: ["Programme assigne", "user-round-plus", "green"],
+    development_assignment_paused: ["Programme mis en pause", "pause", "amber"],
+    development_assignment_resumed: ["Programme repris", "play", "green"],
+    development_assignment_reopened: ["Programme rouvert", "rotate-ccw", "amber"],
+    development_step_updated: ["Etape de developpement mise a jour", "list-checks", "blue"],
     client_error_resolved: ["Erreur technique resolue", "shield-check", "green"]
   };
   const [label, icon, tone] = values[action] || [humanize(action || "changement"), "history", "neutral"];
@@ -1154,6 +1492,7 @@ function activityActionMeta(action) {
 
 function activityTargetLabel(log) {
   if (log.entityType === "pilotage") return log.details?.title || log.details?.name || log.details?.weekStart || "Zone Pilotage";
+  if (log.entityType === "development") return [log.details?.teamMemberName, log.details?.title, log.details?.stepTitle].filter(Boolean).join(" · ") || "Developpement equipe";
   if (log.entityType === "clientError") return log.details?.context || "Etat de sante du dashboard";
   if (log.entityType === "teamMember") {
     return state.teamMembers.find((item) => item.id === log.entityId)?.name || "Dossier equipe";
@@ -1469,6 +1808,7 @@ function renderTeamMemberCard(member) {
   const submissions = submissionsForMember(member).filter((item) => !isDeleted(item));
   const tasks = tasksForMember(member.id);
   const milestones = milestonesForMember(member).filter((item) => ["planned", "in_progress", "blocked"].includes(item.status));
+  const development = developmentAssignmentsForMember(state.developmentAssignments, member.id).filter((assignment) => effectiveDevelopmentAssignmentStatus(assignment) !== "completed");
   const latest = submissions[0] || null;
   return `
     <div class="member-card ${archived ? "inactive" : ""}">
@@ -1481,6 +1821,7 @@ function renderTeamMemberCard(member) {
             <span class="${tasks.length ? "needs-attention" : ""}">${tasks.length} action(s)</span>
             <span>${submissions.length} roadmap(s)</span>
             <span>${milestones.length} etape(s)</span>
+            <span>${development.length} programme(s)</span>
           </span>
           <small>${latest ? `Derniere roadmap: ${formatShortDate(latest.submittedAt)}` : "Aucune roadmap au dossier"}</small>
         </span>
@@ -1545,6 +1886,7 @@ function renderMemberProfile() {
   const nextMilestone = nextCareerMilestone(milestones);
   const tasks = tasksForMember(member.id);
   const meetings = meetingsForMember(member.id);
+  const developmentAssignments = developmentAssignmentsForMember(state.developmentAssignments, member.id);
   const archived = isArchivedTeamMember(member);
   return `
     <section class="member-profile">
@@ -1569,7 +1911,7 @@ function renderMemberProfile() {
         ${profileMetric(tasks.length, "Actions ouvertes")}
         ${profileMetric(meetings.length, "Rencontres 1:1")}
         ${profileMetric(submissions.length, "Roadmaps")}
-        ${profileMetric(activeMilestones.length, "Etapes actives")}
+        ${profileMetric(developmentAssignments.filter((assignment) => effectiveDevelopmentAssignmentStatus(assignment) !== "completed").length, "Programmes actifs")}
       </section>
       <nav class="member-section-tabs" aria-label="Sections du dossier membre">
         <button class="tab-button ${state.memberProfileSection === "overview" ? "active" : ""}" data-member-section="overview" type="button"><i data-lucide="layout-dashboard"></i> Vue d'ensemble</button>
@@ -1577,8 +1919,22 @@ function renderMemberProfile() {
         <button class="tab-button ${state.memberProfileSection === "meetings" ? "active" : ""}" data-member-section="meetings" type="button"><i data-lucide="messages-square"></i> Rencontres (${meetings.length})</button>
         <button class="tab-button ${state.memberProfileSection === "roadmaps" ? "active" : ""}" data-member-section="roadmaps" type="button"><i data-lucide="clipboard-list"></i> Roadmaps (${submissions.length})</button>
         <button class="tab-button ${state.memberProfileSection === "career" ? "active" : ""}" data-member-section="career" type="button"><i data-lucide="route"></i> Parcours CFSB (${milestones.length})</button>
+        <button class="tab-button ${state.memberProfileSection === "development" ? "active" : ""}" data-member-section="development" type="button"><i data-lucide="graduation-cap"></i> Developpement (${developmentAssignments.length})</button>
       </nav>
-      ${state.memberProfileSection === "roadmaps" ? renderRoadmapHistory(submissions) : state.memberProfileSection === "career" ? renderCareerTimeline(member) : state.memberProfileSection === "actions" ? renderMemberActions(member, tasks) : state.memberProfileSection === "meetings" ? renderMemberMeetings(member, meetings) : renderMemberOverview(member, submissions, tasks, meetings, milestones, nextMilestone)}
+      ${state.memberProfileSection === "roadmaps" ? renderRoadmapHistory(submissions) : state.memberProfileSection === "career" ? renderCareerTimeline(member) : state.memberProfileSection === "development" ? renderMemberDevelopment(member, developmentAssignments) : state.memberProfileSection === "actions" ? renderMemberActions(member, tasks) : state.memberProfileSection === "meetings" ? renderMemberMeetings(member, meetings) : renderMemberOverview(member, submissions, tasks, meetings, milestones, nextMilestone)}
+    </section>
+  `;
+}
+
+function renderMemberDevelopment(member, assignments) {
+  return `
+    <section class="panel member-development-panel">
+      <header class="section-heading"><div><h3>Onboarding, formations et evaluations</h3><p>${assignments.length} programme(s) au dossier.</p></div><button class="button primary" data-assign-development-member="${escapeAttr(member.id)}" type="button" ${latestPublishedPrograms(state.developmentPrograms).length ? "" : "disabled"}><i data-lucide="plus"></i> Assigner</button></header>
+      ${assignments.length ? `<div class="member-development-list">${assignments.map((assignment) => {
+        const progress = developmentAssignmentProgress(assignment);
+        const status = effectiveDevelopmentAssignmentStatus(assignment);
+        return `<button data-open-member-development="${escapeAttr(assignment.id)}" type="button"><span class="development-type-pill ${escapeAttr(assignment.programType || "training")}">${escapeHtml(DEVELOPMENT_PROGRAM_TYPE_LABELS[assignment.programType] || "Programme")}</span><span><strong>${escapeHtml(assignment.programTitle || "Programme")}</strong><small>Version ${Number(assignment.programVersion || 1)} · ${escapeHtml(assignment.ownerName || "Gabriel")}</small><i class="development-card-progress"><b style="width:${progress.percent}%"></b></i></span><span><strong>${progress.percent}%</strong><small>${escapeHtml(DEVELOPMENT_ASSIGNMENT_STATUS_LABELS[status] || humanize(status))}</small></span><i data-lucide="arrow-right"></i></button>`;
+      }).join("")}</div>` : `<div class="empty-state"><i data-lucide="graduation-cap"></i><div>Aucun programme assigne a ${escapeHtml(member.name)}.</div></div>`}
     </section>
   `;
 }
@@ -2147,13 +2503,58 @@ function bindAppEvents() {
     closeTeamAction(false);
     closeTaskEditor(false);
     closePilotageEditor(false);
+    closeDevelopmentProgramEditor(false);
+    closeDevelopmentAssignmentEditor(false);
+    closeDevelopmentStepEditor(false);
     state.view = button.dataset.view;
     state.selectedMemberId = "";
     state.editingMemberId = "";
     state.filters.status = "all";
     ensureSelection();
+    ensureDevelopmentSelection();
     renderApp();
   }));
+  document.querySelectorAll("[data-development-section]").forEach((button) => button.addEventListener("click", () => {
+    state.developmentSection = button.dataset.developmentSection;
+    state.selectedDevelopmentAssignmentId = "";
+    ensureDevelopmentSelection();
+    renderApp();
+  }));
+  document.querySelectorAll("[data-development-assignment-view]").forEach((button) => button.addEventListener("click", () => {
+    state.developmentAssignmentView = button.dataset.developmentAssignmentView;
+    state.selectedDevelopmentAssignmentId = "";
+    ensureDevelopmentSelection();
+    renderApp();
+  }));
+  document.querySelectorAll("[data-open-development-assignment]").forEach((button) => button.addEventListener("click", () => {
+    state.selectedDevelopmentAssignmentId = button.dataset.openDevelopmentAssignment;
+    renderApp();
+  }));
+  document.querySelectorAll("[data-open-development-program]").forEach((button) => button.addEventListener("click", () => openDevelopmentProgramEditor(button.dataset.openDevelopmentProgram)));
+  document.querySelectorAll("[data-new-development-version]").forEach((button) => button.addEventListener("click", () => openDevelopmentProgramVersion(button.dataset.newDevelopmentVersion)));
+  document.querySelectorAll("[data-close-development-program]").forEach((button) => button.addEventListener("click", () => closeDevelopmentProgramEditor()));
+  document.querySelector("#newDevelopmentProgram")?.addEventListener("click", () => openDevelopmentProgramEditor("__new__"));
+  document.querySelector("#emptyNewDevelopmentProgram")?.addEventListener("click", () => openDevelopmentProgramEditor("__new__"));
+  document.querySelector("#developmentProgramForm")?.addEventListener("submit", saveDevelopmentProgram);
+  document.querySelector("#addDevelopmentProgramStep")?.addEventListener("click", addDevelopmentProgramStep);
+  document.querySelectorAll("[data-remove-development-step]").forEach((button) => button.addEventListener("click", () => removeDevelopmentProgramStep(Number(button.dataset.removeDevelopmentStep))));
+  document.querySelectorAll("[data-move-development-step]").forEach((button) => button.addEventListener("click", () => moveDevelopmentProgramStep(Number(button.dataset.stepIndex), button.dataset.moveDevelopmentStep)));
+  document.querySelector("#deleteDevelopmentProgram")?.addEventListener("click", deleteDevelopmentProgramDraft);
+  document.querySelector("#newDevelopmentAssignment")?.addEventListener("click", () => openDevelopmentAssignmentEditor());
+  document.querySelectorAll("[data-assign-development-member]").forEach((button) => button.addEventListener("click", () => openDevelopmentAssignmentEditor(button.dataset.assignDevelopmentMember)));
+  document.querySelectorAll("[data-close-development-assignment-editor]").forEach((button) => button.addEventListener("click", () => closeDevelopmentAssignmentEditor()));
+  document.querySelector("#developmentAssignmentForm")?.addEventListener("submit", saveDevelopmentAssignment);
+  document.querySelector("#developmentAssignmentMember")?.addEventListener("change", filterDevelopmentProgramOptions);
+  filterDevelopmentProgramOptions();
+  document.querySelectorAll("[data-open-development-step]").forEach((button) => button.addEventListener("click", () => {
+    state.developmentStepEditorId = button.dataset.openDevelopmentStep;
+    renderApp();
+  }));
+  document.querySelectorAll("[data-close-development-step]").forEach((button) => button.addEventListener("click", () => closeDevelopmentStepEditor()));
+  document.querySelector("#developmentStepForm")?.addEventListener("submit", saveDevelopmentStep);
+  document.querySelectorAll("[data-toggle-development-assignment]").forEach((button) => button.addEventListener("click", () => toggleDevelopmentAssignment(button.dataset.toggleDevelopmentAssignment)));
+  document.querySelectorAll("[data-open-development-member]").forEach((button) => button.addEventListener("click", () => openDevelopmentMember(button.dataset.openDevelopmentMember)));
+  document.querySelectorAll("[data-open-member-development]").forEach((button) => button.addEventListener("click", () => openDevelopmentAssignment(button.dataset.openMemberDevelopment)));
   document.querySelectorAll("[data-pilotage-jump]").forEach((button) => button.addEventListener("click", () => {
     const target = button.dataset.pilotageJump;
     if (target === "todo") {
@@ -3260,8 +3661,355 @@ function closeTaskEditor(shouldRender = true) {
   if (shouldRender) renderApp();
 }
 
+function developmentProgramDraftFrom(program, nextVersion = false) {
+  const familyId = program?.familyId || crypto.randomUUID();
+  return {
+    familyId,
+    title: program?.title || "",
+    description: program?.description || "",
+    programType: program?.programType || "onboarding",
+    ownerName: program?.ownerName || "Gabriel",
+    roleIds: [...(program?.roleIds || [])],
+    version: nextVersion ? nextDevelopmentVersion(state.developmentPrograms, familyId) : Number(program?.version || 1),
+    status: nextVersion ? "draft" : program?.status || "draft",
+    sourceProgramId: nextVersion ? program?.id || "" : "",
+    steps: (program?.steps || [{ id: crypto.randomUUID(), title: "", description: "", category: "General", required: true, evidenceRequired: false }]).map((step, index) => ({ ...normalizeDevelopmentStep(step, index) }))
+  };
+}
+
+function openDevelopmentProgramEditor(programId) {
+  closeDevelopmentAssignmentEditor(false);
+  closeDevelopmentStepEditor(false);
+  const program = programId === "__new__" ? null : state.developmentPrograms.find((item) => item.id === programId) || null;
+  state.developmentProgramEditorId = program?.id || "__new__";
+  state.developmentProgramDraft = developmentProgramDraftFrom(program);
+  renderApp();
+}
+
+function openDevelopmentProgramVersion(programId) {
+  const program = state.developmentPrograms.find((item) => item.id === programId);
+  if (!program || program.status !== "published") return;
+  state.developmentProgramEditorId = "__new__";
+  state.developmentProgramDraft = developmentProgramDraftFrom(program, true);
+  renderApp();
+}
+
+function closeDevelopmentProgramEditor(shouldRender = true) {
+  state.developmentProgramEditorId = "";
+  state.developmentProgramDraft = null;
+  if (shouldRender) renderApp();
+}
+
+function captureDevelopmentProgramDraft() {
+  const form = document.querySelector("#developmentProgramForm");
+  if (!form || !state.developmentProgramDraft) return;
+  const data = new FormData(form);
+  state.developmentProgramDraft.title = String(data.get("title") || "");
+  state.developmentProgramDraft.description = String(data.get("description") || "");
+  state.developmentProgramDraft.programType = String(data.get("programType") || "onboarding");
+  state.developmentProgramDraft.ownerName = String(data.get("ownerName") || "Gabriel");
+  const selectedRoles = data.getAll("roleIds").map(String).filter(Boolean);
+  state.developmentProgramDraft.roleIds = selectedRoles.length
+    ? selectedRoles
+    : String(data.get("roleIdsText") || "").split(/[,;]+/).map((item) => item.trim()).filter(Boolean);
+  state.developmentProgramDraft.steps = state.developmentProgramDraft.steps.map((step, index) => ({
+    ...step,
+    title: String(data.get(`stepTitle_${index}`) || ""),
+    category: String(data.get(`stepCategory_${index}`) || "General"),
+    description: String(data.get(`stepDescription_${index}`) || ""),
+    required: data.get(`stepRequired_${index}`) === "on",
+    evidenceRequired: data.get(`stepEvidence_${index}`) === "on",
+    sortOrder: index + 1
+  }));
+}
+
+function addDevelopmentProgramStep() {
+  captureDevelopmentProgramDraft();
+  state.developmentProgramDraft.steps.push({ id: crypto.randomUUID(), title: "", description: "", category: "General", required: true, evidenceRequired: false, sortOrder: state.developmentProgramDraft.steps.length + 1 });
+  renderApp();
+}
+
+function removeDevelopmentProgramStep(index) {
+  captureDevelopmentProgramDraft();
+  if (state.developmentProgramDraft.steps.length <= 1) return showToast("Un programme doit conserver au moins une etape.");
+  state.developmentProgramDraft.steps.splice(index, 1);
+  state.developmentProgramDraft.steps.forEach((step, stepIndex) => { step.sortOrder = stepIndex + 1; });
+  renderApp();
+}
+
+function moveDevelopmentProgramStep(index, direction) {
+  captureDevelopmentProgramDraft();
+  const nextIndex = direction === "up" ? index - 1 : index + 1;
+  if (nextIndex < 0 || nextIndex >= state.developmentProgramDraft.steps.length) return;
+  const [step] = state.developmentProgramDraft.steps.splice(index, 1);
+  state.developmentProgramDraft.steps.splice(nextIndex, 0, step);
+  state.developmentProgramDraft.steps.forEach((item, stepIndex) => { item.sortOrder = stepIndex + 1; });
+  renderApp();
+}
+
+async function saveDevelopmentProgram(event) {
+  event.preventDefault();
+  if (state.previewMode) return showToast("Apercu local: aucune donnee n'est ecrite.");
+  if (state.busy || !state.developmentProgramDraft) return;
+  captureDevelopmentProgramDraft();
+  const validation = validateDevelopmentProgram(state.developmentProgramDraft);
+  if (!validation.valid) return showToast(validation.errors[0]);
+  const intent = event.submitter?.value === "publish" ? "publish" : "draft";
+  const existing = state.developmentPrograms.find((program) => program.id === state.developmentProgramEditorId) || null;
+  if (existing && existing.status !== "draft") return showToast("Une version publiee ne peut pas etre modifiee.");
+  state.busy = true;
+  try {
+    const programRef = existing ? doc(db, "developmentPrograms", existing.id) : doc(collection(db, "developmentPrograms"));
+    const payload = {
+      familyId: state.developmentProgramDraft.familyId,
+      title: state.developmentProgramDraft.title.trim(),
+      description: state.developmentProgramDraft.description.trim(),
+      programType: state.developmentProgramDraft.programType,
+      ownerName: state.developmentProgramDraft.ownerName,
+      roleIds: state.developmentProgramDraft.roleIds,
+      version: Number(state.developmentProgramDraft.version || 1),
+      status: intent === "publish" ? "published" : "draft",
+      sourceProgramId: state.developmentProgramDraft.sourceProgramId || null,
+      steps: validation.steps,
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    };
+    if (!existing) {
+      payload.createdAt = serverTimestamp();
+      payload.createdByUid = state.user.uid;
+      payload.createdByName = actorName();
+    }
+    if (intent === "publish") {
+      payload.publishedAt = serverTimestamp();
+      payload.publishedByUid = state.user.uid;
+      payload.publishedByName = actorName();
+    }
+    const batch = writeBatch(db);
+    batch.set(programRef, payload, { merge: Boolean(existing) });
+    if (intent === "publish") {
+      state.developmentPrograms.filter((program) => program.id !== programRef.id && program.familyId === payload.familyId && program.status === "published").forEach((program) => {
+        batch.update(doc(db, "developmentPrograms", program.id), { status: "superseded", supersededAt: serverTimestamp(), updatedAt: serverTimestamp(), updatedByUid: state.user.uid, updatedByName: actorName() });
+      });
+    }
+    batch.set(doc(collection(db, "auditLogs")), auditPayload(intent === "publish" ? "development_program_published" : existing ? "development_program_updated" : "development_program_created", programRef.id, { title: payload.title, version: payload.version, programType: payload.programType }));
+    await batch.commit();
+    closeDevelopmentProgramEditor(false);
+    showToast(intent === "publish" ? "Programme publie et pret a etre assigne." : "Brouillon du programme sauvegarde.");
+    renderApp();
+  } catch (error) {
+    showToast(`Programme non enregistre: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function deleteDevelopmentProgramDraft() {
+  if (state.previewMode) return showToast("Apercu local: aucune donnee n'est supprimee.");
+  const program = state.developmentPrograms.find((item) => item.id === state.developmentProgramEditorId);
+  if (!program || program.status !== "draft" || state.busy) return;
+  if (!confirm(`Supprimer le brouillon « ${program.title} »?`)) return;
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.delete(doc(db, "developmentPrograms", program.id));
+    batch.set(doc(collection(db, "auditLogs")), auditPayload("development_program_draft_deleted", program.id, { title: program.title, version: program.version }));
+    await batch.commit();
+    closeDevelopmentProgramEditor(false);
+    showToast("Brouillon supprime.");
+    renderApp();
+  } catch (error) {
+    showToast(`Brouillon non supprime: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+function openDevelopmentAssignmentEditor(memberId = "") {
+  state.developmentAssignmentPrefillMemberId = memberId;
+  state.developmentAssignmentEditorOpen = true;
+  renderApp();
+}
+
+function closeDevelopmentAssignmentEditor(shouldRender = true) {
+  state.developmentAssignmentEditorOpen = false;
+  state.developmentAssignmentPrefillMemberId = "";
+  if (shouldRender) renderApp();
+}
+
+function filterDevelopmentProgramOptions() {
+  const memberSelect = document.querySelector("#developmentAssignmentMember");
+  const programSelect = document.querySelector("#developmentAssignmentProgram");
+  if (!memberSelect || !programSelect) return;
+  const member = state.teamMembers.find((item) => item.id === memberSelect.value);
+  const memberRoles = new Set(member?.roleIds || []);
+  [...programSelect.options].forEach((option) => {
+    if (!option.value) return;
+    const programRoles = String(option.dataset.roleIds || "").split(",").filter(Boolean);
+    option.disabled = Boolean(memberRoles.size && programRoles.length && !programRoles.some((roleId) => memberRoles.has(roleId)));
+  });
+  if (programSelect.selectedOptions[0]?.disabled) programSelect.value = "";
+}
+
+async function saveDevelopmentAssignment(event) {
+  event.preventDefault();
+  if (state.previewMode) return showToast("Apercu local: aucune assignation n'est creee.");
+  if (state.busy) return;
+  const data = new FormData(event.currentTarget);
+  const member = state.teamMembers.find((item) => item.id === data.get("teamMemberId"));
+  const program = state.developmentPrograms.find((item) => item.id === data.get("programId") && item.status === "published");
+  if (!member || !program) return showToast("Choisis un membre actif et une version publiee.");
+  const duplicate = state.developmentAssignments.find((assignment) => assignment.teamMemberId === member.id && assignment.familyId === program.familyId && !assignment.archivedAt && effectiveDevelopmentAssignmentStatus(assignment) !== "completed");
+  if (duplicate) return showToast("Ce membre a deja une version active de ce programme.");
+  state.busy = true;
+  try {
+    const assignmentRef = doc(collection(db, "developmentAssignments"));
+    const snapshot = developmentProgramSnapshot(program);
+    const payload = {
+      ...snapshot,
+      teamMemberId: member.id,
+      teamMemberName: member.name,
+      ownerName: String(data.get("ownerName") || program.ownerName || "Gabriel"),
+      notes: String(data.get("notes") || "").trim(),
+      status: "not_started",
+      stepStates: {},
+      progress: 0,
+      createdAt: serverTimestamp(),
+      createdByUid: state.user.uid,
+      createdByName: actorName(),
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    };
+    const batch = writeBatch(db);
+    batch.set(assignmentRef, payload);
+    batch.set(doc(collection(db, "auditLogs")), auditPayload("development_assignment_created", assignmentRef.id, { teamMemberId: member.id, teamMemberName: member.name, title: program.title, version: program.version }));
+    await batch.commit();
+    state.developmentAssignmentEditorOpen = false;
+    state.developmentAssignmentPrefillMemberId = "";
+    state.view = "development";
+    state.developmentSection = "assignments";
+    state.developmentAssignmentView = "active";
+    state.selectedDevelopmentAssignmentId = assignmentRef.id;
+    showToast("Programme assigne au dossier du membre.");
+    renderApp();
+  } catch (error) {
+    showToast(`Assignation non creee: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+function closeDevelopmentStepEditor(shouldRender = true) {
+  state.developmentStepEditorId = "";
+  if (shouldRender) renderApp();
+}
+
+async function saveDevelopmentStep(event) {
+  event.preventDefault();
+  if (state.previewMode) return showToast("Apercu local: aucune progression n'est ecrite.");
+  const assignment = state.developmentAssignments.find((item) => item.id === state.selectedDevelopmentAssignmentId);
+  const step = assignment?.steps?.find((item) => item.id === state.developmentStepEditorId);
+  if (!assignment || !step || state.busy) return;
+  if (effectiveDevelopmentAssignmentStatus(assignment) === "paused") return showToast("Reprends le programme avant de modifier une etape.");
+  const data = new FormData(event.currentTarget);
+  const value = { status: String(data.get("status") || "pending"), note: String(data.get("note") || "").trim(), evidenceUrl: normalizeExternalUrl(data.get("evidenceUrl")) };
+  const validation = canCompleteDevelopmentStep(step, value);
+  if (!validation.valid) return showToast(validation.error);
+  state.busy = true;
+  try {
+    const assignmentRef = doc(db, "developmentAssignments", assignment.id);
+    const auditRef = doc(collection(db, "auditLogs"));
+    await runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(assignmentRef);
+      if (!snapshot.exists()) throw new Error("Cette assignation n'existe plus.");
+      const current = { id: snapshot.id, ...snapshot.data() };
+      const stepStates = { ...(current.stepStates || {}), [step.id]: { ...value, updatedAt: new Date(), updatedByUid: state.user.uid, updatedByName: actorName() } };
+      const next = { ...current, stepStates, reopenedAt: null };
+      const status = current.status === "paused" ? "paused" : effectiveDevelopmentAssignmentStatus(next);
+      const progress = developmentAssignmentProgress(next);
+      transaction.update(assignmentRef, {
+        stepStates,
+        status,
+        progress: progress.percent,
+        completedSteps: progress.completed,
+        totalSteps: progress.total,
+        completedAt: status === "completed" ? serverTimestamp() : deleteField(),
+        completedByUid: status === "completed" ? state.user.uid : deleteField(),
+        completedByName: status === "completed" ? actorName() : deleteField(),
+        reopenedAt: deleteField(),
+        updatedAt: serverTimestamp(),
+        updatedByUid: state.user.uid,
+        updatedByName: actorName()
+      });
+      transaction.set(auditRef, auditPayload("development_step_updated", assignment.id, { teamMemberId: current.teamMemberId, teamMemberName: current.teamMemberName, title: current.programTitle, stepId: step.id, stepTitle: step.title, status }));
+    });
+    closeDevelopmentStepEditor(false);
+    showToast(value.status === "completed" ? "Etape terminee." : "Etape mise a jour.");
+    renderApp();
+  } catch (error) {
+    showToast(`Etape non enregistree: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function toggleDevelopmentAssignment(action) {
+  if (state.previewMode) return showToast("Apercu local: aucun etat n'est modifie.");
+  const assignment = state.developmentAssignments.find((item) => item.id === state.selectedDevelopmentAssignmentId);
+  if (!assignment || state.busy || !["pause", "resume", "reopen"].includes(action)) return;
+  const status = action === "pause" ? "paused" : action === "reopen" ? "in_progress" : effectiveDevelopmentAssignmentStatus({ ...assignment, status: "in_progress" });
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    const update = {
+      status,
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    };
+    if (action === "reopen") {
+      update.completedAt = deleteField();
+      update.completedByUid = deleteField();
+      update.completedByName = deleteField();
+      update.reopenedAt = serverTimestamp();
+    }
+    batch.update(doc(db, "developmentAssignments", assignment.id), update);
+    const auditAction = action === "pause" ? "development_assignment_paused" : action === "reopen" ? "development_assignment_reopened" : "development_assignment_resumed";
+    batch.set(doc(collection(db, "auditLogs")), auditPayload(auditAction, assignment.id, { teamMemberId: assignment.teamMemberId, teamMemberName: assignment.teamMemberName, title: assignment.programTitle }));
+    await batch.commit();
+    showToast(action === "pause" ? "Programme mis en pause." : action === "reopen" ? "Programme rouvert." : "Programme repris.");
+    renderApp();
+  } catch (error) {
+    showToast(`Etat non modifie: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+function openDevelopmentMember(memberId) {
+  const member = state.teamMembers.find((item) => item.id === memberId);
+  if (!member) return;
+  state.view = "team";
+  state.selectedMemberId = member.id;
+  state.teamRosterView = teamMemberBucket(member);
+  state.memberProfileSection = "development";
+  renderApp();
+}
+
+function openDevelopmentAssignment(assignmentId) {
+  const assignment = state.developmentAssignments.find((item) => item.id === assignmentId);
+  if (!assignment) return;
+  state.view = "development";
+  state.developmentSection = "assignments";
+  state.developmentAssignmentView = effectiveDevelopmentAssignmentStatus(assignment) === "completed" ? "completed" : "active";
+  state.selectedDevelopmentAssignmentId = assignment.id;
+  state.selectedMemberId = "";
+  renderApp();
+}
+
 function hasOpenModal() {
-  return Boolean(state.taskEditorId || state.teamActionMemberId || state.roadmapCompletionId || state.careerEditorId || state.meetingEditorId || state.pilotageEditorType);
+  return Boolean(state.taskEditorId || state.teamActionMemberId || state.roadmapCompletionId || state.careerEditorId || state.meetingEditorId || state.pilotageEditorType || state.developmentProgramEditorId || state.developmentAssignmentEditorOpen || state.developmentStepEditorId);
 }
 
 function hasProtectedEditor() {
@@ -3284,7 +4032,10 @@ function handleGlobalKeydown(event) {
   const dialog = dialogs.at(-1) || null;
   if (event.key === "Escape" && hasOpenModal()) {
     event.preventDefault();
-    if (state.pilotageEditorType) closePilotageEditor();
+    if (state.developmentStepEditorId) closeDevelopmentStepEditor();
+    else if (state.developmentAssignmentEditorOpen) closeDevelopmentAssignmentEditor();
+    else if (state.developmentProgramEditorId) closeDevelopmentProgramEditor();
+    else if (state.pilotageEditorType) closePilotageEditor();
     else if (state.taskEditorId) closeTaskEditor();
     else if (state.meetingEditorId) closeMeetingEditor();
     else if (state.teamActionMemberId) closeTeamAction();
@@ -4552,7 +5303,7 @@ function openTaskSource(taskId) {
 function auditPayload(action, entityId, details = {}) {
   return {
     action,
-    entityType: action.startsWith("pilotage_") ? "pilotage" : action.startsWith("team_meeting_") || action.startsWith("meeting_summary_") ? "teamMeeting" : action.startsWith("team_") ? "teamMember" : action.startsWith("member_career_plan_") ? "memberCareerPlan" : action.startsWith("career_") ? "careerMilestone" : action.startsWith("management_") ? "managementTask" : action.startsWith("client_error_") ? "clientError" : "roadmapSubmission",
+    entityType: action.startsWith("pilotage_") ? "pilotage" : action.startsWith("development_") ? "development" : action.startsWith("team_meeting_") || action.startsWith("meeting_summary_") ? "teamMeeting" : action.startsWith("team_") ? "teamMember" : action.startsWith("member_career_plan_") ? "memberCareerPlan" : action.startsWith("career_") ? "careerMilestone" : action.startsWith("management_") ? "managementTask" : action.startsWith("client_error_") ? "clientError" : "roadmapSubmission",
     entityId,
     actorUid: state.user.uid,
     actorName: actorName(),
@@ -4618,6 +5369,16 @@ function openAuditEntity(logId) {
     state.pilotageSection = log.action.includes("metric") || log.action.includes("scorecard") ? "scorecard" : log.action.includes("rock") ? "rocks" : log.action.includes("issue") ? "issues" : "meeting";
     if (log.details?.weekStart) state.pilotageWeek = log.details.weekStart;
     renderApp();
+    return;
+  }
+  if (log.entityType === "development") {
+    const assignment = state.developmentAssignments.find((item) => item.id === log.entityId);
+    if (assignment) openDevelopmentAssignment(assignment.id);
+    else {
+      state.view = "development";
+      state.developmentSection = "programs";
+      renderApp();
+    }
     return;
   }
   if (log.entityType === "managementTask") {

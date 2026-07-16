@@ -31,6 +31,7 @@ Creer un Roadmap Business CFSB qui permet a Michael et Gabriel de piloter les pr
 - La scorecard initiale contient huit indicateurs sources depuis `METRIQUE CFSB`; quatre cibles sont validees et quatre restent explicitement a cadrer.
 - La vue Activite expose la provenance et les ecarts de donnees et ouvre directement le dossier, la roadmap ou l'indicateur a corriger.
 - Le formulaire employe Firebase existe maintenant en pilote parallele avec reprise interappareils, anti-doublon et lecture temps reel dans le Dashboard Equipe; le lien officiel Apps Script demeure intact pendant la recette.
+- Le moteur owner-only de developpement equipe permet de preparer des programmes versionnes d'onboarding, de formation et d'evaluation, puis de suivre chaque membre sans inventer la checklist officielle de Gabriel.
 - Les acces Head Coach et membres seront definis dans une phase ulterieure.
 
 ## 5. Decisions Made
@@ -108,6 +109,7 @@ Completion criteria: matrice d'acces approuvee et test pilote avec un petit grou
 | Configuration scorecard Q3 | Configuration Firebase | Codex | Chargee | `firebase-roadmap/config/pilotage-initial-2026-q3.json` |
 | Plan directeur | Documentation | Michael et Codex | Actif | `ROADMAP_BUSINESS_CFSB.md` |
 | Formulaire employe Firebase | Application Firebase | Codex | Pilote parallele a tester | `firebase-roadmap/public/formulaire.html` |
+| Systeme Developpement equipe | Application Firebase | Codex | Moteur livre, contenu officiel a fournir | `firebase-roadmap/public/development.js` |
 | Checklist onboarding officielle | Google Drive | Gabriel | A fournir | A confirmer |
 | Matrice d'acces future | Documentation | Michael et Gabriel | A definir | A confirmer |
 
@@ -150,3 +152,4 @@ Completion criteria: matrice d'acces approuvee et test pilote avec un petit grou
 | 2026-07-15 | Huit indicateurs sources depuis Drive et trois enjeux initiaux charges sans ecraser les donnees existantes | Codex | Valider quatre cibles et definir les priorites Q3 |
 | 2026-07-15 | Contrat Portail V1 publie sur les deux dashboards et controles de coherence ajoutes a la vue Activite | Codex | Traiter les associations, liens Drive et cibles manquantes |
 | 2026-07-15 | Formulaire employe Firebase prepare sans bascule: contenu identique, brouillon local et nuage, soumission idempotente | Codex | Tester les huit roles dans un cycle pilote avec Michael et Gabriel |
+| 2026-07-16 | Moteur Head Coach prepare en owner-only: programmes versionnes, assignations et suivi par etape | Codex | Gabriel fournit et valide la premiere checklist avant publication |

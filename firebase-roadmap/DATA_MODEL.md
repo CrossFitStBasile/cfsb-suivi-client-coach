@@ -315,6 +315,43 @@ Note privee d'une rencontre 1:1 rattachee au dossier permanent du membre. Cette 
 
 Un brouillon est modifiable et sauvegarde automatiquement. Une rencontre finalisee demeure en lecture seule afin de proteger l'historique. Aucun champ de prochaine date n'est requis puisque les rendez-vous sont planifies dans le logiciel de reservation CFSB.
 
+## `developmentPrograms/{programId}`
+
+Programme owner-only pour l'onboarding, la formation continue ou une evaluation. Aucun contenu officiel n'est precharge tant que Gabriel ne l'a pas valide.
+
+- `familyId`: identifiant stable entre les versions
+- `title`
+- `description`
+- `programType`: `onboarding`, `training` ou `evaluation`
+- `ownerName`: responsable par defaut
+- `roleIds`: roles auxquels le programme peut s'appliquer
+- `version`: entier croissant dans une meme famille
+- `status`: `draft`, `published`, `superseded` ou `archived`
+- `sourceProgramId`: version publiee copiee, si applicable
+- `steps`: instantane ordonne des etapes avec `id`, `title`, `description`, `category`, `required`, `evidenceRequired` et `sortOrder`
+- metadonnees de creation, publication, remplacement et mise a jour
+
+Une version publiee n'est plus modifiable dans l'interface. Publier une nouvelle version fait passer la precedente a `superseded`, sans modifier les assignations existantes.
+
+## `developmentAssignments/{assignmentId}`
+
+Assignation owner-only d'une version publiee a un membre. Le document conserve l'instantane complet du programme afin que l'historique reste lisible lorsque la checklist evolue.
+
+- `programId`, `familyId`, `programTitle`, `programType` et `programVersion`
+- `steps`: instantane immuable des etapes au moment de l'assignation
+- `teamMemberId` et `teamMemberName`
+- `ownerName`
+- `notes`
+- `status`: `not_started`, `in_progress`, `paused` ou `completed`
+- `stepStates`: carte par `stepId` avec `status`, `note`, `evidenceUrl` et metadonnees de mise a jour
+- `progress`, `completedSteps` et `totalSteps`
+- `completedAt`, `completedByUid` et `completedByName`
+- `reopenedAt`, temporaire lorsqu'un programme termine est rouvert; retire a la prochaine mise a jour d'etape
+- `archivedAt`, facultatif pour une phase ulterieure
+- metadonnees de creation et de mise a jour
+
+Une etape dont `evidenceRequired` vaut `true` ne peut pas etre terminee sans lien de preuve. La progression et le statut global sont recalcules dans une transaction Firestore.
+
 ## `managementTasks/{taskId}`
 
 Action de gestion creee manuellement par Michael ou Gabriel. Les actions directement issues des Roadmaps et des etapes de carriere sont projetees automatiquement dans l'interface sans dupliquer les donnees sources.

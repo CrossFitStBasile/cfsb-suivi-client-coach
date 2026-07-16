@@ -201,6 +201,45 @@ service cloud.firestore {
         && resource.data.status == 'draft';
     }
 
+    match /developmentPrograms/{programId} {
+      allow read: if isOwner();
+      allow create: if isOwner()
+        && request.resource.data.status in ['draft', 'published']
+        && request.resource.data.version is int
+        && request.resource.data.steps is list;
+      allow update: if isOwner() && (
+        (
+          resource.data.status == 'draft'
+          && request.resource.data.status in ['draft', 'published']
+        )
+        || (
+          resource.data.status == 'published'
+          && request.resource.data.status == 'superseded'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'supersededAt', 'updatedAt', 'updatedByUid', 'updatedByName'
+          ])
+        )
+      );
+      allow delete: if isOwner() && resource.data.status == 'draft';
+    }
+
+    match /developmentAssignments/{assignmentId} {
+      allow read: if isOwner();
+      allow create: if isOwner()
+        && request.resource.data.status == 'not_started'
+        && request.resource.data.programId is string
+        && request.resource.data.teamMemberId is string
+        && request.resource.data.steps is list
+        && request.resource.data.stepStates is map;
+      allow update: if isOwner()
+        && request.resource.data.programId == resource.data.programId
+        && request.resource.data.familyId == resource.data.familyId
+        && request.resource.data.programVersion == resource.data.programVersion
+        && request.resource.data.teamMemberId == resource.data.teamMemberId
+        && request.resource.data.steps == resource.data.steps;
+      allow delete: if false;
+    }
+
     match /managementTasks/{taskId} {
       allow read, create, update, delete: if isOwner();
     }

@@ -61,6 +61,7 @@ Creer une application Roadmap interactive et fiable dans un projet Firebase dist
 - Le document Roadmap Drive demeure externe et est accessible par un lien prive configure dans le dossier owner.
 - Le Laboratoire revenus est porte dans Firebase comme outil owner, avec scenarios persistants par coach, sans retirer l'ancien prototype.
 - Un formulaire employe Firebase parallele reprend la configuration officielle sans modifier le lien de production. Il combine brouillon local, brouillon Firestore interappareils, connexion Google autorisee et soumission idempotente visible en temps reel.
+- Le Dashboard Equipe contient un moteur owner-only de programmes versionnes pour l'onboarding, la formation continue et les evaluations. Aucun contenu de checklist n'est publie tant que Gabriel ne l'a pas valide.
 
 ## 5. Decisions Made
 
@@ -173,6 +174,7 @@ Completion criteria: portail utile sans dependance forte entre les deux bases Fi
 | Lot d'importation local | Outil | Codex | Prepare et importe | `firebase-roadmap/scripts/build-import-bundle.mjs` |
 | Dashboard Equipe Firebase | Application | Codex | Deploye pour recette | `https://cfsb-roadmap-trimestrielle.web.app` |
 | Formulaire employe Firebase | Application | Codex | Prototype parallele prepare | `https://cfsb-roadmap-trimestrielle.web.app/formulaire` |
+| Developpement equipe | Application | Codex | Moteur prepare, donnees metier a fournir | `firebase-roadmap/public/development.js` |
 | Recette | Validation | Michael et Gabriel | A faire | - |
 
 ## 8. Owners
@@ -218,3 +220,4 @@ Completion criteria: portail utile sans dependance forte entre les deux bases Fi
 | 2026-07-13 | Refonte du prototype owners en Dashboard Equipe: file d'actions, dossiers membres, roadmaps a traiter, rencontres faites et taches manuelles | Codex | Michael et Gabriel valident l'usage quotidien avant la Phase 2 du formulaire employe |
 | 2026-07-13 | Ajout des rencontres 1:1 privees, des liens Drive externes et des projections de revenus persistantes par coach | Codex | Tester le module sur quelques dossiers, puis ajouter progressivement les liens Drive valides |
 | 2026-07-15 | Prototype du formulaire employe Firebase prepare en parallele: configuration identique, reprise interappareils et anti-doublon | Codex | Tester les 8 roles dans un cycle pilote avant toute bascule du lien officiel |
+| 2026-07-16 | Ajout du moteur de developpement owner-only: programmes versionnes, assignations, progression et preuves | Codex | Gabriel valide le contenu de la premiere checklist avant sa publication |
