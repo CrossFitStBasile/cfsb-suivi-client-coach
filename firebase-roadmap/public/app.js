@@ -45,6 +45,7 @@ import {
   startOfWeekIso,
   targetLabel
 } from "./pilotage.js";
+import { dashboardHealthReport } from "./health.js";
 
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
@@ -466,7 +467,8 @@ function renderApp() {
 function renderCommandSidebar() {
   const openTasks = allOpenManagementTasks().length;
   const queueCount = state.submissions.filter((item) => submissionBucket(item) === "queue").length;
-  const unresolvedErrors = state.clientErrors.filter((item) => !item.resolvedAt).length;
+  const health = currentDataHealthReport();
+  const healthAlertCategories = [health.unresolvedErrors, health.unlinkedSubmissions, health.missingDocumentMembers, health.missingTargetMetrics].filter((items) => items.length).length;
   const pilotage = currentPilotageSummary();
   return `
     <aside class="command-sidebar">
@@ -479,7 +481,7 @@ function renderCommandSidebar() {
         ${commandNavButton("todo", "list-checks", "A faire", openTasks)}
         ${commandNavButton("team", "users-round", "Equipe", state.teamMembers.filter((item) => !isArchivedTeamMember(item)).length)}
         ${commandNavButton("roadmaps", "clipboard-list", "Roadmaps", queueCount)}
-        ${commandNavButton("activity", "history", "Activite", unresolvedErrors)}
+        ${commandNavButton("activity", "history", "Activite", healthAlertCategories)}
       </nav>
       <div class="command-sidebar-footer">
         <span>${escapeHtml(state.profile.displayName || state.user.displayName || "Owner")}</span>
@@ -935,7 +937,8 @@ function todoStat(value, label, filter, icon, tone = "") {
 
 function renderActivityView() {
   const logs = filteredActivityLogs();
-  const unresolvedErrors = state.clientErrors.filter((item) => !item.resolvedAt);
+  const health = currentDataHealthReport();
+  const unresolvedErrors = health.unresolvedErrors;
   const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
   const changesToday = state.auditLogs.filter((item) => dateValue(item.createdAt) >= dayAgo).length;
   const actorsToday = new Set(state.auditLogs.filter((item) => dateValue(item.createdAt) >= dayAgo).map((item) => item.actorName).filter(Boolean)).size;
@@ -954,6 +957,7 @@ function renderActivityView() {
       </header>
       ${unresolvedErrors.length ? `<div class="health-error-list">${unresolvedErrors.slice(0, 6).map(renderClientError).join("")}</div>` : ""}
     </section>
+    ${renderDataHealthPanel(health)}
     <section class="panel activity-toolbar">
       <label class="field activity-search">Recherche
         <input id="activitySearchInput" value="${escapeAttr(state.activitySearch)}" placeholder="Action, membre ou owner...">
@@ -973,6 +977,88 @@ function renderActivityView() {
         ${logs.length ? logs.map(renderActivityRow).join("") : `<div class="empty-state"><i data-lucide="search-x"></i><div>Aucun changement ne correspond a ces filtres.</div></div>`}
       </div>
     </section>
+  `;
+}
+
+function currentDataHealthReport() {
+  return dashboardHealthReport({
+    submissions: state.submissions,
+    teamMembers: state.teamMembers,
+    pilotageMetrics: state.pilotageMetrics,
+    clientErrors: state.clientErrors,
+    memberForSubmission,
+    memberDocumentUrl: memberRoadmapDocumentUrl,
+    isActiveMember: (member) => !isArchivedTeamMember(member)
+  });
+}
+
+function renderDataHealthPanel(health) {
+  const statusMeta = health.status === "error"
+    ? { icon: "shield-alert", title: "Des erreurs techniques sont ouvertes", description: "Corrige les erreurs avant de te fier aux autres signaux." }
+    : health.status === "attention"
+      ? { icon: "scan-search", title: "Qualite des donnees a completer", description: "Chaque ecart ouvre directement l'endroit ou Michael ou Gabriel peut le traiter." }
+      : { icon: "badge-check", title: "Donnees bien reliees", description: "Aucun ecart de configuration connu dans les controles actuels." };
+  const submissionMode = health.nativeSubmissions.length ? "Firebase direct" : health.importedSubmissions.length ? "Import Apps Script" : "Aucune donnee";
+  const sourceDescription = health.nativeSubmissions.length
+    ? `${health.nativeSubmissions.length} soumission(s) recue(s) directement dans Firebase. Derniere: ${formatDate(health.latestSubmissionAt)}.`
+    : health.importedSubmissions.length
+      ? `${health.importedSubmissions.length} soumission(s) proviennent encore d'Apps Script. Dernier export source: ${formatDate(health.latestImportAt)}.`
+      : "Aucune soumission n'est encore disponible dans Firebase.";
+  return `
+    <section class="panel data-health-panel ${escapeAttr(health.status)}">
+      <header class="data-health-heading">
+        <span><i data-lucide="${statusMeta.icon}"></i></span>
+        <div><p>Controle de coherence</p><h2>${escapeHtml(statusMeta.title)}</h2><small>${escapeHtml(statusMeta.description)}</small></div>
+      </header>
+      <div class="data-health-grid">
+        ${dataHealthCard({
+          icon: health.unlinkedSubmissions.length ? "unlink" : "link-2",
+          value: health.unlinkedSubmissions.length,
+          label: "Roadmaps non associees",
+          description: health.unlinkedSubmissions.length ? "Une soumission ne correspond pas encore a un dossier membre." : "Toutes les roadmaps visibles sont reliees a un dossier.",
+          tone: health.unlinkedSubmissions.length ? "attention" : "healthy",
+          action: health.unlinkedSubmissions.length ? "unlinked" : "",
+          actionLabel: "Associer"
+        })}
+        ${dataHealthCard({
+          icon: health.missingDocumentMembers.length ? "file-question" : "file-check-2",
+          value: health.missingDocumentMembers.length,
+          label: "Liens Drive manquants",
+          description: health.missingDocumentMembers.length ? "Dossiers actifs sans raccourci vers leur document Roadmap Drive." : "Chaque dossier actif contient son raccourci Drive.",
+          tone: health.missingDocumentMembers.length ? "attention" : "healthy",
+          action: health.missingDocumentMembers.length ? "drive" : "",
+          actionLabel: "Configurer"
+        })}
+        ${dataHealthCard({
+          icon: health.missingTargetMetrics.length ? "circle-dashed" : "circle-check-big",
+          value: health.missingTargetMetrics.length,
+          label: "Cibles Pilotage a cadrer",
+          description: health.missingTargetMetrics.length ? "Indicateurs conserves sans seuil invente." : "Toutes les cibles actives sont validees.",
+          tone: health.missingTargetMetrics.length ? "attention" : "healthy",
+          action: health.missingTargetMetrics.length ? "targets" : "",
+          actionLabel: "Ouvrir Pilotage"
+        })}
+        ${dataHealthCard({
+          icon: health.nativeSubmissions.length ? "radio-tower" : "database-zap",
+          value: submissionMode,
+          label: "Canal des soumissions",
+          description: sourceDescription,
+          tone: health.nativeSubmissions.length ? "healthy" : "information",
+          action: health.importedSubmissions.length ? "roadmaps" : "",
+          actionLabel: "Voir les donnees"
+        })}
+      </div>
+    </section>
+  `;
+}
+
+function dataHealthCard({ icon, value, label, description, tone, action, actionLabel }) {
+  return `
+    <article class="data-health-card ${escapeAttr(tone || "information")}">
+      <span class="data-health-card-icon"><i data-lucide="${icon}"></i></span>
+      <div><strong>${escapeHtml(value)}</strong><h3>${escapeHtml(label)}</h3><p>${escapeHtml(description)}</p></div>
+      ${action ? `<button class="button" data-health-action="${escapeAttr(action)}" type="button">${escapeHtml(actionLabel)} <i data-lucide="arrow-right"></i></button>` : ""}
+    </article>
   `;
 }
 
@@ -2136,6 +2222,7 @@ function bindAppEvents() {
   });
   document.querySelectorAll("[data-open-audit]").forEach((button) => button.addEventListener("click", () => openAuditEntity(button.dataset.openAudit)));
   document.querySelectorAll("[data-resolve-client-error]").forEach((button) => button.addEventListener("click", () => resolveClientError(button.dataset.resolveClientError)));
+  document.querySelectorAll("[data-health-action]").forEach((button) => button.addEventListener("click", () => openDataHealthAction(button.dataset.healthAction)));
   document.querySelectorAll("[data-roadmap-view]").forEach((button) => button.addEventListener("click", () => {
     state.roadmapView = button.dataset.roadmapView;
     state.filters.status = "all";
@@ -2323,6 +2410,39 @@ function bindAppEvents() {
   document.querySelectorAll("[data-close-task-editor]").forEach((button) => button.addEventListener("click", () => closeTaskEditor()));
   document.querySelector("#taskEditorForm")?.addEventListener("submit", saveManagementTaskEdit);
   document.querySelectorAll("[data-resolve-task-conflict]").forEach((button) => button.addEventListener("click", () => resolveTaskConflict(button.dataset.resolveTaskConflict)));
+}
+
+function openDataHealthAction(action) {
+  const health = currentDataHealthReport();
+  if (action === "unlinked") {
+    const submission = health.unlinkedSubmissions[0];
+    if (submission) openSubmission(submission.id);
+    return;
+  }
+  if (action === "drive") {
+    const member = health.missingDocumentMembers[0];
+    if (!member) return;
+    state.view = "team";
+    state.teamRosterView = "active";
+    state.selectedMemberId = "";
+    state.editingMemberId = member.id;
+    state.memberEditorVersion = entityVersionToken(member);
+    renderApp();
+    return;
+  }
+  if (action === "targets") {
+    state.view = "pilotage";
+    state.pilotageSection = "scorecard";
+    renderApp();
+    return;
+  }
+  if (action === "roadmaps") {
+    state.view = "roadmaps";
+    state.roadmapView = "history";
+    state.filters = { search: "", role: "all", cycle: "all", status: "all" };
+    ensureSelection();
+    renderApp();
+  }
 }
 
 function openPilotageEditor(type, id = "") {

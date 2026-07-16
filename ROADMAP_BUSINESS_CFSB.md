@@ -29,6 +29,7 @@ Creer un Roadmap Business CFSB qui permet a Michael et Gabriel de piloter les pr
 - Les rencontres individuelles des membres sont conservees dans `teamMeetings`.
 - Les outils de pilotage hebdomadaire, de scorecard, de priorites 90 jours et d'enjeux sont deployes dans le Dashboard Equipe.
 - La scorecard initiale contient huit indicateurs sources depuis `METRIQUE CFSB`; quatre cibles sont validees et quatre restent explicitement a cadrer.
+- La vue Activite expose la provenance et les ecarts de donnees et ouvre directement le dossier, la roadmap ou l'indicateur a corriger.
 - Les acces Head Coach et membres seront definis dans une phase ulterieure.
 
 ## 5. Decisions Made
@@ -145,3 +146,4 @@ Completion criteria: matrice d'acces approuvee et test pilote avec un petit grou
 | 2026-07-15 | Architecture modulaire et perimetre owner-only confirmes | Michael et Codex | Implementer la Zone Pilotage |
 | 2026-07-15 | Zone Pilotage livree avec scorecard, priorites, enjeux et rencontre hebdomadaire | Codex | Configurer les donnees reelles |
 | 2026-07-15 | Huit indicateurs sources depuis Drive et trois enjeux initiaux charges sans ecraser les donnees existantes | Codex | Valider quatre cibles et definir les priorites Q3 |
+| 2026-07-15 | Contrat Portail V1 publie sur les deux dashboards et controles de coherence ajoutes a la vue Activite | Codex | Traiter les associations, liens Drive et cibles manquantes |

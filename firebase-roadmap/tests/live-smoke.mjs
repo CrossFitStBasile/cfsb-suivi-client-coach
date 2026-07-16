@@ -5,6 +5,7 @@ const checks = [
   ["/app.js", ["renderActivityView", "teamMeetings", "teamMemberPrivate", "renderMeetingEditor", "renderPilotageView"]],
   ["/workflow.js", ["entityVersionToken", "hasVersionConflict"]],
   ["/pilotage.js", ["startOfWeekIso", "metricStatus", "pilotageSummary"]],
+  ["/health.js", ["dashboardHealthReport", "missingDocumentMembers", "latestImportAt"]],
   ["/styles.css", [".activity-list", ".meeting-editor", ".pilotage-shell", "[hidden]"]],
   ["/revenue.html", ["Projection de revenus", "scenarioMemberSelect", "./revenue.js"]],
   ["/revenue.js", ["REVENUE_MODEL_VERSION", "saveScenario", "revenueScenarios"]],
