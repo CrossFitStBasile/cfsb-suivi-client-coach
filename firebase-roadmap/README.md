@@ -63,6 +63,8 @@ Le Dashboard Equipe est deploye sur Firebase Hosting avec connexion Google owner
 - formulaires modaux proteges contre les rafraichissements Firestore pendant une saisie, avec fermeture par `Echap` et focus clavier contenu;
 - journal `Activite` reliant chaque changement au dossier, a la roadmap, a l'action, a la rencontre, au parcours ou a la projection concernee;
 - etat de sante owner avec consignation et resolution des erreurs du navigateur;
+- sauvegarde JSON owner en un clic couvrant toutes les collections connues et les evenements imbriques, avec manifeste, dates portables et empreinte SHA-256;
+- aucune restauration massive depuis l'interface afin d'eviter une ecriture destructive accidentelle;
 - controle de coherence actionnable pour les roadmaps non associees, les liens Drive absents, les cibles Pilotage a cadrer et la provenance des soumissions;
 - formulaire employe Firebase en pilote parallele, avec le meme contenu que le formulaire officiel, brouillon local et nuage, reprise interappareils et soumission finale idempotente;
 - acces au pilote depuis le controle de coherence, sans remplacer le formulaire GitHub Pages + Apps Script actuellement distribue;

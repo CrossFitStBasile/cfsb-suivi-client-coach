@@ -879,6 +879,14 @@ body.modal-open { overflow: hidden; }
 .activity-row-actor { justify-items: end; text-align: right; }
 .activity-row-actor strong { font-size: 12px; }
 .activity-row > svg { color: #89948f; }
+.owner-backup-panel { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: 14px; margin-bottom: 14px; padding: 15px; border-left: 4px solid var(--blue); }
+.owner-backup-icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 7px; background: #e6f0f5; color: var(--blue); }
+.owner-backup-icon svg { width: 22px; height: 22px; }
+.owner-backup-panel h2,
+.owner-backup-panel p { margin: 0; }
+.owner-backup-panel h2 { font-size: 18px; }
+.owner-backup-panel p:not(.eyebrow) { margin-top: 4px; color: #53615b; line-height: 1.45; }
+.owner-backup-panel small { display: block; margin-top: 5px; color: #866015; }
 
 .pilotage-summary {
   display: grid;
@@ -1413,6 +1421,8 @@ body.modal-open { overflow: hidden; }
 }
 
 @media (max-width: 820px) {
+  .owner-backup-panel { grid-template-columns: 44px minmax(0, 1fr); }
+  .owner-backup-panel .button { grid-column: 2; justify-self: start; }
   .strategy-status-bar { grid-template-columns: 1fr auto; }
   .strategy-status-bar em { grid-column: 1 / -1; text-align: left; }
   .strategy-foundation-grid { grid-template-columns: 1fr; }
@@ -1508,6 +1518,8 @@ body.modal-open { overflow: hidden; }
 }
 
 @media (max-width: 520px) {
+  .owner-backup-panel { grid-template-columns: 1fr; }
+  .owner-backup-panel .button { grid-column: 1; width: 100%; }
   .strategy-tabs { overflow-x: auto; }
   .strategy-status-bar { grid-template-columns: 1fr; }
   .strategy-status-bar em { grid-column: 1; }

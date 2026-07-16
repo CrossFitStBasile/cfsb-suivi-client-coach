@@ -83,6 +83,13 @@ import {
   validateStrategyDecision,
   validateStrategyProfile
 } from "./strategy.js";
+import {
+  OWNER_BACKUP_COLLECTIONS,
+  buildOwnerBackup,
+  ownerBackupFileName,
+  sha256Hex,
+  validateOwnerBackup
+} from "./backup.js";
 
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
@@ -560,6 +567,7 @@ function renderApp() {
           <div class="mobile-brand"><span class="brand-mark">CF</span><strong>Dashboard Equipe</strong></div>
           <div class="top-actions">
             <div class="realtime">${state.previewMode ? "Apercu local sans ecriture" : "Temps reel Firestore"}</div>
+            <button class="button icon-only" data-export-owner-backup type="button" title="Exporter une sauvegarde JSON" aria-label="Exporter une sauvegarde JSON"><i data-lucide="download"></i></button>
             <button class="button icon-only" id="reloadButton" type="button" title="Recharger les donnees" aria-label="Recharger les donnees"><i data-lucide="refresh-cw"></i></button>
             <button class="button icon-only" id="logoutButton" type="button" title="Deconnexion" aria-label="Deconnexion"><i data-lucide="log-out"></i></button>
           </div>
@@ -1510,6 +1518,7 @@ function renderActivityView() {
       ${unresolvedErrors.length ? `<div class="health-error-list">${unresolvedErrors.slice(0, 6).map(renderClientError).join("")}</div>` : ""}
     </section>
     ${renderDataHealthPanel(health)}
+    ${renderOwnerBackupPanel()}
     <section class="panel activity-toolbar">
       <label class="field activity-search">Recherche
         <input id="activitySearchInput" value="${escapeAttr(state.activitySearch)}" placeholder="Action, membre ou owner...">
@@ -1519,7 +1528,7 @@ function renderActivityView() {
       </label>
       <label class="field">Element
         <select id="activityEntityFilter">
-          ${[["all", "Tous"], ["pilotage", "Pilotage"], ["strategy", "Strategie"], ["development", "Developpement"], ["workingGenius", "Working Genius"], ["roadmapSubmission", "Roadmaps"], ["managementTask", "Actions"], ["teamMember", "Equipe"], ["teamMeeting", "Rencontres"], ["memberCareerPlan", "Mandats"], ["careerMilestone", "Parcours"], ["revenueScenario", "Projections"], ["clientError", "Systeme"]].map(([id, label]) => `<option value="${id}" ${state.activityEntity === id ? "selected" : ""}>${label}</option>`).join("")}
+          ${[["all", "Tous"], ["pilotage", "Pilotage"], ["strategy", "Strategie"], ["development", "Developpement"], ["workingGenius", "Working Genius"], ["systemBackup", "Sauvegardes"], ["roadmapSubmission", "Roadmaps"], ["managementTask", "Actions"], ["teamMember", "Equipe"], ["teamMeeting", "Rencontres"], ["memberCareerPlan", "Mandats"], ["careerMilestone", "Parcours"], ["revenueScenario", "Projections"], ["clientError", "Systeme"]].map(([id, label]) => `<option value="${id}" ${state.activityEntity === id ? "selected" : ""}>${label}</option>`).join("")}
         </select>
       </label>
     </section>
@@ -1528,6 +1537,16 @@ function renderActivityView() {
       <div class="activity-list">
         ${logs.length ? logs.map(renderActivityRow).join("") : `<div class="empty-state"><i data-lucide="search-x"></i><div>Aucun changement ne correspond a ces filtres.</div></div>`}
       </div>
+    </section>
+  `;
+}
+
+function renderOwnerBackupPanel() {
+  return `
+    <section class="panel owner-backup-panel">
+      <span class="owner-backup-icon"><i data-lucide="archive-restore"></i></span>
+      <div><p class="eyebrow">Continuite des donnees</p><h2>Sauvegarde owner</h2><p>Exporte ${OWNER_BACKUP_COLLECTIONS.length} collections Firestore et l'historique imbrique des soumissions dans un fichier JSON verifiable.</p><small>Le fichier contient des notes de gestion privees. Conservez-le dans un emplacement limite a Michael et Gabriel.</small></div>
+      <button class="button primary" data-export-owner-backup type="button"><i data-lucide="download"></i> Exporter maintenant</button>
     </section>
   `;
 }
@@ -1714,6 +1733,7 @@ function activityActionMeta(action) {
     business_strategy_validated: ["Strategie validee", "badge-check", "green"],
     strategy_decision_created: ["Decision strategique ajoutee", "scale", "green"],
     strategy_decision_updated: ["Decision strategique modifiee", "scale", "blue"],
+    owner_backup_exported: ["Sauvegarde owner exportee", "download", "green"],
     client_error_resolved: ["Erreur technique resolue", "shield-check", "green"]
   };
   const [label, icon, tone] = values[action] || [humanize(action || "changement"), "history", "neutral"];
@@ -1723,6 +1743,7 @@ function activityActionMeta(action) {
 function activityTargetLabel(log) {
   if (log.entityType === "pilotage") return log.details?.title || log.details?.name || log.details?.weekStart || "Zone Pilotage";
   if (log.entityType === "strategy") return log.details?.title || "Strategie CFSB";
+  if (log.entityType === "systemBackup") return `${Number(log.details?.totalRecords || 0)} document(s) · ${String(log.details?.checksum || "").slice(0, 10)}...`;
   if (log.entityType === "development") return [log.details?.teamMemberName, log.details?.title, log.details?.stepTitle].filter(Boolean).join(" · ") || "Developpement equipe";
   if (log.entityType === "workingGenius") return log.details?.teamMemberName || state.teamMembers.find((item) => item.id === log.entityId)?.name || "Profil Working Genius";
   if (log.entityType === "clientError") return log.details?.context || "Etat de sante du dashboard";
@@ -2849,6 +2870,7 @@ function renderTimelineItem(submission) {
 function bindAppEvents() {
   document.querySelector("#logoutButton")?.addEventListener("click", () => signOut(auth));
   document.querySelector("#reloadButton")?.addEventListener("click", () => window.location.reload());
+  document.querySelectorAll("[data-export-owner-backup]").forEach((button) => button.addEventListener("click", exportOwnerBackup));
   document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => {
     closeCareerEditor(false);
     closeMeetingEditor(false, false);
@@ -3237,6 +3259,79 @@ function openDataHealthAction(action) {
   if (action === "firebase-form") {
     window.open("./formulaire.html", "_blank", "noopener,noreferrer");
   }
+}
+
+async function exportOwnerBackup() {
+  if (state.previewMode) return showToast("Apercu local: aucune sauvegarde Firestore n'est exportee.");
+  if (state.busy) return;
+  const buttons = [...document.querySelectorAll("[data-export-owner-backup]")];
+  buttons.forEach((button) => { button.disabled = true; });
+  state.busy = true;
+  showToast("Preparation de la sauvegarde owner...");
+  try {
+    const collections = {};
+    for (const names of chunkArray(OWNER_BACKUP_COLLECTIONS, 6)) {
+      const results = await Promise.all(names.map(async (name) => {
+        const snapshot = await getDocs(collection(db, name));
+        return [name, snapshot.docs.map(fromDoc)];
+      }));
+      results.forEach(([name, documents]) => { collections[name] = documents; });
+    }
+    const roadmapSubmissionEvents = {};
+    for (const submissions of chunkArray(collections.roadmapSubmissions || [], 8)) {
+      const results = await Promise.all(submissions.map(async (submission) => {
+        const snapshot = await getDocs(collection(db, "roadmapSubmissions", submission.id, "events"));
+        return [submission.id, snapshot.docs.map(fromDoc)];
+      }));
+      results.forEach(([submissionId, events]) => {
+        if (events.length) roadmapSubmissionEvents[submissionId] = events;
+      });
+    }
+    const exportedAt = new Date();
+    const backup = buildOwnerBackup({
+      projectId: firebaseConfig.projectId,
+      actor: { uid: state.user.uid, name: actorName(), email: state.user.email || "" },
+      exportedAt,
+      collections,
+      nested: { roadmapSubmissionEvents }
+    });
+    const validation = validateOwnerBackup(backup);
+    if (!validation.valid) throw new Error(validation.errors[0]);
+    const checksum = await sha256Hex(JSON.stringify(backup));
+    const completed = { ...backup, integrity: { algorithm: "SHA-256", scope: "JSON.stringify(payload_without_integrity)", checksum } };
+    downloadJsonFile(completed, ownerBackupFileName(exportedAt));
+    try {
+      const batch = writeBatch(db);
+      batch.set(doc(collection(db, "auditLogs")), auditPayload("owner_backup_exported", "owner-backup", { totalRecords: validation.totalRecords, checksum }));
+      await batch.commit();
+    } catch {
+      // The backup stays valid even if its audit event cannot be written.
+    }
+    showToast(`Sauvegarde prete: ${validation.totalRecords} document(s), empreinte ${checksum.slice(0, 10)}...`);
+  } catch (error) {
+    showToast(`Sauvegarde non exportee: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+    buttons.forEach((button) => { button.disabled = false; });
+  }
+}
+
+function downloadJsonFile(value, fileName) {
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function chunkArray(items, size) {
+  const chunks = [];
+  for (let index = 0; index < items.length; index += size) chunks.push(items.slice(index, index + size));
+  return chunks;
 }
 
 function openPilotageEditor(type, id = "") {
@@ -5910,7 +6005,7 @@ function openTaskSource(taskId) {
 function auditPayload(action, entityId, details = {}) {
   return {
     action,
-    entityType: action.startsWith("pilotage_") ? "pilotage" : action.startsWith("business_strategy_") || action.startsWith("strategy_decision_") ? "strategy" : action.startsWith("development_") ? "development" : action.startsWith("working_genius_") ? "workingGenius" : action.startsWith("team_meeting_") || action.startsWith("meeting_summary_") ? "teamMeeting" : action.startsWith("team_") ? "teamMember" : action.startsWith("member_career_plan_") ? "memberCareerPlan" : action.startsWith("career_") ? "careerMilestone" : action.startsWith("management_") ? "managementTask" : action.startsWith("client_error_") ? "clientError" : "roadmapSubmission",
+    entityType: action.startsWith("pilotage_") ? "pilotage" : action.startsWith("business_strategy_") || action.startsWith("strategy_decision_") ? "strategy" : action.startsWith("owner_backup_") ? "systemBackup" : action.startsWith("development_") ? "development" : action.startsWith("working_genius_") ? "workingGenius" : action.startsWith("team_meeting_") || action.startsWith("meeting_summary_") ? "teamMeeting" : action.startsWith("team_") ? "teamMember" : action.startsWith("member_career_plan_") ? "memberCareerPlan" : action.startsWith("career_") ? "careerMilestone" : action.startsWith("management_") ? "managementTask" : action.startsWith("client_error_") ? "clientError" : "roadmapSubmission",
     entityId,
     actorUid: state.user.uid,
     actorName: actorName(),
@@ -5984,6 +6079,10 @@ function openAuditEntity(logId) {
     state.strategyView = log.action.startsWith("strategy_decision_") ? "decisions" : "overview";
     if (log.action.startsWith("strategy_decision_") && state.strategyDecisions.some((item) => item.id === log.entityId)) openStrategyEditor("decision", log.entityId);
     else renderApp();
+    return;
+  }
+  if (log.entityType === "systemBackup") {
+    showToast("La sauvegarde a ete telechargee sur l'appareil utilise au moment de l'export.");
     return;
   }
   if (log.entityType === "development") {

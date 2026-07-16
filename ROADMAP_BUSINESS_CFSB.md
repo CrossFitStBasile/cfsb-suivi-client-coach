@@ -35,6 +35,7 @@ Creer un Roadmap Business CFSB qui permet a Michael et Gabriel de piloter les pr
 - Les resultats Working Genius officiels peuvent etre importes dans chaque dossier et lus dans une carte d'equipe owner-only, sans recreer le test.
 - La vue Strategie reprend la vision, la mission, les valeurs et le SWOT depuis deux sources Drive identifiees; les objectifs annuels restent vides plutot que d'utiliser une source datee ou incoherente.
 - Un registre de decisions conserve les choix durables, leur raison, leur impact et les decisions remplacees.
+- Une sauvegarde owner portable couvre les collections Firestore et les evenements imbriques avec manifeste et empreinte SHA-256.
 - Les acces Head Coach et membres seront definis dans une phase ulterieure.
 
 ## 5. Decisions Made
@@ -115,6 +116,7 @@ Completion criteria: matrice d'acces approuvee et test pilote avec un petit grou
 | Systeme Developpement equipe | Application Firebase | Codex | Moteur livre, contenu officiel a fournir | `firebase-roadmap/public/development.js` |
 | Profils Working Genius | Application Firebase | Codex | Moteur d'import livre, rapports a fournir | `firebase-roadmap/public/working-genius.js` |
 | Strategie et decisions | Application Firebase | Codex | Vue sourcee preparee, revalidation owners requise | `firebase-roadmap/public/strategy.js` |
+| Sauvegarde owner | Outil Firebase | Codex | Export complet prepare, recette live requise | `firebase-roadmap/public/backup.js` |
 | Checklist onboarding officielle | Google Drive | Gabriel | A fournir | A confirmer |
 | Matrice d'acces future | Documentation | Michael et Gabriel | A definir | A confirmer |
 
@@ -160,3 +162,4 @@ Completion criteria: matrice d'acces approuvee et test pilote avec un petit grou
 | 2026-07-16 | Moteur Head Coach prepare en owner-only: programmes versionnes, assignations et suivi par etape | Codex | Gabriel fournit et valide la premiere checklist avant publication |
 | 2026-07-16 | Import Working Genius et carte d'equipe owner-only prepares sans reproduire le test | Codex | Michael et Gabriel exportent progressivement les rapports officiels |
 | 2026-07-16 | Vue Strategie sourcee et registre de decisions owner-only prepares | Codex | Michael et Gabriel revalident les blocs sources et ajoutent les objectifs annuels actuels |
+| 2026-07-16 | Export de sauvegarde owner complet et verifiable prepare | Codex | Tester le telechargement sur le projet Firebase apres reauthentification et deploiement |

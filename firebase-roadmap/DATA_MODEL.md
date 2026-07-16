@@ -363,6 +363,19 @@ Registre owner-only des choix durables.
 
 Une decision n'est jamais supprimee depuis l'interface; elle peut etre marquee comme remplacee pour conserver le raisonnement historique.
 
+## Sauvegarde `cfsb-roadmap-backup-v1`
+
+Export JSON owner genere dans le navigateur depuis les collections Firestore autorisees. Il contient:
+
+- `schemaVersion` et `projectId`
+- `exportedAt` et l'identite de l'owner exportateur
+- un `manifest` avec le nombre de collections et de documents
+- toutes les collections owner connues, y compris les brouillons, notes privees, projections, strategie, developpement et journaux
+- `nested.roadmapSubmissionEvents` pour les evenements imbriques de chaque soumission
+- `integrity.algorithm`, `integrity.scope` et l'empreinte SHA-256 de `JSON.stringify(payload_without_integrity)`
+
+Les dates et timestamps Firestore deviennent des chaines ISO. Le fichier est une sauvegarde portable, pas une commande de restauration: toute reimportation doit passer par un outil controle et une validation du projet cible.
+
 ## `developmentPrograms/{programId}`
 
 Programme owner-only pour l'onboarding, la formation continue ou une evaluation. Aucun contenu officiel n'est precharge tant que Gabriel ne l'a pas valide.
