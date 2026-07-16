@@ -201,6 +201,35 @@ service cloud.firestore {
         && resource.data.status == 'draft';
     }
 
+    match /workingGeniusProfiles/{memberId} {
+      allow read: if isOwner();
+      allow create, update: if isOwner()
+        && request.resource.data.teamMemberId == memberId
+        && request.resource.data.sourceType == 'official_report'
+        && request.resource.data.geniuses is list
+        && request.resource.data.competencies is list
+        && request.resource.data.frustrations is list
+        && request.resource.data.status in ['partial', 'complete']
+        && request.resource.data.geniuses.size() <= 2
+        && request.resource.data.competencies.size() <= 2
+        && request.resource.data.frustrations.size() <= 2
+        && request.resource.data.geniuses.hasOnly(['W', 'I', 'D', 'G', 'E', 'T'])
+        && request.resource.data.competencies.hasOnly(['W', 'I', 'D', 'G', 'E', 'T'])
+        && request.resource.data.frustrations.hasOnly(['W', 'I', 'D', 'G', 'E', 'T'])
+        && !request.resource.data.geniuses.hasAny(request.resource.data.competencies)
+        && !request.resource.data.geniuses.hasAny(request.resource.data.frustrations)
+        && !request.resource.data.competencies.hasAny(request.resource.data.frustrations)
+        && (
+          request.resource.data.status == 'partial'
+          || (
+            request.resource.data.geniuses.size() == 2
+            && request.resource.data.competencies.size() == 2
+            && request.resource.data.frustrations.size() == 2
+          )
+        );
+      allow delete: if isOwner();
+    }
+
     match /developmentPrograms/{programId} {
       allow read: if isOwner();
       allow create: if isOwner()

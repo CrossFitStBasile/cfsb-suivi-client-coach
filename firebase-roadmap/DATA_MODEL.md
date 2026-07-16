@@ -315,6 +315,24 @@ Note privee d'une rencontre 1:1 rattachee au dossier permanent du membre. Cette 
 
 Un brouillon est modifiable et sauvegarde automatiquement. Une rencontre finalisee demeure en lecture seule afin de proteger l'historique. Aucun champ de prochaine date n'est requis puisque les rendez-vous sont planifies dans le logiciel de reservation CFSB.
 
+## `workingGeniusProfiles/{teamMemberId}`
+
+Profil owner-only importe depuis le rapport officiel Working Genius. Le dashboard ne reproduit ni le questionnaire ni son calcul.
+
+- `teamMemberId`: identique a l'identifiant du document
+- `geniuses`: maximum deux codes parmi `W`, `I`, `D`, `G`, `E`, `T`
+- `competencies`: maximum deux codes
+- `frustrations`: maximum deux codes
+- `status`: `partial` ou `complete`
+- `assessmentDate`
+- `reportUrl`: lien HTTPS vers le rapport officiel, facultatif
+- `sourceType`: toujours `official_report`
+- `sourceLabel`
+- `notes`: notes internes facultatives
+- metadonnees de creation et de mise a jour
+
+Un profil est complet lorsque les six types sont repartis une seule fois dans les trois zones, deux par zone. Les profils partiels sont permis afin d'importer progressivement les sources disponibles. Cette collection n'est lue ni par le portail membre ni par le Dashboard Coach pendant la phase owner-only.
+
 ## `developmentPrograms/{programId}`
 
 Programme owner-only pour l'onboarding, la formation continue ou une evaluation. Aucun contenu officiel n'est precharge tant que Gabriel ne l'a pas valide.

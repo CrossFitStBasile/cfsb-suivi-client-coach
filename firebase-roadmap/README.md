@@ -52,6 +52,8 @@ Le Dashboard Equipe est deploye sur Firebase Hosting avec connexion Google owner
 - publication versionnee des programmes: une nouvelle version conserve les anciennes assignations et rend la version precedente historique;
 - assignation d'une version publiee a un membre, progression par etape, pause, reprise, historique et preuve Drive facultative ou obligatoire selon l'etape;
 - acces au suivi de developpement depuis le dossier longitudinal de chaque membre;
+- import owner-only des resultats Working Genius officiels, lien vers le rapport, profil par membre et carte des Geniuses de l'equipe;
+- aucun questionnaire Working Genius reproduit dans le dashboard et aucune inference lorsque les resultats manquent;
 - association ou reassignation manuelle d'une soumission au bon membre;
 - historique consultable, corbeille reversible et suppression definitive confirmee;
 - conservation des anciennes notes owners dans un bloc historique;

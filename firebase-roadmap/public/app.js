@@ -64,6 +64,15 @@ import {
   sortDevelopmentPrograms,
   validateDevelopmentProgram
 } from "./development.js";
+import {
+  WORKING_GENIUS_BUCKETS,
+  WORKING_GENIUS_TYPES,
+  validateWorkingGeniusProfile,
+  workingGeniusProfileStatus,
+  workingGeniusTeamMap,
+  workingGeniusTeamSummary,
+  workingGeniusType
+} from "./working-genius.js";
 
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
@@ -179,6 +188,7 @@ const PILOTAGE_MEETING_ATTENDEES = ["Michael", "Gabriel"];
 const DEVELOPMENT_PROGRAM_TYPE_LABELS = Object.fromEntries(DEVELOPMENT_PROGRAM_TYPES);
 const DEVELOPMENT_ASSIGNMENT_STATUS_LABELS = Object.fromEntries(DEVELOPMENT_ASSIGNMENT_STATUSES);
 const DEVELOPMENT_STEP_STATUS_LABELS = Object.fromEntries(DEVELOPMENT_STEP_STATUSES);
+const WORKING_GENIUS_BUCKET_LABELS = Object.fromEntries(WORKING_GENIUS_BUCKETS);
 
 const state = {
   user: null,
@@ -203,6 +213,7 @@ const state = {
   pilotageMeetings: [],
   developmentPrograms: [],
   developmentAssignments: [],
+  workingGeniusProfiles: {},
   auditLogs: [],
   clientErrors: [],
   view: INITIAL_MEMBER_ID ? "team" : "todo",
@@ -245,6 +256,8 @@ const state = {
   developmentStepEditorId: "",
   teamSearch: "",
   teamRosterView: "active",
+  teamWorkspaceView: "directory",
+  workingGeniusEditorMemberId: "",
   activitySearch: "",
   activityActor: "all",
   activityEntity: "all",
@@ -305,7 +318,15 @@ function initializeLocalDevelopmentPreview() {
   state.profile = { role: "owner", active: true, displayName: "Apercu local" };
   state.previewMode = true;
   state.view = "development";
-  state.teamMembers = [{ id: "membre-pilote", name: "Membre pilote", displayTitle: "Role a valider", departmentId: "coaching", active: true }];
+  state.teamMembers = [
+    { id: "membre-pilote", name: "Membre pilote", displayTitle: "Role a valider", departmentId: "coaching", active: true },
+    { id: "alex-pilote", name: "Alex pilote", displayTitle: "Coach pilote", departmentId: "coaching", active: true },
+    { id: "sam-pilote", name: "Sam pilote", displayTitle: "Operations pilote", departmentId: "operations", active: true }
+  ];
+  state.workingGeniusProfiles = {
+    "membre-pilote": { teamMemberId: "membre-pilote", geniuses: ["W", "I"], competencies: ["D", "G"], frustrations: ["E", "T"], status: "complete", assessmentDate: "2026-06-15", reportUrl: "https://example.com/rapport-pilote", sourceType: "official_report", sourceLabel: "Rapport officiel Working Genius" },
+    "alex-pilote": { teamMemberId: "alex-pilote", geniuses: ["G", "E"], competencies: ["I"], frustrations: [], status: "partial", assessmentDate: "", reportUrl: "", sourceType: "official_report", sourceLabel: "Rapport officiel Working Genius" }
+  };
   state.developmentPrograms = [
     { id: "programme-v1", familyId: "programme", title: "Programme pilote", description: "Structure de validation avant l'ajout de la checklist officielle.", programType: "onboarding", ownerName: "Gabriel", roleIds: [], version: 1, status: "published", steps },
     { id: "formation-draft", familyId: "formation", title: "Formation continue", description: "Brouillon sans contenu metier officiel.", programType: "training", ownerName: "Gabriel", roleIds: [], version: 1, status: "draft", steps: [{ id: "draft-step", title: "Etape a valider", category: "General", required: true, evidenceRequired: false, sortOrder: 1 }] }
@@ -395,6 +416,10 @@ function subscribeData() {
   }, dataError));
   state.unsubscribers.push(onSnapshot(collection(db, "teamMemberPrivate"), (snapshot) => {
     state.teamMemberPrivate = Object.fromEntries(snapshot.docs.map((item) => [item.id, item.data()]));
+    renderFromData();
+  }, dataError));
+  state.unsubscribers.push(onSnapshot(collection(db, "workingGeniusProfiles"), (snapshot) => {
+    state.workingGeniusProfiles = Object.fromEntries(snapshot.docs.map((item) => [item.id, { id: item.id, ...item.data() }]));
     renderFromData();
   }, dataError));
   state.unsubscribers.push(onSnapshot(collection(db, "memberPortalProfiles"), (snapshot) => {
@@ -529,6 +554,7 @@ function renderApp() {
       ${state.developmentProgramEditorId ? renderDevelopmentProgramEditor() : ""}
       ${state.developmentAssignmentEditorOpen ? renderDevelopmentAssignmentEditor() : ""}
       ${state.developmentStepEditorId ? renderDevelopmentStepEditor() : ""}
+      ${state.workingGeniusEditorMemberId ? renderWorkingGeniusEditor() : ""}
     </div>
   `;
   bindAppEvents();
@@ -1297,7 +1323,7 @@ function renderActivityView() {
       </label>
       <label class="field">Element
         <select id="activityEntityFilter">
-          ${[["all", "Tous"], ["pilotage", "Pilotage"], ["development", "Developpement"], ["roadmapSubmission", "Roadmaps"], ["managementTask", "Actions"], ["teamMember", "Equipe"], ["teamMeeting", "Rencontres"], ["memberCareerPlan", "Mandats"], ["careerMilestone", "Parcours"], ["revenueScenario", "Projections"], ["clientError", "Systeme"]].map(([id, label]) => `<option value="${id}" ${state.activityEntity === id ? "selected" : ""}>${label}</option>`).join("")}
+          ${[["all", "Tous"], ["pilotage", "Pilotage"], ["development", "Developpement"], ["workingGenius", "Working Genius"], ["roadmapSubmission", "Roadmaps"], ["managementTask", "Actions"], ["teamMember", "Equipe"], ["teamMeeting", "Rencontres"], ["memberCareerPlan", "Mandats"], ["careerMilestone", "Parcours"], ["revenueScenario", "Projections"], ["clientError", "Systeme"]].map(([id, label]) => `<option value="${id}" ${state.activityEntity === id ? "selected" : ""}>${label}</option>`).join("")}
         </select>
       </label>
     </section>
@@ -1484,6 +1510,9 @@ function activityActionMeta(action) {
     development_assignment_resumed: ["Programme repris", "play", "green"],
     development_assignment_reopened: ["Programme rouvert", "rotate-ccw", "amber"],
     development_step_updated: ["Etape de developpement mise a jour", "list-checks", "blue"],
+    working_genius_profile_created: ["Profil Working Genius importe", "sparkles", "green"],
+    working_genius_profile_updated: ["Profil Working Genius modifie", "pencil", "blue"],
+    working_genius_profile_deleted: ["Profil Working Genius supprime", "trash-2", "neutral"],
     client_error_resolved: ["Erreur technique resolue", "shield-check", "green"]
   };
   const [label, icon, tone] = values[action] || [humanize(action || "changement"), "history", "neutral"];
@@ -1493,6 +1522,7 @@ function activityActionMeta(action) {
 function activityTargetLabel(log) {
   if (log.entityType === "pilotage") return log.details?.title || log.details?.name || log.details?.weekStart || "Zone Pilotage";
   if (log.entityType === "development") return [log.details?.teamMemberName, log.details?.title, log.details?.stepTitle].filter(Boolean).join(" · ") || "Developpement equipe";
+  if (log.entityType === "workingGenius") return log.details?.teamMemberName || state.teamMembers.find((item) => item.id === log.entityId)?.name || "Profil Working Genius";
   if (log.entityType === "clientError") return log.details?.context || "Etat de sante du dashboard";
   if (log.entityType === "teamMember") {
     return state.teamMembers.find((item) => item.id === log.entityId)?.name || "Dossier equipe";
@@ -1751,6 +1781,17 @@ function renderLegacyNotes(notes) {
 
 function renderTeamView() {
   if (state.selectedMemberId) return renderMemberProfile();
+  if (state.teamWorkspaceView === "working_genius") {
+    const activeMembers = state.teamMembers.filter((member) => !isArchivedTeamMember(member));
+    const summary = workingGeniusTeamSummary(activeMembers, state.workingGeniusProfiles);
+    return `
+      <section class="panel team-toolbar">
+        <div><p class="eyebrow">Sante organisationnelle</p><h2>Carte Working Genius</h2><p>${summary.complete} profil(s) complet(s) sur ${summary.total} membre(s) actif(s).</p></div>
+        <div class="team-toolbar-actions"><button class="button" data-team-workspace="directory" type="button"><i data-lucide="users-round"></i> Dossiers equipe</button></div>
+      </section>
+      ${renderWorkingGeniusTeamMap(activeMembers)}
+    `;
+  }
   const isCreating = state.editingMemberId === "__new__";
   const editing = state.teamMembers.find((item) => item.id === state.editingMemberId) || null;
   const unlinked = unlinkedSubmissions();
@@ -1771,6 +1812,7 @@ function renderTeamView() {
           <button class="tab-button ${viewingArchived ? "" : "active"}" data-team-roster="active" type="button"><i data-lucide="users-round"></i> Actifs <span>${activeCount}</span></button>
           <button class="tab-button ${viewingArchived ? "active" : ""}" data-team-roster="archived" type="button"><i data-lucide="archive"></i> Archives <span>${archivedCount}</span></button>
         </nav>
+        <button class="button" data-team-workspace="working_genius" type="button"><i data-lucide="sparkles"></i> Working Genius</button>
         <button class="button primary" id="addMemberButton" type="button"><i data-lucide="user-plus"></i> Ajouter un membre</button>
       </div>
     </section>
@@ -1810,6 +1852,8 @@ function renderTeamMemberCard(member) {
   const milestones = milestonesForMember(member).filter((item) => ["planned", "in_progress", "blocked"].includes(item.status));
   const development = developmentAssignmentsForMember(state.developmentAssignments, member.id).filter((assignment) => effectiveDevelopmentAssignmentStatus(assignment) !== "completed");
   const latest = submissions[0] || null;
+  const geniusProfile = state.workingGeniusProfiles[member.id] || {};
+  const geniusCodes = geniusProfile.geniuses || [];
   return `
     <div class="member-card ${archived ? "inactive" : ""}">
       <button class="member-card-main" data-open-member="${escapeAttr(member.id)}" type="button">
@@ -1822,6 +1866,7 @@ function renderTeamMemberCard(member) {
             <span>${submissions.length} roadmap(s)</span>
             <span>${milestones.length} etape(s)</span>
             <span>${development.length} programme(s)</span>
+            ${geniusCodes.length ? `<span class="member-genius-mini">WG ${geniusCodes.map((code) => escapeHtml(code)).join(" · ")}</span>` : ""}
           </span>
           <small>${latest ? `Derniere roadmap: ${formatShortDate(latest.submittedAt)}` : "Aucune roadmap au dossier"}</small>
         </span>
@@ -1832,6 +1877,55 @@ function renderTeamMemberCard(member) {
         : `<button class="member-edit member-action" data-create-member-action="${escapeAttr(member.id)}" type="button" title="Creer une action pour ${escapeAttr(member.name || "ce membre")}"><i data-lucide="plus"></i></button>`}
     </div>
   `;
+}
+
+function renderWorkingGeniusTeamMap(members) {
+  const map = workingGeniusTeamMap(members, state.workingGeniusProfiles);
+  const summary = workingGeniusTeamSummary(members, state.workingGeniusProfiles);
+  return `
+    <section class="working-genius-metrics">
+      ${profileMetric(summary.total, "Membres actifs")}
+      ${profileMetric(summary.complete, "Profils complets")}
+      ${profileMetric(summary.partial, "Profils partiels")}
+      ${profileMetric(summary.missing, "A importer")}
+    </section>
+    <section class="panel working-genius-map-panel">
+      <header class="section-heading"><div><h3>Geniuses dans l'equipe</h3><p>Resultats importes des rapports officiels.</p></div></header>
+      <div class="working-genius-map-grid">
+        ${map.map((type) => `
+          <article class="working-genius-map-card genius-${escapeAttr(type.code.toLowerCase())}">
+            <header><span>${escapeHtml(type.code)}</span><div><strong>${escapeHtml(type.label)}</strong><small>${type.members.length} membre(s)</small></div></header>
+            <div>${type.members.length ? type.members.map((member) => `<button data-open-member-genius="${escapeAttr(member.id)}" type="button"><span class="member-avatar">${escapeHtml(initials(member.name))}</span><strong>${escapeHtml(member.name)}</strong><i data-lucide="chevron-right"></i></button>`).join("") : `<p>Aucun resultat importe.</p>`}</div>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+    <section class="panel working-genius-roster-panel">
+      <header class="section-heading"><div><h3>Profils importes</h3><p>Les trois zones restent privees pour Michael et Gabriel.</p></div></header>
+      <div class="working-genius-roster">
+        ${members.map((member) => {
+          const profile = state.workingGeniusProfiles[member.id] || {};
+          const status = workingGeniusProfileStatus(profile);
+          return `
+            <article class="working-genius-roster-row">
+              <button class="working-genius-member" data-open-member-genius="${escapeAttr(member.id)}" type="button"><span class="member-avatar">${escapeHtml(initials(member.name))}</span><span><strong>${escapeHtml(member.name)}</strong><small>${escapeHtml(member.displayTitle || "Role a preciser")}</small></span></button>
+              <div class="working-genius-result-group"><small>Geniuses</small>${renderWorkingGeniusChips(profile.geniuses)}</div>
+              <div class="working-genius-result-group"><small>Competencies</small>${renderWorkingGeniusChips(profile.competencies)}</div>
+              <div class="working-genius-result-group"><small>Frustrations</small>${renderWorkingGeniusChips(profile.frustrations)}</div>
+              <span class="working-genius-profile-status ${status}">${status === "complete" ? "Complet" : status === "partial" ? "Partiel" : "A importer"}</span>
+              <div class="working-genius-row-actions">${profile.reportUrl ? `<a class="button icon-only" href="${escapeAttr(safeExternalUrl(profile.reportUrl))}" target="_blank" rel="noopener" title="Ouvrir le rapport officiel"><i data-lucide="external-link"></i></a>` : ""}<button class="button icon-only" data-edit-working-genius="${escapeAttr(member.id)}" type="button" title="Modifier les resultats"><i data-lucide="pencil"></i></button></div>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderWorkingGeniusChips(codes = []) {
+  return codes.length
+    ? `<span class="working-genius-chip-list">${codes.map((code) => `<em title="${escapeAttr(workingGeniusType(code)?.label || code)}">${escapeHtml(code)}</em>`).join("")}</span>`
+    : `<span class="working-genius-empty-result">Non classe</span>`;
 }
 
 function renderMemberForm(editing, isCreating = false) {
@@ -1887,6 +1981,7 @@ function renderMemberProfile() {
   const tasks = tasksForMember(member.id);
   const meetings = meetingsForMember(member.id);
   const developmentAssignments = developmentAssignmentsForMember(state.developmentAssignments, member.id);
+  const workingGeniusProfile = state.workingGeniusProfiles[member.id] || null;
   const archived = isArchivedTeamMember(member);
   return `
     <section class="member-profile">
@@ -1920,8 +2015,9 @@ function renderMemberProfile() {
         <button class="tab-button ${state.memberProfileSection === "roadmaps" ? "active" : ""}" data-member-section="roadmaps" type="button"><i data-lucide="clipboard-list"></i> Roadmaps (${submissions.length})</button>
         <button class="tab-button ${state.memberProfileSection === "career" ? "active" : ""}" data-member-section="career" type="button"><i data-lucide="route"></i> Parcours CFSB (${milestones.length})</button>
         <button class="tab-button ${state.memberProfileSection === "development" ? "active" : ""}" data-member-section="development" type="button"><i data-lucide="graduation-cap"></i> Developpement (${developmentAssignments.length})</button>
+        <button class="tab-button ${state.memberProfileSection === "working_genius" ? "active" : ""}" data-member-section="working_genius" type="button"><i data-lucide="sparkles"></i> Working Genius${workingGeniusProfileStatus(workingGeniusProfile || {}) === "complete" ? " · 6/6" : ""}</button>
       </nav>
-      ${state.memberProfileSection === "roadmaps" ? renderRoadmapHistory(submissions) : state.memberProfileSection === "career" ? renderCareerTimeline(member) : state.memberProfileSection === "development" ? renderMemberDevelopment(member, developmentAssignments) : state.memberProfileSection === "actions" ? renderMemberActions(member, tasks) : state.memberProfileSection === "meetings" ? renderMemberMeetings(member, meetings) : renderMemberOverview(member, submissions, tasks, meetings, milestones, nextMilestone)}
+      ${state.memberProfileSection === "roadmaps" ? renderRoadmapHistory(submissions) : state.memberProfileSection === "career" ? renderCareerTimeline(member) : state.memberProfileSection === "development" ? renderMemberDevelopment(member, developmentAssignments) : state.memberProfileSection === "working_genius" ? renderMemberWorkingGenius(member, workingGeniusProfile) : state.memberProfileSection === "actions" ? renderMemberActions(member, tasks) : state.memberProfileSection === "meetings" ? renderMemberMeetings(member, meetings) : renderMemberOverview(member, submissions, tasks, meetings, milestones, nextMilestone)}
     </section>
   `;
 }
@@ -1939,6 +2035,59 @@ function renderMemberDevelopment(member, assignments) {
   `;
 }
 
+function renderMemberWorkingGenius(member, profile = null) {
+  const status = workingGeniusProfileStatus(profile || {});
+  return `
+    <section class="panel member-working-genius-panel">
+      <header class="section-heading"><div><h3>Profil Working Genius</h3><p>Resultats provenant du rapport officiel du membre.</p></div><button class="button primary" data-edit-working-genius="${escapeAttr(member.id)}" type="button"><i data-lucide="${profile ? "pencil" : "plus"}"></i> ${profile ? "Modifier" : "Importer"}</button></header>
+      ${profile ? `
+        <div class="member-working-genius-status"><span class="working-genius-profile-status ${status}">${status === "complete" ? "Profil complet" : "Profil partiel"}</span>${profile.assessmentDate ? `<span>Evaluation du ${escapeHtml(formatDateOnly(profile.assessmentDate))}</span>` : ""}${profile.reportUrl ? `<a class="inline-link" href="${escapeAttr(safeExternalUrl(profile.reportUrl))}" target="_blank" rel="noopener">Rapport officiel <i data-lucide="external-link"></i></a>` : ""}</div>
+        <div class="member-working-genius-groups">
+          ${[["geniuses", "Geniuses"], ["competencies", "Competencies"], ["frustrations", "Frustrations"]].map(([key, label]) => `<article class="working-genius-zone ${key}"><small>${label}</small><div>${(profile[key] || []).length ? (profile[key] || []).map((code) => `<span><strong>${escapeHtml(code)}</strong>${escapeHtml(workingGeniusType(code)?.label || code)}</span>`).join("") : `<em>Resultat a importer</em>`}</div></article>`).join("")}
+        </div>
+        ${profile.notes ? `<aside class="working-genius-notes"><strong>Notes internes</strong><p>${escapeHtml(profile.notes)}</p></aside>` : ""}
+      ` : `<div class="empty-state"><i data-lucide="sparkles"></i><div><strong>Aucun resultat importe</strong><span>Le test demeure sur le site officiel; seul son rapport est conserve ici.</span></div><button class="button primary" data-edit-working-genius="${escapeAttr(member.id)}" type="button">Importer le profil</button></div>`}
+    </section>
+  `;
+}
+
+function renderWorkingGeniusEditor() {
+  const member = state.teamMembers.find((item) => item.id === state.workingGeniusEditorMemberId);
+  if (!member) return "";
+  const profile = state.workingGeniusProfiles[member.id] || null;
+  const status = workingGeniusProfileStatus(profile || {});
+  return `
+    <div class="career-modal" role="dialog" aria-modal="true" aria-labelledby="workingGeniusEditorTitle">
+      <div class="career-modal-backdrop" data-close-working-genius aria-hidden="true"></div>
+      <section class="career-editor working-genius-editor panel">
+        <header class="career-editor-header"><div><p class="eyebrow">${escapeHtml(member.name)}</p><h2 id="workingGeniusEditorTitle">Resultats Working Genius</h2></div><button class="button icon-only" data-close-working-genius type="button" aria-label="Fermer"><i data-lucide="x"></i></button></header>
+        <div class="career-editor-scroll">
+          <form id="workingGeniusForm" class="working-genius-form">
+            <div class="working-genius-editor-status"><span class="working-genius-profile-status ${status}">${status === "complete" ? "6 resultats classes" : status === "partial" ? "Profil partiel" : "Nouveau profil"}</span><small>Import du rapport officiel</small></div>
+            <section class="working-genius-classification">
+              ${WORKING_GENIUS_TYPES.map((type) => {
+                const selected = WORKING_GENIUS_BUCKETS.find(([key]) => (profile?.[key] || []).includes(type.code))?.[0] || "";
+                return `<label><span class="working-genius-code genius-${escapeAttr(type.code.toLowerCase())}">${escapeHtml(type.code)}</span><span><strong>${escapeHtml(type.label)}</strong><small>Type officiel</small></span><select name="workingGenius_${escapeAttr(type.code)}"><option value="">Non classe</option>${WORKING_GENIUS_BUCKETS.map(([key, label]) => `<option value="${key}" ${selected === key ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label>`;
+              }).join("")}
+            </section>
+            <div class="working-genius-source-fields">
+              <label class="field">Date de l'evaluation<input name="assessmentDate" type="date" value="${escapeAttr(profile?.assessmentDate || "")}"></label>
+              <label class="field">Lien du rapport officiel<input name="reportUrl" type="url" value="${escapeAttr(profile?.reportUrl || "")}" placeholder="https://..."></label>
+              <label class="field field-wide">Source<input name="sourceLabel" value="${escapeAttr(profile?.sourceLabel || "Rapport officiel Working Genius")}"></label>
+              <label class="field field-wide">Notes internes<textarea name="notes">${escapeHtml(profile?.notes || "")}</textarea></label>
+            </div>
+            <footer class="pilotage-editor-actions">
+              ${profile ? `<button class="button danger push-left" id="deleteWorkingGeniusProfile" type="button"><i data-lucide="trash-2"></i> Supprimer</button>` : ""}
+              <button class="button" data-close-working-genius type="button">Fermer</button>
+              <button class="button primary" type="submit"><i data-lucide="save"></i> Enregistrer</button>
+            </footer>
+          </form>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
 function renderMemberOverview(member, submissions, tasks, meetings, milestones, nextMilestone) {
   const latest = submissions[0] || null;
   const recent = submissions.slice(0, 3);
@@ -1947,6 +2096,7 @@ function renderMemberOverview(member, submissions, tasks, meetings, milestones, 
   const roadmapDocumentUrl = memberRoadmapDocumentUrl(member);
   const portalEnabled = Boolean(state.portalInvitations[member.id]?.active);
   const coachDashboardId = memberCoachDashboardId(member);
+  const workingGeniusProfile = state.workingGeniusProfiles[member.id] || null;
   return `
     <section class="member-overview-grid">
       <article class="panel member-overview-panel attention-panel">
@@ -1982,6 +2132,7 @@ function renderMemberOverview(member, submissions, tasks, meetings, milestones, 
           <a class="resource-button" href="${TEAM_PORTAL_PATH}?member=${encodeURIComponent(member.id)}"><span><i data-lucide="user-round-cog"></i><strong>Mon parcours CFSB</strong><small>${portalEnabled ? "Acces membre active · ouvrir l'apercu partage" : "Apercu owner · acces membre non active"}</small></span><i data-lucide="arrow-right"></i></a>
           ${coachDashboardId ? `<a class="resource-button" href="${COACH_DASHBOARD_URL}?coach=${encodeURIComponent(coachDashboardId)}" target="_blank" rel="noopener"><span><i data-lucide="dumbbell"></i><strong>Operations coach</strong><small>Ouvrir ses clients et suivis dans le Dashboard Coach</small></span><i data-lucide="external-link"></i></a>` : ""}
           ${roadmapDocumentUrl ? `<a class="resource-button" href="${escapeAttr(safeExternalUrl(roadmapDocumentUrl))}" target="_blank" rel="noopener"><span><i data-lucide="file-text"></i><strong>Document Roadmap</strong><small>Prise de notes partagee dans Google Drive</small></span><i data-lucide="external-link"></i></a>` : `<button class="resource-button muted" data-edit-member="${escapeAttr(member.id)}" type="button"><span><i data-lucide="link"></i><strong>Ajouter le document Drive</strong><small>Le lien n'est pas encore configure.</small></span><i data-lucide="pencil"></i></button>`}
+          ${workingGeniusProfile?.reportUrl ? `<a class="resource-button" href="${escapeAttr(safeExternalUrl(workingGeniusProfile.reportUrl))}" target="_blank" rel="noopener"><span><i data-lucide="sparkles"></i><strong>Rapport Working Genius</strong><small>Resultats officiels importes au dossier</small></span><i data-lucide="external-link"></i></a>` : ""}
           ${memberHasRevenueTool(member) ? `<a class="resource-button" href="./revenue.html?member=${encodeURIComponent(member.id)}"><span><i data-lucide="calculator"></i><strong>Projection de revenus</strong><small>Construire et enregistrer un scenario salarial</small></span><i data-lucide="arrow-right"></i></a>` : ""}
         </div>
       </article>
@@ -2506,6 +2657,7 @@ function bindAppEvents() {
     closeDevelopmentProgramEditor(false);
     closeDevelopmentAssignmentEditor(false);
     closeDevelopmentStepEditor(false);
+    closeWorkingGeniusEditor(false);
     state.view = button.dataset.view;
     state.selectedMemberId = "";
     state.editingMemberId = "";
@@ -2704,8 +2856,16 @@ function bindAppEvents() {
     state.teamSearch = "";
     renderApp();
   }));
+  document.querySelectorAll("[data-team-workspace]").forEach((button) => button.addEventListener("click", () => {
+    state.teamWorkspaceView = button.dataset.teamWorkspace;
+    state.selectedMemberId = "";
+    state.editingMemberId = "";
+    state.teamSearch = "";
+    renderApp();
+  }));
   document.querySelectorAll("[data-open-member]").forEach((button) => button.addEventListener("click", () => {
     state.view = "team";
+    state.teamWorkspaceView = "directory";
     state.selectedMemberId = button.dataset.openMember;
     state.teamRosterView = teamMemberBucket(state.teamMembers.find((item) => item.id === state.selectedMemberId));
     state.editingMemberId = "";
@@ -2717,6 +2877,7 @@ function bindAppEvents() {
   document.querySelectorAll("[data-edit-member]").forEach((button) => button.addEventListener("click", () => {
     closeMeetingEditor(false, false);
     state.view = "team";
+    state.teamWorkspaceView = "directory";
     state.selectedMemberId = "";
     state.editingMemberId = button.dataset.editMember;
     const member = state.teamMembers.find((item) => item.id === state.editingMemberId);
@@ -2733,8 +2894,23 @@ function bindAppEvents() {
     state.editingMemberId = "__new__";
     state.memberEditorVersion = "";
     state.teamRosterView = "active";
+    state.teamWorkspaceView = "directory";
     renderApp();
   });
+  document.querySelectorAll("[data-open-member-genius]").forEach((button) => button.addEventListener("click", () => {
+    const member = state.teamMembers.find((item) => item.id === button.dataset.openMemberGenius);
+    if (!member) return;
+    state.view = "team";
+    state.teamWorkspaceView = "working_genius";
+    state.selectedMemberId = member.id;
+    state.teamRosterView = teamMemberBucket(member);
+    state.memberProfileSection = "working_genius";
+    renderApp();
+  }));
+  document.querySelectorAll("[data-edit-working-genius]").forEach((button) => button.addEventListener("click", () => openWorkingGeniusEditor(button.dataset.editWorkingGenius)));
+  document.querySelectorAll("[data-close-working-genius]").forEach((button) => button.addEventListener("click", () => closeWorkingGeniusEditor()));
+  document.querySelector("#workingGeniusForm")?.addEventListener("submit", saveWorkingGeniusProfile);
+  document.querySelector("#deleteWorkingGeniusProfile")?.addEventListener("click", deleteWorkingGeniusProfile);
   document.querySelector("#teamSearchInput")?.addEventListener("input", (event) => {
     state.teamSearch = event.target.value;
     const cursor = event.target.selectionStart ?? state.teamSearch.length;
@@ -4008,8 +4184,91 @@ function openDevelopmentAssignment(assignmentId) {
   renderApp();
 }
 
+function openWorkingGeniusEditor(memberId) {
+  if (!state.teamMembers.some((member) => member.id === memberId)) return;
+  state.workingGeniusEditorMemberId = memberId;
+  renderApp();
+}
+
+function closeWorkingGeniusEditor(shouldRender = true) {
+  state.workingGeniusEditorMemberId = "";
+  if (shouldRender) renderApp();
+}
+
+async function saveWorkingGeniusProfile(event) {
+  event.preventDefault();
+  if (state.previewMode) return showToast("Apercu local: aucun profil n'est ecrit.");
+  const member = state.teamMembers.find((item) => item.id === state.workingGeniusEditorMemberId);
+  if (!member || state.busy) return;
+  const data = new FormData(event.currentTarget);
+  const resultBuckets = Object.fromEntries(WORKING_GENIUS_BUCKETS.map(([key]) => [key, []]));
+  WORKING_GENIUS_TYPES.forEach((type) => {
+    const bucket = String(data.get(`workingGenius_${type.code}`) || "");
+    if (resultBuckets[bucket]) resultBuckets[bucket].push(type.code);
+  });
+  const validation = validateWorkingGeniusProfile({
+    teamMemberId: member.id,
+    ...resultBuckets,
+    assessmentDate: String(data.get("assessmentDate") || ""),
+    reportUrl: String(data.get("reportUrl") || "").trim(),
+    sourceLabel: String(data.get("sourceLabel") || "Rapport officiel Working Genius"),
+    notes: String(data.get("notes") || "")
+  });
+  if (!validation.valid) return showToast(validation.errors[0]);
+  state.busy = true;
+  try {
+    const existing = state.workingGeniusProfiles[member.id] || null;
+    const reference = doc(db, "workingGeniusProfiles", member.id);
+    const payload = {
+      ...validation.profile,
+      reportUrl: validation.profile.reportUrl ? normalizeExternalUrl(validation.profile.reportUrl) : "",
+      status: validation.status,
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    };
+    if (!existing) {
+      payload.createdAt = serverTimestamp();
+      payload.createdByUid = state.user.uid;
+      payload.createdByName = actorName();
+    }
+    const batch = writeBatch(db);
+    batch.set(reference, payload, { merge: true });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload(existing ? "working_genius_profile_updated" : "working_genius_profile_created", member.id, { teamMemberId: member.id, teamMemberName: member.name, status: validation.status }));
+    await batch.commit();
+    closeWorkingGeniusEditor(false);
+    showToast(validation.status === "complete" ? "Profil Working Genius complet." : "Profil Working Genius partiel enregistre.");
+    renderApp();
+  } catch (error) {
+    showToast(`Profil non enregistre: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function deleteWorkingGeniusProfile() {
+  if (state.previewMode) return showToast("Apercu local: aucun profil n'est supprime.");
+  const member = state.teamMembers.find((item) => item.id === state.workingGeniusEditorMemberId);
+  if (!member || !state.workingGeniusProfiles[member.id] || state.busy) return;
+  if (!confirm(`Supprimer le profil Working Genius de ${member.name}?`)) return;
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.delete(doc(db, "workingGeniusProfiles", member.id));
+    batch.set(doc(collection(db, "auditLogs")), auditPayload("working_genius_profile_deleted", member.id, { teamMemberId: member.id, teamMemberName: member.name }));
+    await batch.commit();
+    closeWorkingGeniusEditor(false);
+    showToast("Profil Working Genius supprime.");
+    renderApp();
+  } catch (error) {
+    showToast(`Profil non supprime: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
 function hasOpenModal() {
-  return Boolean(state.taskEditorId || state.teamActionMemberId || state.roadmapCompletionId || state.careerEditorId || state.meetingEditorId || state.pilotageEditorType || state.developmentProgramEditorId || state.developmentAssignmentEditorOpen || state.developmentStepEditorId);
+  return Boolean(state.taskEditorId || state.teamActionMemberId || state.roadmapCompletionId || state.careerEditorId || state.meetingEditorId || state.pilotageEditorType || state.developmentProgramEditorId || state.developmentAssignmentEditorOpen || state.developmentStepEditorId || state.workingGeniusEditorMemberId);
 }
 
 function hasProtectedEditor() {
@@ -4032,7 +4291,8 @@ function handleGlobalKeydown(event) {
   const dialog = dialogs.at(-1) || null;
   if (event.key === "Escape" && hasOpenModal()) {
     event.preventDefault();
-    if (state.developmentStepEditorId) closeDevelopmentStepEditor();
+    if (state.workingGeniusEditorMemberId) closeWorkingGeniusEditor();
+    else if (state.developmentStepEditorId) closeDevelopmentStepEditor();
     else if (state.developmentAssignmentEditorOpen) closeDevelopmentAssignmentEditor();
     else if (state.developmentProgramEditorId) closeDevelopmentProgramEditor();
     else if (state.pilotageEditorType) closePilotageEditor();
@@ -5303,7 +5563,7 @@ function openTaskSource(taskId) {
 function auditPayload(action, entityId, details = {}) {
   return {
     action,
-    entityType: action.startsWith("pilotage_") ? "pilotage" : action.startsWith("development_") ? "development" : action.startsWith("team_meeting_") || action.startsWith("meeting_summary_") ? "teamMeeting" : action.startsWith("team_") ? "teamMember" : action.startsWith("member_career_plan_") ? "memberCareerPlan" : action.startsWith("career_") ? "careerMilestone" : action.startsWith("management_") ? "managementTask" : action.startsWith("client_error_") ? "clientError" : "roadmapSubmission",
+    entityType: action.startsWith("pilotage_") ? "pilotage" : action.startsWith("development_") ? "development" : action.startsWith("working_genius_") ? "workingGenius" : action.startsWith("team_meeting_") || action.startsWith("meeting_summary_") ? "teamMeeting" : action.startsWith("team_") ? "teamMember" : action.startsWith("member_career_plan_") ? "memberCareerPlan" : action.startsWith("career_") ? "careerMilestone" : action.startsWith("management_") ? "managementTask" : action.startsWith("client_error_") ? "clientError" : "roadmapSubmission",
     entityId,
     actorUid: state.user.uid,
     actorName: actorName(),
@@ -5379,6 +5639,18 @@ function openAuditEntity(logId) {
       state.developmentSection = "programs";
       renderApp();
     }
+    return;
+  }
+  if (log.entityType === "workingGenius") {
+    const memberId = log.details?.teamMemberId || log.entityId;
+    const member = state.teamMembers.find((item) => item.id === memberId);
+    if (!member) return showToast("Ce dossier membre n'est plus disponible.");
+    state.view = "team";
+    state.teamWorkspaceView = "working_genius";
+    state.selectedMemberId = member.id;
+    state.teamRosterView = teamMemberBucket(member);
+    state.memberProfileSection = "working_genius";
+    renderApp();
     return;
   }
   if (log.entityType === "managementTask") {
