@@ -80,4 +80,9 @@ test("Working Genius edits preserve the local profile when another owner saves f
   assert.match(ownerSource, /const deleted = state\.workingGeniusEditorHadProfile && !error\.current/);
   assert.match(ownerSource, /delete state\.workingGeniusProfiles\[member\.id\]/);
   assert.match(ownerSource, /Recreer avec mes changements/);
+  assert.match(ownerSource, /async function deleteWorkingGeniusProfile[\s\S]*?await runTransaction/);
+  assert.match(ownerSource, /transaction\.delete\(reference\)/);
+  assert.match(ownerSource, /deleted: false, intent: "delete"/);
+  assert.match(ownerSource, /Supprimer quand meme/);
+  assert.match(ownerSource, /if \(state\.workingGeniusConflict\.intent === "delete"\) \{\s+state\.workingGeniusForceSave = false/);
 });

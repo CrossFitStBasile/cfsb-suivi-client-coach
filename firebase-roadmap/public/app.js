@@ -841,13 +841,14 @@ function renderDevelopmentProgramEditor() {
 function renderDevelopmentProgramConflictAlert(conflict = {}) {
   const deleted = Boolean(conflict.deleted);
   const locked = Boolean(conflict.locked || (conflict.current?.status && conflict.current.status !== "draft"));
+  const deleting = conflict.intent === "delete";
   return `
     <div class="conflict-alert field-wide" role="alert">
       <i data-lucide="${deleted ? "file-x-2" : locked ? "lock-keyhole" : "git-merge"}"></i>
-      <div><strong>${deleted ? "Ce brouillon a ete supprime" : locked ? "Cette version vient d'etre publiee" : "Une version plus recente existe"}</strong><p>${deleted ? "Le brouillon a ete supprime pendant ton edition. Ta copie locale reste disponible et peut etre recreee explicitement." : locked ? "Le brouillon local reste visible, mais une version publiee ne peut plus etre remplacee. Charge la version publiee, puis cree une nouvelle version pour poursuivre." : `${escapeHtml(conflict.current?.updatedByName || "L'autre owner")} a modifie ce programme pendant ton edition. Ton brouillon local est conserve jusqu'a ce que tu choisisses la version a garder.`}</p></div>
+      <div><strong>${deleted ? "Ce brouillon a ete supprime" : locked ? "Cette version vient d'etre publiee" : "Une version plus recente existe"}</strong><p>${deleted ? "Le brouillon a ete supprime pendant ton edition. Ta copie locale reste disponible et peut etre recreee explicitement." : locked ? "Le brouillon local reste visible, mais une version publiee ne peut plus etre remplacee. Charge la version publiee, puis cree une nouvelle version pour poursuivre." : deleting ? `${escapeHtml(conflict.current?.updatedByName || "L'autre owner")} a modifie ce programme depuis son ouverture. La suppression a ete bloquee pour proteger cette version recente.` : `${escapeHtml(conflict.current?.updatedByName || "L'autre owner")} a modifie ce programme pendant ton edition. Ton brouillon local est conserve jusqu'a ce que tu choisisses la version a garder.`}</p></div>
       <div class="conflict-actions">
         <button class="button" data-resolve-development-program-conflict="reload" type="button">${deleted ? "Fermer ce brouillon" : locked ? "Charger la version publiee" : "Utiliser la version recente"}</button>
-        ${locked ? "" : `<button class="button primary" data-resolve-development-program-conflict="overwrite" type="button">${deleted ? "Recreer avec mon brouillon" : "Garder mon brouillon"}</button>`}
+        ${locked ? "" : `<button class="button primary" data-resolve-development-program-conflict="overwrite" type="button">${deleted ? "Recreer avec mon brouillon" : deleting ? "Supprimer quand meme" : "Garder mon brouillon"}</button>`}
       </div>
     </div>
   `;
@@ -2360,14 +2361,15 @@ function renderWorkingGeniusEditor() {
 
 function renderWorkingGeniusConflictAlert(conflict = {}) {
   const deleted = Boolean(conflict.deleted);
+  const deleting = conflict.intent === "delete";
   const current = conflict.current || {};
   return `
     <div class="conflict-alert" role="alert">
       <i data-lucide="${deleted ? "file-x-2" : "git-merge"}"></i>
-      <div><strong>${deleted ? "Ce profil a ete supprime" : "Une version plus recente existe"}</strong><p>${deleted ? "Le profil a ete supprime pendant ton edition. Tes classifications et tes notes locales restent disponibles et peuvent etre recreees explicitement." : `${escapeHtml(current.updatedByName || "L'autre owner")} a modifie ce profil pendant ton edition. Tes classifications et tes notes locales sont conservees ici.`}</p></div>
+      <div><strong>${deleted ? "Ce profil a ete supprime" : "Une version plus recente existe"}</strong><p>${deleted ? "Le profil a ete supprime pendant ton edition. Tes classifications et tes notes locales restent disponibles et peuvent etre recreees explicitement." : deleting ? `${escapeHtml(current.updatedByName || "L'autre owner")} a modifie ce profil depuis son ouverture. La suppression a ete bloquee pour proteger cette version recente.` : `${escapeHtml(current.updatedByName || "L'autre owner")} a modifie ce profil pendant ton edition. Tes classifications et tes notes locales sont conservees ici.`}</p></div>
       <div class="conflict-actions">
         <button class="button" data-resolve-working-genius-conflict="reload" type="button">${deleted ? "Fermer ce profil" : "Utiliser la version recente"}</button>
-        <button class="button primary" data-resolve-working-genius-conflict="overwrite" type="button">${deleted ? "Recreer avec mes changements" : "Garder mes changements"}</button>
+        <button class="button primary" data-resolve-working-genius-conflict="overwrite" type="button">${deleted ? "Recreer avec mes changements" : deleting ? "Supprimer quand meme" : "Garder mes changements"}</button>
       </div>
     </div>
   `;
@@ -4614,6 +4616,11 @@ function resolveDevelopmentProgramConflict(choice) {
   }
   if (choice === "overwrite" && !state.developmentProgramConflict.locked) {
     const intent = state.developmentProgramConflict.intent || "draft";
+    if (intent === "delete") {
+      state.developmentProgramForceSave = false;
+      deleteDevelopmentProgramDraft({ confirmed: true });
+      return;
+    }
     state.developmentProgramForceSave = true;
     const submitter = document.querySelector(`#developmentProgramForm [name="intent"][value="${intent}"]`);
     const form = document.querySelector("#developmentProgramForm");
@@ -4622,22 +4629,59 @@ function resolveDevelopmentProgramConflict(choice) {
   }
 }
 
-async function deleteDevelopmentProgramDraft() {
+async function deleteDevelopmentProgramDraft({ confirmed = false } = {}) {
   if (state.previewMode) return showToast("Apercu local: aucune donnee n'est supprimee.");
   const program = state.developmentPrograms.find((item) => item.id === state.developmentProgramEditorId);
-  if (!program || program.status !== "draft" || state.busy) return;
-  if (!confirm(`Supprimer le brouillon « ${program.title} »?`)) return;
+  if (!program || state.busy) return;
+  if (program.status !== "draft") {
+    state.developmentProgramConflict = { current: program, intent: "delete", locked: true, deleted: false };
+    state.developmentProgramEditorVersion = entityVersionToken(program);
+    state.developmentProgramEditorHadDocument = true;
+    state.developmentProgramForceSave = false;
+    renderApp();
+    return;
+  }
+  if (!confirmed && !confirm(`Supprimer le brouillon « ${program.title} »?`)) return;
   state.busy = true;
   try {
-    const batch = writeBatch(db);
-    batch.delete(doc(db, "developmentPrograms", program.id));
-    batch.set(doc(collection(db, "auditLogs")), auditPayload("development_program_draft_deleted", program.id, { title: program.title, version: program.version }));
-    await batch.commit();
+    const programRef = doc(db, "developmentPrograms", program.id);
+    const auditRef = doc(collection(db, "auditLogs"));
+    const removed = await runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(programRef);
+      if (!snapshot.exists()) return false;
+      const current = snapshot.data();
+      if (current.status !== "draft") {
+        const error = versionConflictError(current);
+        error.code = "development-program-locked";
+        throw error;
+      }
+      if (!state.developmentProgramForceSave && hasVersionConflict(current, state.developmentProgramEditorVersion)) {
+        throw versionConflictError(current);
+      }
+      transaction.delete(programRef);
+      transaction.set(auditRef, auditPayload("development_program_draft_deleted", program.id, { title: current.title || program.title, version: current.version || program.version }));
+      return true;
+    });
+    state.developmentPrograms = state.developmentPrograms.filter((item) => item.id !== program.id);
     closeDevelopmentProgramEditor(false);
-    showToast("Brouillon supprime.");
+    showToast(removed ? "Brouillon supprime." : "Ce brouillon avait deja ete supprime.");
     renderApp();
   } catch (error) {
-    showToast(`Brouillon non supprime: ${friendlyError(error)}`);
+    if (["version-conflict", "development-program-locked"].includes(error.code)) {
+      const current = error.current ? { id: program.id, ...error.current } : null;
+      if (current) {
+        const index = state.developmentPrograms.findIndex((item) => item.id === current.id);
+        if (index >= 0) state.developmentPrograms[index] = current;
+        else state.developmentPrograms.push(current);
+      }
+      state.developmentProgramConflict = { current: error.current || {}, intent: "delete", locked: error.code === "development-program-locked", deleted: false };
+      state.developmentProgramEditorVersion = entityVersionToken(error.current);
+      state.developmentProgramEditorHadDocument = Boolean(error.current);
+      state.developmentProgramForceSave = false;
+      renderApp();
+    } else {
+      showToast(`Brouillon non supprime: ${friendlyError(error)}`);
+    }
   } finally {
     state.busy = false;
   }
@@ -4846,25 +4890,29 @@ function closeWorkingGeniusEditor(shouldRender = true) {
   if (shouldRender) renderApp();
 }
 
-async function saveWorkingGeniusProfile(event) {
-  event.preventDefault();
-  if (state.previewMode) return showToast("Apercu local: aucun profil n'est ecrit.");
-  const member = state.teamMembers.find((item) => item.id === state.workingGeniusEditorMemberId);
-  if (!member || state.busy) return;
-  const data = new FormData(event.currentTarget);
+function workingGeniusValidationFromForm(form, memberId) {
+  const data = new FormData(form);
   const resultBuckets = Object.fromEntries(WORKING_GENIUS_BUCKETS.map(([key]) => [key, []]));
   WORKING_GENIUS_TYPES.forEach((type) => {
     const bucket = String(data.get(`workingGenius_${type.code}`) || "");
     if (resultBuckets[bucket]) resultBuckets[bucket].push(type.code);
   });
-  const validation = validateWorkingGeniusProfile({
-    teamMemberId: member.id,
+  return validateWorkingGeniusProfile({
+    teamMemberId: memberId,
     ...resultBuckets,
     assessmentDate: String(data.get("assessmentDate") || ""),
     reportUrl: String(data.get("reportUrl") || "").trim(),
     sourceLabel: String(data.get("sourceLabel") || "Rapport officiel Working Genius"),
     notes: String(data.get("notes") || "")
   });
+}
+
+async function saveWorkingGeniusProfile(event) {
+  event.preventDefault();
+  if (state.previewMode) return showToast("Apercu local: aucun profil n'est ecrit.");
+  const member = state.teamMembers.find((item) => item.id === state.workingGeniusEditorMemberId);
+  if (!member || state.busy) return;
+  const validation = workingGeniusValidationFromForm(event.currentTarget, member.id);
   if (!validation.valid) return showToast(validation.errors[0]);
   state.busy = true;
   try {
@@ -4901,7 +4949,7 @@ async function saveWorkingGeniusProfile(event) {
       const deleted = state.workingGeniusEditorHadProfile && !error.current;
       if (error.current) state.workingGeniusProfiles[member.id] = { teamMemberId: member.id, ...error.current };
       else delete state.workingGeniusProfiles[member.id];
-      state.workingGeniusConflict = { memberId: member.id, draft: validation.profile, current: error.current || {}, deleted };
+      state.workingGeniusConflict = { memberId: member.id, draft: validation.profile, current: error.current || {}, deleted, intent: "save" };
       state.workingGeniusEditorVersion = entityVersionToken(error.current);
       state.workingGeniusEditorHadProfile = Boolean(error.current);
       state.workingGeniusForceSave = false;
@@ -4934,27 +4982,59 @@ function resolveWorkingGeniusConflict(choice) {
     return;
   }
   if (choice === "overwrite") {
+    if (state.workingGeniusConflict.intent === "delete") {
+      state.workingGeniusForceSave = false;
+      deleteWorkingGeniusProfile({ confirmed: true });
+      return;
+    }
     state.workingGeniusForceSave = true;
     document.querySelector("#workingGeniusForm")?.requestSubmit();
   }
 }
 
-async function deleteWorkingGeniusProfile() {
+async function deleteWorkingGeniusProfile({ confirmed = false } = {}) {
   if (state.previewMode) return showToast("Apercu local: aucun profil n'est supprime.");
   const member = state.teamMembers.find((item) => item.id === state.workingGeniusEditorMemberId);
-  if (!member || !state.workingGeniusProfiles[member.id] || state.busy) return;
-  if (!confirm(`Supprimer le profil Working Genius de ${member.name}?`)) return;
+  if (!member || state.busy) return;
+  if (!state.workingGeniusProfiles[member.id]) {
+    closeWorkingGeniusEditor(false);
+    showToast("Ce profil avait deja ete supprime.");
+    renderApp();
+    return;
+  }
+  if (!confirmed && !confirm(`Supprimer le profil Working Genius de ${member.name}?`)) return;
+  const form = document.querySelector("#workingGeniusForm");
+  const draft = form ? workingGeniusValidationFromForm(form, member.id).profile : state.workingGeniusProfiles[member.id];
   state.busy = true;
   try {
-    const batch = writeBatch(db);
-    batch.delete(doc(db, "workingGeniusProfiles", member.id));
-    batch.set(doc(collection(db, "auditLogs")), auditPayload("working_genius_profile_deleted", member.id, { teamMemberId: member.id, teamMemberName: member.name }));
-    await batch.commit();
+    const reference = doc(db, "workingGeniusProfiles", member.id);
+    const auditReference = doc(collection(db, "auditLogs"));
+    const removed = await runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(reference);
+      if (!snapshot.exists()) return false;
+      const existing = snapshot.data();
+      if (!state.workingGeniusForceSave && hasVersionConflict(existing, state.workingGeniusEditorVersion)) {
+        throw versionConflictError(existing);
+      }
+      transaction.delete(reference);
+      transaction.set(auditReference, auditPayload("working_genius_profile_deleted", member.id, { teamMemberId: member.id, teamMemberName: member.name }));
+      return true;
+    });
+    delete state.workingGeniusProfiles[member.id];
     closeWorkingGeniusEditor(false);
-    showToast("Profil Working Genius supprime.");
+    showToast(removed ? "Profil Working Genius supprime." : "Ce profil avait deja ete supprime.");
     renderApp();
   } catch (error) {
-    showToast(`Profil non supprime: ${friendlyError(error)}`);
+    if (error.code === "version-conflict") {
+      state.workingGeniusProfiles[member.id] = { teamMemberId: member.id, ...error.current };
+      state.workingGeniusConflict = { memberId: member.id, draft, current: error.current || {}, deleted: false, intent: "delete" };
+      state.workingGeniusEditorVersion = entityVersionToken(error.current);
+      state.workingGeniusEditorHadProfile = true;
+      state.workingGeniusForceSave = false;
+      renderApp();
+    } else {
+      showToast(`Profil non supprime: ${friendlyError(error)}`);
+    }
   } finally {
     state.busy = false;
   }

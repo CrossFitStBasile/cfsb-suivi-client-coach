@@ -138,4 +138,9 @@ test("development program drafts use versioned transactions and keep long local 
   assert.match(teamSource, /const deleted = isExisting && !error\.current/);
   assert.match(teamSource, /state\.developmentPrograms = state\.developmentPrograms\.filter/);
   assert.match(teamSource, /Recreer avec mon brouillon/);
+  assert.match(teamSource, /async function deleteDevelopmentProgramDraft[\s\S]*?await runTransaction/);
+  assert.match(teamSource, /transaction\.delete\(programRef\)/);
+  assert.match(teamSource, /intent: "delete", locked: error\.code === "development-program-locked"/);
+  assert.match(teamSource, /Supprimer quand meme/);
+  assert.match(teamSource, /if \(intent === "delete"\) \{\s+state\.developmentProgramForceSave = false/);
 });
