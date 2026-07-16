@@ -33,6 +33,8 @@ Creer un Roadmap Business CFSB qui permet a Michael et Gabriel de piloter les pr
 - Le formulaire employe Firebase existe maintenant en pilote parallele avec reprise interappareils, anti-doublon et lecture temps reel dans le Dashboard Equipe; le lien officiel Apps Script demeure intact pendant la recette.
 - Le moteur owner-only de developpement equipe permet de preparer des programmes versionnes d'onboarding, de formation et d'evaluation, puis de suivre chaque membre sans inventer la checklist officielle de Gabriel.
 - Les resultats Working Genius officiels peuvent etre importes dans chaque dossier et lus dans une carte d'equipe owner-only, sans recreer le test.
+- La vue Strategie reprend la vision, la mission, les valeurs et le SWOT depuis deux sources Drive identifiees; les objectifs annuels restent vides plutot que d'utiliser une source datee ou incoherente.
+- Un registre de decisions conserve les choix durables, leur raison, leur impact et les decisions remplacees.
 - Les acces Head Coach et membres seront definis dans une phase ulterieure.
 
 ## 5. Decisions Made
@@ -112,6 +114,7 @@ Completion criteria: matrice d'acces approuvee et test pilote avec un petit grou
 | Formulaire employe Firebase | Application Firebase | Codex | Pilote parallele a tester | `firebase-roadmap/public/formulaire.html` |
 | Systeme Developpement equipe | Application Firebase | Codex | Moteur livre, contenu officiel a fournir | `firebase-roadmap/public/development.js` |
 | Profils Working Genius | Application Firebase | Codex | Moteur d'import livre, rapports a fournir | `firebase-roadmap/public/working-genius.js` |
+| Strategie et decisions | Application Firebase | Codex | Vue sourcee preparee, revalidation owners requise | `firebase-roadmap/public/strategy.js` |
 | Checklist onboarding officielle | Google Drive | Gabriel | A fournir | A confirmer |
 | Matrice d'acces future | Documentation | Michael et Gabriel | A definir | A confirmer |
 
@@ -156,3 +159,4 @@ Completion criteria: matrice d'acces approuvee et test pilote avec un petit grou
 | 2026-07-15 | Formulaire employe Firebase prepare sans bascule: contenu identique, brouillon local et nuage, soumission idempotente | Codex | Tester les huit roles dans un cycle pilote avec Michael et Gabriel |
 | 2026-07-16 | Moteur Head Coach prepare en owner-only: programmes versionnes, assignations et suivi par etape | Codex | Gabriel fournit et valide la premiere checklist avant publication |
 | 2026-07-16 | Import Working Genius et carte d'equipe owner-only prepares sans reproduire le test | Codex | Michael et Gabriel exportent progressivement les rapports officiels |
+| 2026-07-16 | Vue Strategie sourcee et registre de decisions owner-only prepares | Codex | Michael et Gabriel revalident les blocs sources et ajoutent les objectifs annuels actuels |

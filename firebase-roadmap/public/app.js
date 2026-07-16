@@ -73,6 +73,16 @@ import {
   workingGeniusTeamSummary,
   workingGeniusType
 } from "./working-genius.js";
+import {
+  STRATEGY_DECISION_STATUS_OPTIONS,
+  STRATEGY_STATUS_OPTIONS,
+  cloneStrategyBaseline,
+  normalizeStrategyList,
+  sortStrategyDecisions,
+  strategyCoverage,
+  validateStrategyDecision,
+  validateStrategyProfile
+} from "./strategy.js";
 
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
@@ -169,6 +179,7 @@ const COACH_ID_BY_MEMBER = {
 };
 const PILOTAGE_SECTION_OPTIONS = [
   ["meeting", "Reunion hebdo", "calendar-range"],
+  ["strategy", "Strategie", "compass"],
   ["scorecard", "Indicateurs", "chart-no-axes-combined"],
   ["rocks", "Priorites 90 jours", "flag"],
   ["issues", "Enjeux", "list-tree"]
@@ -211,6 +222,8 @@ const state = {
   pilotageRocks: [],
   pilotageIssues: [],
   pilotageMeetings: [],
+  businessStrategy: null,
+  strategyDecisions: [],
   developmentPrograms: [],
   developmentAssignments: [],
   workingGeniusProfiles: {},
@@ -246,6 +259,9 @@ const state = {
   pilotageQuarter: quarterId(),
   pilotageEditorType: "",
   pilotageEditorId: "",
+  strategyView: "overview",
+  strategyEditorType: "",
+  strategyDecisionEditorId: "",
   developmentSection: "assignments",
   developmentAssignmentView: "active",
   selectedDevelopmentAssignmentId: "",
@@ -327,6 +343,10 @@ function initializeLocalDevelopmentPreview() {
     "membre-pilote": { teamMemberId: "membre-pilote", geniuses: ["W", "I"], competencies: ["D", "G"], frustrations: ["E", "T"], status: "complete", assessmentDate: "2026-06-15", reportUrl: "https://example.com/rapport-pilote", sourceType: "official_report", sourceLabel: "Rapport officiel Working Genius" },
     "alex-pilote": { teamMemberId: "alex-pilote", geniuses: ["G", "E"], competencies: ["I"], frustrations: [], status: "partial", assessmentDate: "", reportUrl: "", sourceType: "official_report", sourceLabel: "Rapport officiel Working Genius" }
   };
+  state.businessStrategy = cloneStrategyBaseline();
+  state.strategyDecisions = [
+    { id: "decision-pilote", decisionDate: "2026-07-15", title: "Architecture des dashboards", decision: "Garder le Dashboard Equipe et le Dashboard Coach independants.", rationale: "Permettre des mises a jour sans conflit.", ownerName: "Michael + Gabriel", impact: "Deux applications Firebase et un contrat de liens explicite.", status: "active", createdAt: "2026-07-15T12:00:00Z" }
+  ];
   state.developmentPrograms = [
     { id: "programme-v1", familyId: "programme", title: "Programme pilote", description: "Structure de validation avant l'ajout de la checklist officielle.", programType: "onboarding", ownerName: "Gabriel", roleIds: [], version: 1, status: "published", steps },
     { id: "formation-draft", familyId: "formation", title: "Formation continue", description: "Brouillon sans contenu metier officiel.", programType: "training", ownerName: "Gabriel", roleIds: [], version: 1, status: "draft", steps: [{ id: "draft-step", title: "Etape a valider", category: "General", required: true, evidenceRequired: false, sortOrder: 1 }] }
@@ -478,6 +498,14 @@ function subscribeData() {
     state.pilotageMeetings = snapshot.docs.map(fromDoc).sort((a, b) => String(b.weekStart || "").localeCompare(String(a.weekStart || "")));
     renderFromData();
   }, dataError));
+  state.unsubscribers.push(onSnapshot(collection(db, "businessStrategy"), (snapshot) => {
+    state.businessStrategy = snapshot.docs.find((item) => item.id === "current") ? fromDoc(snapshot.docs.find((item) => item.id === "current")) : null;
+    renderFromData();
+  }, dataError));
+  state.unsubscribers.push(onSnapshot(collection(db, "strategyDecisions"), (snapshot) => {
+    state.strategyDecisions = sortStrategyDecisions(snapshot.docs.map(fromDoc));
+    renderFromData();
+  }, dataError));
   state.unsubscribers.push(onSnapshot(collection(db, "developmentPrograms"), (snapshot) => {
     state.developmentPrograms = sortDevelopmentPrograms(snapshot.docs.map(fromDoc));
     renderFromData();
@@ -555,6 +583,7 @@ function renderApp() {
       ${state.developmentAssignmentEditorOpen ? renderDevelopmentAssignmentEditor() : ""}
       ${state.developmentStepEditorId ? renderDevelopmentStepEditor() : ""}
       ${state.workingGeniusEditorMemberId ? renderWorkingGeniusEditor() : ""}
+      ${state.strategyEditorType ? renderStrategyEditor() : ""}
     </div>
   `;
   bindAppEvents();
@@ -904,7 +933,7 @@ function renderPilotageView() {
         <span class="owner-only-badge"><i data-lucide="lock-keyhole"></i> Michael et Gabriel</span>
       </header>
       <div class="pilotage-body">
-        ${state.pilotageSection === "scorecard" ? renderPilotageScorecard() : state.pilotageSection === "rocks" ? renderPilotageRocks() : state.pilotageSection === "issues" ? renderPilotageIssues() : renderPilotageMeeting()}
+        ${state.pilotageSection === "strategy" ? renderBusinessStrategy() : state.pilotageSection === "scorecard" ? renderPilotageScorecard() : state.pilotageSection === "rocks" ? renderPilotageRocks() : state.pilotageSection === "issues" ? renderPilotageIssues() : renderPilotageMeeting()}
       </div>
     </section>
   `;
@@ -925,8 +954,111 @@ function pilotageSectionButton(id, label, icon) {
       ? currentPilotageSummary().offTrackRocks
       : id === "issues"
         ? currentPilotageSummary().openIssues
+        : id === "strategy"
+          ? strategyCoverage(currentStrategyProfile()).missing + (currentStrategyProfile().status === "validated" ? 0 : 1)
         : 0;
   return `<button class="pilotage-tab ${state.pilotageSection === id ? "active" : ""}" data-pilotage-section="${id}" type="button"><i data-lucide="${icon}"></i><span>${escapeHtml(label)}</span>${count ? `<strong>${count}</strong>` : ""}</button>`;
+}
+
+function currentStrategyProfile() {
+  const source = state.businessStrategy || cloneStrategyBaseline();
+  return { ...validateStrategyProfile(source).profile, updatedAt: source.updatedAt || null, createdAt: source.createdAt || null };
+}
+
+function renderBusinessStrategy() {
+  const profile = currentStrategyProfile();
+  const coverage = strategyCoverage(profile);
+  const usingBaseline = !state.businessStrategy;
+  const statusLabel = Object.fromEntries(STRATEGY_STATUS_OPTIONS)[profile.status] || "A revalider";
+  return `
+    <header class="pilotage-section-heading strategy-heading">
+      <div><p class="eyebrow">Cap durable</p><h2>Strategie CFSB</h2><p>Une vue sourcee de ce qui guide les decisions de Michael et Gabriel.</p></div>
+      <div class="pilotage-heading-actions"><button class="button primary" data-open-strategy-editor="profile" type="button"><i data-lucide="${usingBaseline ? "database-zap" : "pencil"}"></i> ${usingBaseline ? "Creer depuis les sources" : "Modifier"}</button></div>
+    </header>
+    <nav class="strategy-tabs" aria-label="Sections de la strategie">
+      <button class="tab-button ${state.strategyView === "overview" ? "active" : ""}" data-strategy-view="overview" type="button"><i data-lucide="compass"></i> Vue d'ensemble</button>
+      <button class="tab-button ${state.strategyView === "decisions" ? "active" : ""}" data-strategy-view="decisions" type="button"><i data-lucide="scale"></i> Decisions <span>${state.strategyDecisions.length}</span></button>
+    </nav>
+    ${state.strategyView === "decisions" ? renderStrategyDecisions() : `
+      <section class="strategy-status-bar ${escapeAttr(profile.status)}">
+        <span><i data-lucide="${profile.status === "validated" ? "badge-check" : "circle-dashed"}"></i><strong>${escapeHtml(statusLabel)}</strong></span>
+        <span><b>${coverage.percent}%</b> de couverture documentee · ${coverage.missing} bloc(s) a completer</span>
+        ${usingBaseline ? `<em>Lecture de la base sourcee GitHub. Aucune donnee Firestore n'a encore ete creee.</em>` : profile.updatedAt ? `<em>Derniere mise a jour: ${formatDate(profile.updatedAt)}</em>` : `<em>Revision source: ${escapeHtml(profile.sourceRevision || "a confirmer")}</em>`}
+      </section>
+      ${profile.sourceNotes ? `<aside class="strategy-source-warning"><i data-lucide="info"></i><p>${escapeHtml(profile.sourceNotes)}</p></aside>` : ""}
+      <section class="strategy-foundation-grid">
+        ${strategyStatementCard("Vision", profile.vision, "telescope", "vision")}
+        ${strategyStatementCard("Mission", profile.mission, "target", "mission")}
+      </section>
+      <section class="strategy-section-block">
+        <header class="section-heading"><div><h3>Valeurs CFSB</h3><p>Les comportements qui encadrent les decisions et les attentes.</p></div></header>
+        <div class="strategy-values-grid">${profile.values.map((value, index) => `<article><span>${index + 1}</span><div><h4>${escapeHtml(value.name)}</h4><p>${escapeHtml(value.description)}</p></div></article>`).join("")}</div>
+      </section>
+      <section class="strategy-position-grid">
+        ${strategyTextPanel("Niche", profile.niche, "crosshair")}
+        ${strategyTextPanel("Cible a long terme", profile.longTermTarget, "mountain")}
+        ${strategyListPanel("Strategies", profile.strategies, "waypoints")}
+        ${strategyListPanel("Differenciateurs", profile.differentiators, "sparkles")}
+        ${strategyTextPanel("Processus eprouve", profile.provenProcess, "workflow")}
+        ${strategyTextPanel("Garantie", profile.guarantee, "shield-check")}
+      </section>
+      ${renderStrategySwot(profile.swot)}
+      <section class="strategy-section-block strategy-annual-focus">
+        <header class="section-heading"><div><h3>Focus annuel ${Number(profile.annualFocus.year || new Date().getFullYear())}</h3><p>Les resultats annuels valides doivent servir de pont vers les priorites 90 jours.</p></div></header>
+        ${profile.annualFocus.goals.length ? `<ol>${profile.annualFocus.goals.map((goal) => `<li>${escapeHtml(goal)}</li>`).join("")}</ol>` : `<div class="strategy-missing"><i data-lucide="circle-dashed"></i><span><strong>Objectifs annuels a valider</strong><small>Les sources consultees ne fournissent pas une liste actuelle assez fiable pour la precharger.</small></span></div>`}
+      </section>
+      <section class="strategy-section-block strategy-sources">
+        <header class="section-heading"><div><h3>Sources</h3><p>Chaque bloc initial peut etre retrace dans Drive.</p></div></header>
+        <div>${profile.sourceDocuments.map((source) => `<a href="${escapeAttr(safeExternalUrl(source.url))}" target="_blank" rel="noopener"><i data-lucide="file-text"></i><span><strong>${escapeHtml(source.label)}</strong><small>${escapeHtml(source.scope || "Source strategie")} · revision ${escapeHtml(source.revisionDate || "a confirmer")}</small></span><i data-lucide="external-link"></i></a>`).join("")}</div>
+      </section>
+    `}
+  `;
+}
+
+function strategyStatementCard(label, text, icon, tone) {
+  return `<article class="strategy-statement ${tone}"><span><i data-lucide="${icon}"></i></span><div><small>${escapeHtml(label)}</small><blockquote>${text ? escapeHtml(text) : "A completer"}</blockquote></div></article>`;
+}
+
+function strategyTextPanel(label, text, icon) {
+  return `<article class="strategy-text-panel"><header><i data-lucide="${icon}"></i><h3>${escapeHtml(label)}</h3></header>${text ? `<p>${escapeHtml(text)}</p>` : `<p class="strategy-empty-text">A completer</p>`}</article>`;
+}
+
+function strategyListPanel(label, items, icon) {
+  return `<article class="strategy-text-panel"><header><i data-lucide="${icon}"></i><h3>${escapeHtml(label)}</h3></header>${items.length ? `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : `<p class="strategy-empty-text">A completer</p>`}</article>`;
+}
+
+function renderStrategySwot(swot) {
+  const groups = [
+    ["strengths", "Forces", "trending-up"],
+    ["weaknesses", "Faiblesses", "wrench"],
+    ["opportunities", "Opportunites", "lightbulb"],
+    ["threats", "Menaces", "triangle-alert"]
+  ];
+  return `
+    <section class="strategy-section-block">
+      <header class="section-heading"><div><h3>SWOT</h3><p>Photographie sourcee du 6 fevrier 2026, a revalider au besoin.</p></div></header>
+      <div class="strategy-swot-grid">${groups.map(([key, label, icon]) => `<article class="${key}"><header><i data-lucide="${icon}"></i><h4>${label}</h4></header>${swot[key].length ? `<ul>${swot[key].map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : `<p>A completer</p>`}</article>`).join("")}</div>
+    </section>
+  `;
+}
+
+function renderStrategyDecisions() {
+  const decisions = sortStrategyDecisions(state.strategyDecisions);
+  return `
+    <section class="strategy-decision-toolbar"><div><h3>Registre de decisions</h3><p>Conserver le choix, sa raison et son impact pour eviter de reprendre la meme discussion.</p></div><button class="button primary" data-open-strategy-editor="decision" type="button"><i data-lucide="plus"></i> Nouvelle decision</button></section>
+    ${decisions.length ? `<div class="strategy-decision-list">${decisions.map(renderStrategyDecisionCard).join("")}</div>` : `<div class="empty-state strategy-decision-empty"><i data-lucide="scale"></i><div><strong>Aucune decision enregistree</strong><span>Ajoutez seulement les decisions qui changent le cap, une regle ou une priorite durable.</span></div></div>`}
+  `;
+}
+
+function renderStrategyDecisionCard(decision) {
+  const status = decision.status || "active";
+  return `
+    <article class="strategy-decision-card ${escapeAttr(status)}">
+      <time>${formatDateOnly(decision.decisionDate)}</time>
+      <div><span class="strategy-decision-status ${escapeAttr(status)}">${status === "superseded" ? "Remplacee" : "Active"}</span><h3>${escapeHtml(decision.title || "Decision")}</h3><p>${escapeHtml(decision.decision || "")}</p>${decision.rationale ? `<small><strong>Pourquoi:</strong> ${escapeHtml(decision.rationale)}</small>` : ""}${decision.impact ? `<small><strong>Impact:</strong> ${escapeHtml(decision.impact)}</small>` : ""}</div>
+      <aside><span>${escapeHtml(decision.ownerName || "Michael + Gabriel")}</span>${decision.sourceUrl ? `<a class="button icon-only" href="${escapeAttr(safeExternalUrl(decision.sourceUrl))}" target="_blank" rel="noopener" title="Ouvrir la source"><i data-lucide="external-link"></i></a>` : ""}<button class="button icon-only" data-edit-strategy-decision="${escapeAttr(decision.id)}" type="button" title="Modifier"><i data-lucide="pencil"></i></button></aside>
+    </article>
+  `;
 }
 
 function renderPilotageMeeting() {
@@ -1181,6 +1313,70 @@ function renderPilotageEditor() {
   `;
 }
 
+function renderStrategyEditor() {
+  if (state.strategyEditorType === "decision") return renderStrategyDecisionEditor();
+  const profile = currentStrategyProfile();
+  const values = Array.from({ length: 4 }, (_, index) => profile.values[index] || { id: `value-${index + 1}`, name: "", description: "" });
+  return `
+    <div class="career-modal pilotage-modal" role="dialog" aria-modal="true" aria-labelledby="strategyEditorTitle">
+      <button class="career-modal-backdrop" data-close-strategy-editor type="button" aria-label="Fermer"></button>
+      <section class="career-editor strategy-editor panel">
+        <header class="career-editor-header"><div><p class="eyebrow">Cap durable</p><h2 id="strategyEditorTitle">Modifier la strategie CFSB</h2></div><button class="button icon-only" data-close-strategy-editor type="button" aria-label="Fermer"><i data-lucide="x"></i></button></header>
+        <div class="career-editor-scroll">
+          <form id="strategyProfileForm" class="strategy-editor-form">
+            <section class="strategy-editor-intro"><i data-lucide="database-zap"></i><p>La base initiale vient de Drive. Valider signifie que Michael et Gabriel confirment le contenu actuel, pas seulement qu'une source existe.</p></section>
+            <div class="strategy-editor-grid">
+              <label class="field">Titre<input name="title" required value="${escapeAttr(profile.title)}"></label>
+              <label class="field">Etat<select name="status">${STRATEGY_STATUS_OPTIONS.map(([id, label]) => `<option value="${id}" ${profile.status === id ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label>
+              <label class="field field-wide">Vision<textarea name="vision" required>${escapeHtml(profile.vision)}</textarea></label>
+              <label class="field field-wide">Mission<textarea name="mission" required>${escapeHtml(profile.mission)}</textarea></label>
+            </div>
+            <section class="strategy-values-editor"><header><h3>Valeurs</h3><p>Conserver quatre valeurs completes avant de valider.</p></header>${values.map((value, index) => `<article><span>${index + 1}</span><input type="hidden" name="valueId_${index}" value="${escapeAttr(value.id)}"><label class="field">Nom<input name="valueName_${index}" required value="${escapeAttr(value.name)}"></label><label class="field">Description<textarea name="valueDescription_${index}" required>${escapeHtml(value.description)}</textarea></label></article>`).join("")}</section>
+            <div class="strategy-editor-grid">
+              <label class="field field-wide">Niche<textarea name="niche">${escapeHtml(profile.niche)}</textarea></label>
+              <label class="field field-wide">Cible a long terme<textarea name="longTermTarget">${escapeHtml(profile.longTermTarget)}</textarea></label>
+              <label class="field">Strategies, une par ligne<textarea name="strategies">${escapeHtml(profile.strategies.join("\n"))}</textarea></label>
+              <label class="field">Differenciateurs, un par ligne<textarea name="differentiators">${escapeHtml(profile.differentiators.join("\n"))}</textarea></label>
+              <label class="field">Processus eprouve<textarea name="provenProcess">${escapeHtml(profile.provenProcess)}</textarea></label>
+              <label class="field">Garantie<textarea name="guarantee">${escapeHtml(profile.guarantee)}</textarea></label>
+            </div>
+            <section class="strategy-swot-editor"><header><h3>SWOT</h3><p>Un element par ligne.</p></header><div>${[["strengths", "Forces"], ["weaknesses", "Faiblesses"], ["opportunities", "Opportunites"], ["threats", "Menaces"]].map(([key, label]) => `<label class="field">${label}<textarea name="swot_${key}">${escapeHtml(profile.swot[key].join("\n"))}</textarea></label>`).join("")}</div></section>
+            <div class="strategy-editor-grid strategy-annual-editor">
+              <label class="field">Annee<input name="annualYear" type="number" min="2020" max="2100" value="${Number(profile.annualFocus.year || new Date().getFullYear())}"></label>
+              <label class="field field-wide">Objectifs annuels, un par ligne<textarea name="annualGoals" placeholder="Laisser vide tant que les objectifs ne sont pas valides.">${escapeHtml(profile.annualFocus.goals.join("\n"))}</textarea></label>
+              <label class="field field-wide">Note sur les sources<textarea name="sourceNotes">${escapeHtml(profile.sourceNotes)}</textarea></label>
+            </div>
+            <footer class="pilotage-editor-actions"><button class="button" data-close-strategy-editor type="button">Annuler</button><button class="button primary" type="submit"><i data-lucide="save"></i> Enregistrer</button></footer>
+          </form>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderStrategyDecisionEditor() {
+  const decision = state.strategyDecisions.find((item) => item.id === state.strategyDecisionEditorId) || {};
+  return `
+    <div class="career-modal pilotage-modal" role="dialog" aria-modal="true" aria-labelledby="strategyDecisionEditorTitle">
+      <button class="career-modal-backdrop" data-close-strategy-editor type="button" aria-label="Fermer"></button>
+      <section class="action-editor panel">
+        <header class="career-editor-header"><div><p class="eyebrow">Registre de decisions</p><h2 id="strategyDecisionEditorTitle">${decision.id ? "Modifier la decision" : "Nouvelle decision"}</h2></div><button class="button icon-only" data-close-strategy-editor type="button" aria-label="Fermer"><i data-lucide="x"></i></button></header>
+        <form id="strategyDecisionForm" class="action-modal-form">
+          <label class="field">Date<input name="decisionDate" type="date" required value="${escapeAttr(decision.decisionDate || todayInputValue())}"></label>
+          <label class="field">Titre<input name="title" required maxlength="160" value="${escapeAttr(decision.title || "")}" autofocus placeholder="Le sujet tranche"></label>
+          <label class="field">Decision<textarea name="decision" required placeholder="Ce qui a ete decide, en termes concrets.">${escapeHtml(decision.decision || "")}</textarea></label>
+          <label class="field">Pourquoi<textarea name="rationale" placeholder="Les faits et arbitrages qui expliquent le choix.">${escapeHtml(decision.rationale || "")}</textarea></label>
+          <label class="field">Impact<textarea name="impact" placeholder="Ce que cette decision change.">${escapeHtml(decision.impact || "")}</textarea></label>
+          <label class="field">Responsable<select name="ownerName">${OWNER_OPTIONS.map((owner) => `<option value="${escapeAttr(owner)}" ${(decision.ownerName || "Michael + Gabriel") === owner ? "selected" : ""}>${escapeHtml(owner)}</option>`).join("")}</select></label>
+          <label class="field">Etat<select name="status">${STRATEGY_DECISION_STATUS_OPTIONS.map(([id, label]) => `<option value="${id}" ${(decision.status || "active") === id ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label>
+          <label class="field">Lien de source<input name="sourceUrl" type="url" value="${escapeAttr(decision.sourceUrl || "")}" placeholder="https://docs.google.com/..."></label>
+          <footer class="notes-actions"><button class="button" data-close-strategy-editor type="button">Annuler</button><button class="button primary" type="submit"><i data-lucide="save"></i> Enregistrer</button></footer>
+        </form>
+      </section>
+    </div>
+  `;
+}
+
 function renderPilotageMetricForm(metric = {}) {
   const targetValidated = metric.targetStatus === "validated" || (metric.targetStatus !== "to_validate" && metric.targetValue !== null && metric.targetValue !== "" && Number.isFinite(Number(metric.targetValue)));
   return `
@@ -1323,7 +1519,7 @@ function renderActivityView() {
       </label>
       <label class="field">Element
         <select id="activityEntityFilter">
-          ${[["all", "Tous"], ["pilotage", "Pilotage"], ["development", "Developpement"], ["workingGenius", "Working Genius"], ["roadmapSubmission", "Roadmaps"], ["managementTask", "Actions"], ["teamMember", "Equipe"], ["teamMeeting", "Rencontres"], ["memberCareerPlan", "Mandats"], ["careerMilestone", "Parcours"], ["revenueScenario", "Projections"], ["clientError", "Systeme"]].map(([id, label]) => `<option value="${id}" ${state.activityEntity === id ? "selected" : ""}>${label}</option>`).join("")}
+          ${[["all", "Tous"], ["pilotage", "Pilotage"], ["strategy", "Strategie"], ["development", "Developpement"], ["workingGenius", "Working Genius"], ["roadmapSubmission", "Roadmaps"], ["managementTask", "Actions"], ["teamMember", "Equipe"], ["teamMeeting", "Rencontres"], ["memberCareerPlan", "Mandats"], ["careerMilestone", "Parcours"], ["revenueScenario", "Projections"], ["clientError", "Systeme"]].map(([id, label]) => `<option value="${id}" ${state.activityEntity === id ? "selected" : ""}>${label}</option>`).join("")}
         </select>
       </label>
     </section>
@@ -1513,6 +1709,11 @@ function activityActionMeta(action) {
     working_genius_profile_created: ["Profil Working Genius importe", "sparkles", "green"],
     working_genius_profile_updated: ["Profil Working Genius modifie", "pencil", "blue"],
     working_genius_profile_deleted: ["Profil Working Genius supprime", "trash-2", "neutral"],
+    business_strategy_created: ["Strategie sourcee creee", "compass", "green"],
+    business_strategy_updated: ["Strategie mise a jour", "compass", "blue"],
+    business_strategy_validated: ["Strategie validee", "badge-check", "green"],
+    strategy_decision_created: ["Decision strategique ajoutee", "scale", "green"],
+    strategy_decision_updated: ["Decision strategique modifiee", "scale", "blue"],
     client_error_resolved: ["Erreur technique resolue", "shield-check", "green"]
   };
   const [label, icon, tone] = values[action] || [humanize(action || "changement"), "history", "neutral"];
@@ -1521,6 +1722,7 @@ function activityActionMeta(action) {
 
 function activityTargetLabel(log) {
   if (log.entityType === "pilotage") return log.details?.title || log.details?.name || log.details?.weekStart || "Zone Pilotage";
+  if (log.entityType === "strategy") return log.details?.title || "Strategie CFSB";
   if (log.entityType === "development") return [log.details?.teamMemberName, log.details?.title, log.details?.stepTitle].filter(Boolean).join(" · ") || "Developpement equipe";
   if (log.entityType === "workingGenius") return log.details?.teamMemberName || state.teamMembers.find((item) => item.id === log.entityId)?.name || "Profil Working Genius";
   if (log.entityType === "clientError") return log.details?.context || "Etat de sante du dashboard";
@@ -2658,6 +2860,7 @@ function bindAppEvents() {
     closeDevelopmentAssignmentEditor(false);
     closeDevelopmentStepEditor(false);
     closeWorkingGeniusEditor(false);
+    closeStrategyEditor(false);
     state.view = button.dataset.view;
     state.selectedMemberId = "";
     state.editingMemberId = "";
@@ -2722,6 +2925,15 @@ function bindAppEvents() {
     state.pilotageSection = button.dataset.pilotageSection;
     renderApp();
   }));
+  document.querySelectorAll("[data-strategy-view]").forEach((button) => button.addEventListener("click", () => {
+    state.strategyView = button.dataset.strategyView;
+    renderApp();
+  }));
+  document.querySelectorAll("[data-open-strategy-editor]").forEach((button) => button.addEventListener("click", () => openStrategyEditor(button.dataset.openStrategyEditor)));
+  document.querySelectorAll("[data-edit-strategy-decision]").forEach((button) => button.addEventListener("click", () => openStrategyEditor("decision", button.dataset.editStrategyDecision)));
+  document.querySelectorAll("[data-close-strategy-editor]").forEach((button) => button.addEventListener("click", () => closeStrategyEditor()));
+  document.querySelector("#strategyProfileForm")?.addEventListener("submit", saveStrategyProfile);
+  document.querySelector("#strategyDecisionForm")?.addEventListener("submit", saveStrategyDecision);
   document.querySelectorAll("[data-shift-pilotage-week]").forEach((button) => button.addEventListener("click", () => {
     state.pilotageWeek = shiftWeekIso(state.pilotageWeek, Number(button.dataset.shiftPilotageWeek));
     state.pilotageQuarter = quarterId(state.pilotageWeek);
@@ -3043,6 +3255,140 @@ function closePilotageEditor(shouldRender = true) {
   state.pilotageEditorType = "";
   state.pilotageEditorId = "";
   if (shouldRender) renderApp();
+}
+
+function openStrategyEditor(type, id = "") {
+  if (!["profile", "decision"].includes(type)) return;
+  closePilotageEditor(false);
+  closeCareerEditor(false);
+  closeMeetingEditor(false, false);
+  closeTaskEditor(false);
+  state.strategyEditorType = type;
+  state.strategyDecisionEditorId = type === "decision" ? id : "";
+  renderApp();
+}
+
+function closeStrategyEditor(shouldRender = true) {
+  state.strategyEditorType = "";
+  state.strategyDecisionEditorId = "";
+  if (shouldRender) renderApp();
+}
+
+async function saveStrategyProfile(event) {
+  event.preventDefault();
+  if (state.previewMode) return showToast("Apercu local: aucune strategie n'est ecrite.");
+  if (state.busy) return;
+  const data = new FormData(event.currentTarget);
+  const current = currentStrategyProfile();
+  const values = Array.from({ length: 4 }, (_, index) => ({
+    id: String(data.get(`valueId_${index}`) || `value-${index + 1}`),
+    name: String(data.get(`valueName_${index}`) || ""),
+    description: String(data.get(`valueDescription_${index}`) || "")
+  }));
+  const validation = validateStrategyProfile({
+    id: "current",
+    title: String(data.get("title") || "Strategie CFSB"),
+    status: String(data.get("status") || "draft"),
+    sourceRevision: current.sourceRevision,
+    sourceNotes: String(data.get("sourceNotes") || ""),
+    sourceDocuments: current.sourceDocuments,
+    vision: String(data.get("vision") || ""),
+    mission: String(data.get("mission") || ""),
+    values,
+    niche: String(data.get("niche") || ""),
+    longTermTarget: String(data.get("longTermTarget") || ""),
+    strategies: normalizeStrategyList(data.get("strategies")),
+    differentiators: normalizeStrategyList(data.get("differentiators")),
+    provenProcess: String(data.get("provenProcess") || ""),
+    guarantee: String(data.get("guarantee") || ""),
+    swot: {
+      strengths: normalizeStrategyList(data.get("swot_strengths")),
+      weaknesses: normalizeStrategyList(data.get("swot_weaknesses")),
+      opportunities: normalizeStrategyList(data.get("swot_opportunities")),
+      threats: normalizeStrategyList(data.get("swot_threats"))
+    },
+    annualFocus: {
+      year: Number(data.get("annualYear") || new Date().getFullYear()),
+      goals: normalizeStrategyList(data.get("annualGoals"))
+    }
+  });
+  if (!validation.valid) return showToast(validation.errors[0]);
+  state.busy = true;
+  try {
+    const existing = state.businessStrategy;
+    const payload = {
+      ...validation.profile,
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    };
+    delete payload.id;
+    if (!existing) {
+      payload.createdAt = serverTimestamp();
+      payload.createdByUid = state.user.uid;
+      payload.createdByName = actorName();
+    }
+    const action = validation.profile.status === "validated" && existing?.status !== "validated" ? "business_strategy_validated" : existing ? "business_strategy_updated" : "business_strategy_created";
+    const batch = writeBatch(db);
+    batch.set(doc(db, "businessStrategy", "current"), payload, { merge: true });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload(action, "current", { status: validation.profile.status, coverage: validation.coverage.percent }));
+    await batch.commit();
+    closeStrategyEditor(false);
+    showToast(validation.profile.status === "validated" ? "Strategie validee et enregistree." : "Strategie enregistree avec son statut de validation.");
+    renderApp();
+  } catch (error) {
+    showToast(`Strategie non enregistree: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function saveStrategyDecision(event) {
+  event.preventDefault();
+  if (state.previewMode) return showToast("Apercu local: aucune decision n'est ecrite.");
+  if (state.busy) return;
+  const data = new FormData(event.currentTarget);
+  const validation = validateStrategyDecision({
+    id: state.strategyDecisionEditorId,
+    decisionDate: String(data.get("decisionDate") || ""),
+    title: String(data.get("title") || ""),
+    decision: String(data.get("decision") || ""),
+    rationale: String(data.get("rationale") || ""),
+    ownerName: String(data.get("ownerName") || "Michael + Gabriel"),
+    impact: String(data.get("impact") || ""),
+    status: String(data.get("status") || "active"),
+    sourceUrl: String(data.get("sourceUrl") || "")
+  });
+  if (!validation.valid) return showToast(validation.errors[0]);
+  state.busy = true;
+  try {
+    const existing = state.strategyDecisions.find((item) => item.id === state.strategyDecisionEditorId) || null;
+    const reference = existing ? doc(db, "strategyDecisions", existing.id) : doc(collection(db, "strategyDecisions"));
+    const payload = {
+      ...validation.decision,
+      sourceUrl: validation.decision.sourceUrl ? normalizeExternalUrl(validation.decision.sourceUrl) : "",
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    };
+    delete payload.id;
+    if (!existing) {
+      payload.createdAt = serverTimestamp();
+      payload.createdByUid = state.user.uid;
+      payload.createdByName = actorName();
+    }
+    const batch = writeBatch(db);
+    batch.set(reference, payload, { merge: Boolean(existing) });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload(existing ? "strategy_decision_updated" : "strategy_decision_created", reference.id, { title: payload.title, status: payload.status }));
+    await batch.commit();
+    closeStrategyEditor(false);
+    showToast(existing ? "Decision mise a jour." : "Decision ajoutee au registre.");
+    renderApp();
+  } catch (error) {
+    showToast(`Decision non enregistree: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
 }
 
 async function savePilotageMetric(event) {
@@ -4268,7 +4614,7 @@ async function deleteWorkingGeniusProfile() {
 }
 
 function hasOpenModal() {
-  return Boolean(state.taskEditorId || state.teamActionMemberId || state.roadmapCompletionId || state.careerEditorId || state.meetingEditorId || state.pilotageEditorType || state.developmentProgramEditorId || state.developmentAssignmentEditorOpen || state.developmentStepEditorId || state.workingGeniusEditorMemberId);
+  return Boolean(state.taskEditorId || state.teamActionMemberId || state.roadmapCompletionId || state.careerEditorId || state.meetingEditorId || state.pilotageEditorType || state.strategyEditorType || state.developmentProgramEditorId || state.developmentAssignmentEditorOpen || state.developmentStepEditorId || state.workingGeniusEditorMemberId);
 }
 
 function hasProtectedEditor() {
@@ -4291,7 +4637,8 @@ function handleGlobalKeydown(event) {
   const dialog = dialogs.at(-1) || null;
   if (event.key === "Escape" && hasOpenModal()) {
     event.preventDefault();
-    if (state.workingGeniusEditorMemberId) closeWorkingGeniusEditor();
+    if (state.strategyEditorType) closeStrategyEditor();
+    else if (state.workingGeniusEditorMemberId) closeWorkingGeniusEditor();
     else if (state.developmentStepEditorId) closeDevelopmentStepEditor();
     else if (state.developmentAssignmentEditorOpen) closeDevelopmentAssignmentEditor();
     else if (state.developmentProgramEditorId) closeDevelopmentProgramEditor();
@@ -5563,7 +5910,7 @@ function openTaskSource(taskId) {
 function auditPayload(action, entityId, details = {}) {
   return {
     action,
-    entityType: action.startsWith("pilotage_") ? "pilotage" : action.startsWith("development_") ? "development" : action.startsWith("working_genius_") ? "workingGenius" : action.startsWith("team_meeting_") || action.startsWith("meeting_summary_") ? "teamMeeting" : action.startsWith("team_") ? "teamMember" : action.startsWith("member_career_plan_") ? "memberCareerPlan" : action.startsWith("career_") ? "careerMilestone" : action.startsWith("management_") ? "managementTask" : action.startsWith("client_error_") ? "clientError" : "roadmapSubmission",
+    entityType: action.startsWith("pilotage_") ? "pilotage" : action.startsWith("business_strategy_") || action.startsWith("strategy_decision_") ? "strategy" : action.startsWith("development_") ? "development" : action.startsWith("working_genius_") ? "workingGenius" : action.startsWith("team_meeting_") || action.startsWith("meeting_summary_") ? "teamMeeting" : action.startsWith("team_") ? "teamMember" : action.startsWith("member_career_plan_") ? "memberCareerPlan" : action.startsWith("career_") ? "careerMilestone" : action.startsWith("management_") ? "managementTask" : action.startsWith("client_error_") ? "clientError" : "roadmapSubmission",
     entityId,
     actorUid: state.user.uid,
     actorName: actorName(),
@@ -5629,6 +5976,14 @@ function openAuditEntity(logId) {
     state.pilotageSection = log.action.includes("metric") || log.action.includes("scorecard") ? "scorecard" : log.action.includes("rock") ? "rocks" : log.action.includes("issue") ? "issues" : "meeting";
     if (log.details?.weekStart) state.pilotageWeek = log.details.weekStart;
     renderApp();
+    return;
+  }
+  if (log.entityType === "strategy") {
+    state.view = "pilotage";
+    state.pilotageSection = "strategy";
+    state.strategyView = log.action.startsWith("strategy_decision_") ? "decisions" : "overview";
+    if (log.action.startsWith("strategy_decision_") && state.strategyDecisions.some((item) => item.id === log.entityId)) openStrategyEditor("decision", log.entityId);
+    else renderApp();
     return;
   }
   if (log.entityType === "development") {

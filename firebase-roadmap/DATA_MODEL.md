@@ -333,6 +333,36 @@ Profil owner-only importe depuis le rapport officiel Working Genius. Le dashboar
 
 Un profil est complet lorsque les six types sont repartis une seule fois dans les trois zones, deux par zone. Les profils partiels sont permis afin d'importer progressivement les sources disponibles. Cette collection n'est lue ni par le portail membre ni par le Dashboard Coach pendant la phase owner-only.
 
+## `businessStrategy/current`
+
+Vue owner-only du cap durable CFSB. Le document initial reprend uniquement des sources Drive identifiees et conserve un statut explicite tant que Michael et Gabriel ne l'ont pas revalide.
+
+- `title`
+- `status`: `source_review`, `draft` ou `validated`
+- `vision`, `mission`, `values`
+- `niche`, `longTermTarget`
+- `strategies`, `differentiators`, `provenProcess`, `guarantee`
+- `swot`: listes `strengths`, `weaknesses`, `opportunities` et `threats`
+- `annualFocus`: `year` et `goals`; aucune priorite annuelle n'est inventee si la source actuelle est insuffisante
+- `sourceRevision`, `sourceNotes` et `sourceDocuments`
+- metadonnees de creation et de mise a jour
+
+Le document source GitHub demeure visible en lecture seule tant que `businessStrategy/current` n'existe pas. Une sauvegarde owner cree la copie Firestore; le statut `validated` exige au minimum la vision, la mission et quatre valeurs completes.
+
+## `strategyDecisions/{decisionId}`
+
+Registre owner-only des choix durables.
+
+- `decisionDate`
+- `title` et `decision`
+- `rationale` et `impact`
+- `ownerName`
+- `status`: `active` ou `superseded`
+- `sourceUrl`, facultatif
+- metadonnees de creation et de mise a jour
+
+Une decision n'est jamais supprimee depuis l'interface; elle peut etre marquee comme remplacee pour conserver le raisonnement historique.
+
 ## `developmentPrograms/{programId}`
 
 Programme owner-only pour l'onboarding, la formation continue ou une evaluation. Aucun contenu officiel n'est precharge tant que Gabriel ne l'a pas valide.

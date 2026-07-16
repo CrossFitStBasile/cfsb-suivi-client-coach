@@ -63,6 +63,7 @@ Creer une application Roadmap interactive et fiable dans un projet Firebase dist
 - Un formulaire employe Firebase parallele reprend la configuration officielle sans modifier le lien de production. Il combine brouillon local, brouillon Firestore interappareils, connexion Google autorisee et soumission idempotente visible en temps reel.
 - Le Dashboard Equipe contient un moteur owner-only de programmes versionnes pour l'onboarding, la formation continue et les evaluations. Aucun contenu de checklist n'est publie tant que Gabriel ne l'a pas valide.
 - Les profils Working Genius officiels peuvent etre importes dans les dossiers membres et compares dans une carte d'equipe owner-only; le test lui-meme demeure externe.
+- La Zone Pilotage comprend une vue Strategie sourcee depuis Drive et un registre de decisions. Les objectifs annuels non fiables ne sont pas precharges.
 
 ## 5. Decisions Made
 
@@ -177,6 +178,7 @@ Completion criteria: portail utile sans dependance forte entre les deux bases Fi
 | Formulaire employe Firebase | Application | Codex | Prototype parallele prepare | `https://cfsb-roadmap-trimestrielle.web.app/formulaire` |
 | Developpement equipe | Application | Codex | Moteur prepare, donnees metier a fournir | `firebase-roadmap/public/development.js` |
 | Working Genius | Application | Codex | Import et carte prepares, rapports a fournir | `firebase-roadmap/public/working-genius.js` |
+| Strategie et decisions | Application | Codex | Vue sourcee preparee, validation owner a faire | `firebase-roadmap/public/strategy.js` |
 | Recette | Validation | Michael et Gabriel | A faire | - |
 
 ## 8. Owners
@@ -224,3 +226,4 @@ Completion criteria: portail utile sans dependance forte entre les deux bases Fi
 | 2026-07-15 | Prototype du formulaire employe Firebase prepare en parallele: configuration identique, reprise interappareils et anti-doublon | Codex | Tester les 8 roles dans un cycle pilote avant toute bascule du lien officiel |
 | 2026-07-16 | Ajout du moteur de developpement owner-only: programmes versionnes, assignations, progression et preuves | Codex | Gabriel valide le contenu de la premiere checklist avant sa publication |
 | 2026-07-16 | Ajout de l'import Working Genius owner-only et de la carte d'equipe sans questionnaire local | Codex | Importer les premiers rapports officiels valides |
+| 2026-07-16 | Ajout de la Strategie sourcee et du registre de decisions owner-only | Codex | Revalider les sources et completer le focus annuel actuel |

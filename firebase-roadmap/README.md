@@ -21,6 +21,8 @@ Le Dashboard Equipe est deploye sur Firebase Hosting avec connexion Google owner
 
 - zone `Pilotage` privee pour Michael et Gabriel avec reunion hebdomadaire, scorecard, priorites 90 jours et liste d'enjeux;
 - provenance Drive visible pour chaque indicateur et statut `Cible a valider` lorsqu'aucun seuil officiel n'existe;
+- vue `Strategie` sourcee depuis le document officiel Vision/Mission et le SWOT CFSB 2026, avec couverture documentee, statut de validation, SWOT et sources cliquables;
+- registre de decisions owner-only qui conserve le choix, sa raison, son impact et son etat historique;
 - conversion d'un indicateur hors cible ou d'une priorite a risque en enjeu, puis d'un enjeu en action dans la liste `A faire` existante;
 - brouillons et historique des rencontres hebdomadaires, sans melanger ces rituels avec les rencontres 1:1 des membres;
 - vue `A faire` inspiree du Dashboard Coach, avec actions de Michael et Gabriel;

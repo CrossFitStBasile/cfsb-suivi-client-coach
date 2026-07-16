@@ -273,6 +273,28 @@ service cloud.firestore {
       allow read, create, update, delete: if isOwner();
     }
 
+    match /businessStrategy/{strategyId} {
+      allow read: if isOwner();
+      allow create, update: if isOwner()
+        && strategyId == 'current'
+        && request.resource.data.status in ['source_review', 'draft', 'validated']
+        && request.resource.data.vision is string
+        && request.resource.data.mission is string
+        && request.resource.data.values is list
+        && request.resource.data.sourceDocuments is list;
+      allow delete: if false;
+    }
+
+    match /strategyDecisions/{decisionId} {
+      allow read: if isOwner();
+      allow create, update: if isOwner()
+        && request.resource.data.status in ['active', 'superseded']
+        && request.resource.data.decisionDate is string
+        && request.resource.data.title is string
+        && request.resource.data.decision is string;
+      allow delete: if false;
+    }
+
     match /pilotageMetrics/{metricId} {
       allow read, create, update, delete: if isOwner();
     }
