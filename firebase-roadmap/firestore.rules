@@ -38,6 +38,12 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/portalInvitations/$(teamMemberId)).data.email == request.auth.token.email;
     }
 
+    function canSubmitRoadmap(teamMemberId) {
+      return isOwner()
+        || ownsTeamMember(teamMemberId)
+        || validPortalInvitation(teamMemberId);
+    }
+
     function ownsDocument(uid) {
       return signedIn() && uid == request.auth.uid;
     }
@@ -96,13 +102,20 @@ service cloud.firestore {
     match /roadmapDrafts/{draftId} {
       allow create: if signedIn()
         && request.resource.data.authorUid == request.auth.uid
+        && canSubmitRoadmap(request.resource.data.teamMemberId)
         && request.resource.data.status == 'draft';
       allow read: if isOwner() || ownsDocument(resource.data.authorUid);
       allow update: if isOwner() || (
         ownsDocument(resource.data.authorUid)
         && resource.data.status == 'draft'
         && request.resource.data.authorUid == resource.data.authorUid
+        && request.resource.data.clientSubmissionId == resource.data.clientSubmissionId
+        && canSubmitRoadmap(request.resource.data.teamMemberId)
         && request.resource.data.status in ['draft', 'submitted']
+        && (
+          request.resource.data.status == 'draft'
+          || existsAfter(/databases/$(database)/documents/roadmapSubmissions/$(resource.data.clientSubmissionId))
+        )
       );
       allow delete: if isOwner() || (
         ownsDocument(resource.data.authorUid)
@@ -113,7 +126,14 @@ service cloud.firestore {
     match /roadmapSubmissions/{submissionId} {
       allow create: if signedIn()
         && request.resource.data.authorUid == request.auth.uid
-        && request.resource.data.status == 'submitted';
+        && canSubmitRoadmap(request.resource.data.teamMemberId)
+        && request.resource.data.clientSubmissionId == submissionId
+        && request.resource.data.status == 'to_read'
+        && request.resource.data.source == 'firebase'
+        && request.resource.data.cycleId is string
+        && request.resource.data.formVersion is string
+        && request.resource.data.selectedRoleId is string
+        && request.resource.data.answers is map;
       allow read: if isOwner()
         || ownsDocument(resource.data.authorUid)
         || ownsTeamMember(resource.data.teamMemberId);

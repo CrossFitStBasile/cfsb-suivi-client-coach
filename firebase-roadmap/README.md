@@ -56,6 +56,8 @@ Le Dashboard Equipe est deploye sur Firebase Hosting avec connexion Google owner
 - journal `Activite` reliant chaque changement au dossier, a la roadmap, a l'action, a la rencontre, au parcours ou a la projection concernee;
 - etat de sante owner avec consignation et resolution des erreurs du navigateur;
 - controle de coherence actionnable pour les roadmaps non associees, les liens Drive absents, les cibles Pilotage a cadrer et la provenance des soumissions;
+- formulaire employe Firebase en pilote parallele, avec le meme contenu que le formulaire officiel, brouillon local et nuage, reprise interappareils et soumission finale idempotente;
+- acces au pilote depuis le controle de coherence, sans remplacer le formulaire GitHub Pages + Apps Script actuellement distribue;
 - detection des modifications simultanees pour empecher Michael et Gabriel de s'ecraser silencieusement;
 - tests de flux unitaires, controle responsive et smoke test de l'URL de production.
 
@@ -72,6 +74,17 @@ Verifier ensuite les ressources reellement servies par Firebase Hosting:
 ```powershell
 npm run test:live
 ```
+
+## Formulaire employe Firebase pilote
+
+- URL pilote: `https://cfsb-roadmap-trimestrielle.web.app/formulaire`
+- Le questionnaire servi est verifie octet par octet contre `roadmap/data/roadmap-config.json` dans la suite de tests.
+- Une connexion Google owner, membre actif ou invitation portail valide est requise pour synchroniser et soumettre.
+- Le brouillon local reste disponible avant la connexion; apres connexion, il est synchronise dans `roadmapDrafts`.
+- Une soumission finale cree directement un document `roadmapSubmissions` au statut `to_read`, visible en temps reel dans le Dashboard Equipe.
+- L'identifiant final est deterministe par compte et par trimestre afin qu'un double clic ou une deuxieme tentative ne cree pas de doublon.
+- Les notifications Google Chat restent sur le parcours Apps Script tant qu'aucune fonction serveur Roadmap n'est approuvee et financee.
+- La recette ne doit pas utiliser de donnees fictives dans le cycle officiel; un cycle de test explicite peut etre passe avec `?cycle=pilote-AAAA-MM`.
 
 ## Configuration Web
 

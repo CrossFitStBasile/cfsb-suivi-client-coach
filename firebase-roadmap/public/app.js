@@ -46,6 +46,7 @@ import {
   targetLabel
 } from "./pilotage.js";
 import { dashboardHealthReport } from "./health.js";
+import { personNameKey } from "./form-model.js";
 
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
@@ -1044,8 +1045,8 @@ function renderDataHealthPanel(health) {
           label: "Canal des soumissions",
           description: sourceDescription,
           tone: health.nativeSubmissions.length ? "healthy" : "information",
-          action: health.importedSubmissions.length ? "roadmaps" : "",
-          actionLabel: "Voir les donnees"
+          action: health.nativeSubmissions.length ? "roadmaps" : "firebase-form",
+          actionLabel: health.nativeSubmissions.length ? "Voir les donnees" : "Tester Firebase"
         })}
       </div>
     </section>
@@ -2442,6 +2443,10 @@ function openDataHealthAction(action) {
     state.filters = { search: "", role: "all", cycle: "all", status: "all" };
     ensureSelection();
     renderApp();
+    return;
+  }
+  if (action === "firebase-form") {
+    window.open("./formulaire.html", "_blank", "noopener,noreferrer");
   }
 }
 
@@ -4762,9 +4767,11 @@ function memberForSubmission(submission) {
     if (byEmail) return byEmail;
   }
   const names = [submission.employeeName, submission.answers?.employee_name, explicitId].map(slug).filter(Boolean);
+  const nameKeys = [submission.employeeName, submission.answers?.employee_name].map(personNameKey).filter(Boolean);
   return state.teamMembers.find((member) => {
     const aliases = [member.id, member.normalizedName, member.name, ...(member.aliases || [])].map(slug).filter(Boolean);
-    return names.some((name) => aliases.includes(name));
+    const aliasNameKeys = [member.name, member.normalizedName, ...(member.aliases || [])].map(personNameKey).filter(Boolean);
+    return names.some((name) => aliases.includes(name)) || nameKeys.some((name) => aliasNameKeys.includes(name));
   }) || null;
 }
 

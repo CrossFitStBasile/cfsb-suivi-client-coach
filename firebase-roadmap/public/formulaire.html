@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="fr-CA">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <meta name="theme-color" content="#f3f1ec">
+    <link rel="icon" href="data:,">
+    <title>Roadmap trimestrielle CFSB</title>
+    <link rel="stylesheet" href="./formulaire.css?v=20260716-firebase-pilot">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <strong>CrossFit St-Basile</strong>
+          <span>Roadmap trimestrielle</span>
+        </div>
+        <div class="top-actions firebase-auth-actions">
+          <span class="firebase-mode-badge">Pilote Firebase</span>
+          <span class="firebase-auth-state" id="authState" aria-live="polite">Connexion...</span>
+          <button class="button secondary" id="authButton" type="button">Se connecter</button>
+        </div>
+      </header>
+
+      <main class="container">
+        <section class="hero">
+          <div>
+            <span class="firebase-eyebrow" id="cycleLabel">Roadmap</span>
+            <h1>Preparer une conversation utile.</h1>
+            <p>
+              Choisis le role que tu portes actuellement a CFSB. Le formulaire s'adapte a tes responsabilites,
+              puis ouvre une courte section exploratoire si tu veux discuter d'une trajectoire future.
+            </p>
+          </div>
+          <aside class="status-panel" aria-live="polite">
+            <h2>Progression</h2>
+            <ul class="progress-list">
+              <li><span class="dot" id="roleDot">1</span><span>Role actuel</span></li>
+              <li><span class="dot" id="formDot">2</span><span>Questions adaptees</span></li>
+              <li><span class="dot" id="submitDot">3</span><span>Soumission</span></li>
+            </ul>
+            <p class="firebase-cloud-state" id="cloudState">Brouillon conserve sur cet appareil.</p>
+          </aside>
+        </section>
+
+        <section class="org-map" aria-labelledby="orgMapTitle">
+          <div class="org-intro">
+            <span>Charte organisationnelle</span>
+            <h2 id="orgMapTitle">Un centre, plusieurs roles qui se completent.</h2>
+            <p>
+              Avant de choisir ton role, prends un instant pour situer comment l'equipe fonctionne:
+              vision, operations, coaching, communaute et support se tiennent ensemble.
+            </p>
+          </div>
+          <div class="org-grid" id="orgGrid" aria-live="polite"></div>
+        </section>
+
+        <section class="layout">
+          <aside class="sidebar">
+            <div class="panel">
+              <h2>Role actuel</h2>
+              <p>Selectionne ce que tu portes aujourd'hui. Si c'est hybride, tu pourras le preciser dans le formulaire.</p>
+              <div class="role-list" id="roleList"></div>
+            </div>
+            <div class="notice">
+              Le role choisi sert a adapter l'evaluation. Une aspiration future sert seulement a ouvrir une conversation.
+            </div>
+          </aside>
+
+          <form class="form-area" id="roadmapForm">
+            <div class="notice" id="formNotice" role="status" aria-live="polite">
+              Choisis un role pour generer le formulaire.
+            </div>
+            <div id="roleResources"></div>
+            <div id="sections"></div>
+            <div class="actions" id="formActions" hidden>
+              <span class="draft-status" id="draftStatus" aria-live="polite"></span>
+              <button class="button secondary" id="saveDraftButton" type="button">Sauvegarder le brouillon</button>
+              <button class="button" id="submitButton" type="submit">Soumettre</button>
+            </div>
+          </form>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="./formulaire.js?v=20260716-firebase-pilot"></script>
+  </body>
+</html>

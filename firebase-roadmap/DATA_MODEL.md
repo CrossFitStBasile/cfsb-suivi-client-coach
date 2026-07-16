@@ -45,7 +45,7 @@ Exemple: `2026-Q2`.
 
 ## `roadmapDrafts/{draftId}`
 
-Brouillon modifiable par son auteur anonyme ou par un owner.
+Brouillon modifiable par son auteur Google autorise ou par un owner. L'identifiant est deterministe par compte et par cycle afin de permettre la reprise interappareils et d'eviter les doublons.
 
 - `authorUid`
 - `clientSubmissionId`

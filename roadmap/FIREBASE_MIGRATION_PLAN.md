@@ -60,6 +60,7 @@ Creer une application Roadmap interactive et fiable dans un projet Firebase dist
 - Les dossiers membres integrent maintenant des rencontres 1:1 privees: brouillon automatique, canevas mensuel CFSB, note finalisee immutable et historique complet.
 - Le document Roadmap Drive demeure externe et est accessible par un lien prive configure dans le dossier owner.
 - Le Laboratoire revenus est porte dans Firebase comme outil owner, avec scenarios persistants par coach, sans retirer l'ancien prototype.
+- Un formulaire employe Firebase parallele reprend la configuration officielle sans modifier le lien de production. Il combine brouillon local, brouillon Firestore interappareils, connexion Google autorisee et soumission idempotente visible en temps reel.
 
 ## 5. Decisions Made
 
@@ -171,7 +172,7 @@ Completion criteria: portail utile sans dependance forte entre les deux bases Fi
 | Regles Firestore initiales | Code | Codex | Deployees | `firebase-roadmap/firestore.rules` |
 | Lot d'importation local | Outil | Codex | Prepare et importe | `firebase-roadmap/scripts/build-import-bundle.mjs` |
 | Dashboard Equipe Firebase | Application | Codex | Deploye pour recette | `https://cfsb-roadmap-trimestrielle.web.app` |
-| Formulaire employe Firebase | Application | Codex | A faire | - |
+| Formulaire employe Firebase | Application | Codex | Prototype parallele prepare | `https://cfsb-roadmap-trimestrielle.web.app/formulaire` |
 | Recette | Validation | Michael et Gabriel | A faire | - |
 
 ## 8. Owners
@@ -188,7 +189,7 @@ Completion criteria: portail utile sans dependance forte entre les deux bases Fi
 | Risk or unknown | Impact | Mitigation |
 | --- | --- | --- |
 | Les archives et notes owners ne sont pas toutes dans la copie GitHub | Import incomplet | Ajouter un export complet Apps Script avant l'import final |
-| Le formulaire est accessible sans compte obligatoire | Reprise interappareils plus complexe | Auth anonyme pour le brouillon, puis fonction securisee pour les liens de reprise |
+| Le formulaire officiel est accessible sans compte obligatoire | Une connexion ajoute une etape au futur parcours Firebase | Brouillon local avant connexion, puis Google Auth limite aux membres actifs, invitations valides et owners pendant le pilote |
 | Le webhook Google Chat est un secret | Il ne peut pas etre place dans le navigateur | Secret Manager + Cloud Function apres approbation Blaze |
 | Des changements de formulaire surviennent pendant la migration | Archives incoherentes | Versionner la configuration et stocker son snapshot avec chaque soumission |
 | Double import ou double soumission | Doublons | Identifiants deterministes et ecritures idempotentes |
@@ -216,3 +217,4 @@ Completion criteria: portail utile sans dependance forte entre les deux bases Fi
 | 2026-07-13 | Ajout du Parcours CFSB interactif dans les dossiers membres: etapes, progression, notes datees et lien avec les roadmaps | Codex | Valider le parcours sur un dossier pilote avant de le generaliser a toute l'equipe |
 | 2026-07-13 | Refonte du prototype owners en Dashboard Equipe: file d'actions, dossiers membres, roadmaps a traiter, rencontres faites et taches manuelles | Codex | Michael et Gabriel valident l'usage quotidien avant la Phase 2 du formulaire employe |
 | 2026-07-13 | Ajout des rencontres 1:1 privees, des liens Drive externes et des projections de revenus persistantes par coach | Codex | Tester le module sur quelques dossiers, puis ajouter progressivement les liens Drive valides |
+| 2026-07-15 | Prototype du formulaire employe Firebase prepare en parallele: configuration identique, reprise interappareils et anti-doublon | Codex | Tester les 8 roles dans un cycle pilote avant toute bascule du lien officiel |
