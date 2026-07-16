@@ -125,3 +125,17 @@ test("development collections stay owner-only and separate from the coach dashbo
   assert.match(teamSource, /\["localhost", "127\.0\.0\.1", "::1"\]\.includes\(window\.location\.hostname\) && URL_PARAMS\.get\("preview"\) === "development"/);
   assert.match(teamSource, /if \(state\.previewMode\) return showToast\("Apercu local: aucune progression n'est ecrite\."\)/);
 });
+
+test("development program drafts use versioned transactions and keep long local edits on conflict", async () => {
+  const teamSource = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+  assert.match(teamSource, /developmentProgramEditorVersion: ""/);
+  assert.match(teamSource, /developmentProgramEditorHadDocument: false/);
+  assert.match(teamSource, /hasVersionConflict\(current, state\.developmentProgramEditorVersion\)/);
+  assert.match(teamSource, /development-program-locked/);
+  assert.match(teamSource, /data-resolve-development-program-conflict="reload"/);
+  assert.match(teamSource, /data-resolve-development-program-conflict="overwrite"/);
+  assert.match(teamSource, /Ton brouillon local est conserve/);
+  assert.match(teamSource, /const deleted = isExisting && !error\.current/);
+  assert.match(teamSource, /state\.developmentPrograms = state\.developmentPrograms\.filter/);
+  assert.match(teamSource, /Recreer avec mon brouillon/);
+});

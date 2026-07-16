@@ -68,3 +68,16 @@ test("Working Genius records stay owner-only and absent from member and coach su
   assert.doesNotMatch(portalSource, /workingGeniusProfiles/);
   assert.doesNotMatch(coachSource, /workingGeniusProfiles/);
 });
+
+test("Working Genius edits preserve the local profile when another owner saves first", async () => {
+  const ownerSource = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+  assert.match(ownerSource, /workingGeniusEditorVersion: ""/);
+  assert.match(ownerSource, /workingGeniusEditorHadProfile: false/);
+  assert.match(ownerSource, /hasVersionConflict\(existing, state\.workingGeniusEditorVersion\)/);
+  assert.match(ownerSource, /state\.workingGeniusConflict = \{ memberId: member\.id, draft: validation\.profile/);
+  assert.match(ownerSource, /data-resolve-working-genius-conflict="reload"/);
+  assert.match(ownerSource, /data-resolve-working-genius-conflict="overwrite"/);
+  assert.match(ownerSource, /const deleted = state\.workingGeniusEditorHadProfile && !error\.current/);
+  assert.match(ownerSource, /delete state\.workingGeniusProfiles\[member\.id\]/);
+  assert.match(ownerSource, /Recreer avec mes changements/);
+});

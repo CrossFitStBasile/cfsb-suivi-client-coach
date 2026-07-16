@@ -279,6 +279,10 @@ const state = {
   selectedDevelopmentAssignmentId: "",
   developmentProgramEditorId: "",
   developmentProgramDraft: null,
+  developmentProgramEditorVersion: "",
+  developmentProgramEditorHadDocument: false,
+  developmentProgramConflict: null,
+  developmentProgramForceSave: false,
   developmentAssignmentEditorOpen: false,
   developmentAssignmentPrefillMemberId: "",
   developmentStepEditorId: "",
@@ -286,6 +290,10 @@ const state = {
   teamRosterView: "active",
   teamWorkspaceView: "directory",
   workingGeniusEditorMemberId: "",
+  workingGeniusEditorVersion: "",
+  workingGeniusEditorHadProfile: false,
+  workingGeniusConflict: null,
+  workingGeniusForceSave: false,
   activitySearch: "",
   activityActor: "all",
   activityEntity: "all",
@@ -805,6 +813,7 @@ function renderDevelopmentProgramEditor() {
         <header class="career-editor-header"><div><p class="eyebrow">Programme versionne</p><h2 id="developmentProgramTitle">${readOnly ? "Consulter le programme" : existing ? "Modifier le brouillon" : "Nouveau programme"}</h2></div><button class="button icon-only" data-close-development-program type="button" aria-label="Fermer"><i data-lucide="x"></i></button></header>
         <div class="career-editor-scroll">
           <form id="developmentProgramForm" class="development-program-form">
+            ${state.developmentProgramConflict ? renderDevelopmentProgramConflictAlert(state.developmentProgramConflict) : ""}
             <input type="hidden" name="programId" value="${escapeAttr(existing?.id || "")}">
             <label class="field">Titre<input name="title" required maxlength="140" value="${escapeAttr(draft.title || "")}" ${readOnly ? "disabled" : ""}></label>
             <label class="field">Type<select name="programType" ${readOnly ? "disabled" : ""}>${DEVELOPMENT_PROGRAM_TYPES.map(([id, label]) => `<option value="${id}" ${draft.programType === id ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label>
@@ -825,6 +834,21 @@ function renderDevelopmentProgramEditor() {
           </form>
         </div>
       </section>
+    </div>
+  `;
+}
+
+function renderDevelopmentProgramConflictAlert(conflict = {}) {
+  const deleted = Boolean(conflict.deleted);
+  const locked = Boolean(conflict.locked || (conflict.current?.status && conflict.current.status !== "draft"));
+  return `
+    <div class="conflict-alert field-wide" role="alert">
+      <i data-lucide="${deleted ? "file-x-2" : locked ? "lock-keyhole" : "git-merge"}"></i>
+      <div><strong>${deleted ? "Ce brouillon a ete supprime" : locked ? "Cette version vient d'etre publiee" : "Une version plus recente existe"}</strong><p>${deleted ? "Le brouillon a ete supprime pendant ton edition. Ta copie locale reste disponible et peut etre recreee explicitement." : locked ? "Le brouillon local reste visible, mais une version publiee ne peut plus etre remplacee. Charge la version publiee, puis cree une nouvelle version pour poursuivre." : `${escapeHtml(conflict.current?.updatedByName || "L'autre owner")} a modifie ce programme pendant ton edition. Ton brouillon local est conserve jusqu'a ce que tu choisisses la version a garder.`}</p></div>
+      <div class="conflict-actions">
+        <button class="button" data-resolve-development-program-conflict="reload" type="button">${deleted ? "Fermer ce brouillon" : locked ? "Charger la version publiee" : "Utiliser la version recente"}</button>
+        ${locked ? "" : `<button class="button primary" data-resolve-development-program-conflict="overwrite" type="button">${deleted ? "Recreer avec mon brouillon" : "Garder mon brouillon"}</button>`}
+      </div>
     </div>
   `;
 }
@@ -2299,7 +2323,7 @@ function renderMemberWorkingGenius(member, profile = null) {
 function renderWorkingGeniusEditor() {
   const member = state.teamMembers.find((item) => item.id === state.workingGeniusEditorMemberId);
   if (!member) return "";
-  const profile = state.workingGeniusProfiles[member.id] || null;
+  const profile = state.workingGeniusConflict?.memberId === member.id ? state.workingGeniusConflict.draft : state.workingGeniusProfiles[member.id] || null;
   const status = workingGeniusProfileStatus(profile || {});
   return `
     <div class="career-modal" role="dialog" aria-modal="true" aria-labelledby="workingGeniusEditorTitle">
@@ -2308,6 +2332,7 @@ function renderWorkingGeniusEditor() {
         <header class="career-editor-header"><div><p class="eyebrow">${escapeHtml(member.name)}</p><h2 id="workingGeniusEditorTitle">Resultats Working Genius</h2></div><button class="button icon-only" data-close-working-genius type="button" aria-label="Fermer"><i data-lucide="x"></i></button></header>
         <div class="career-editor-scroll">
           <form id="workingGeniusForm" class="working-genius-form">
+            ${state.workingGeniusConflict?.memberId === member.id ? renderWorkingGeniusConflictAlert(state.workingGeniusConflict) : ""}
             <div class="working-genius-editor-status"><span class="working-genius-profile-status ${status}">${status === "complete" ? "6 resultats classes" : status === "partial" ? "Profil partiel" : "Nouveau profil"}</span><small>Import du rapport officiel</small></div>
             <section class="working-genius-classification">
               ${WORKING_GENIUS_TYPES.map((type) => {
@@ -2329,6 +2354,21 @@ function renderWorkingGeniusEditor() {
           </form>
         </div>
       </section>
+    </div>
+  `;
+}
+
+function renderWorkingGeniusConflictAlert(conflict = {}) {
+  const deleted = Boolean(conflict.deleted);
+  const current = conflict.current || {};
+  return `
+    <div class="conflict-alert" role="alert">
+      <i data-lucide="${deleted ? "file-x-2" : "git-merge"}"></i>
+      <div><strong>${deleted ? "Ce profil a ete supprime" : "Une version plus recente existe"}</strong><p>${deleted ? "Le profil a ete supprime pendant ton edition. Tes classifications et tes notes locales restent disponibles et peuvent etre recreees explicitement." : `${escapeHtml(current.updatedByName || "L'autre owner")} a modifie ce profil pendant ton edition. Tes classifications et tes notes locales sont conservees ici.`}</p></div>
+      <div class="conflict-actions">
+        <button class="button" data-resolve-working-genius-conflict="reload" type="button">${deleted ? "Fermer ce profil" : "Utiliser la version recente"}</button>
+        <button class="button primary" data-resolve-working-genius-conflict="overwrite" type="button">${deleted ? "Recreer avec mes changements" : "Garder mes changements"}</button>
+      </div>
     </div>
   `;
 }
@@ -2935,6 +2975,7 @@ function bindAppEvents() {
   document.querySelector("#newDevelopmentProgram")?.addEventListener("click", () => openDevelopmentProgramEditor("__new__"));
   document.querySelector("#emptyNewDevelopmentProgram")?.addEventListener("click", () => openDevelopmentProgramEditor("__new__"));
   document.querySelector("#developmentProgramForm")?.addEventListener("submit", saveDevelopmentProgram);
+  document.querySelectorAll("[data-resolve-development-program-conflict]").forEach((button) => button.addEventListener("click", () => resolveDevelopmentProgramConflict(button.dataset.resolveDevelopmentProgramConflict)));
   document.querySelector("#addDevelopmentProgramStep")?.addEventListener("click", addDevelopmentProgramStep);
   document.querySelectorAll("[data-remove-development-step]").forEach((button) => button.addEventListener("click", () => removeDevelopmentProgramStep(Number(button.dataset.removeDevelopmentStep))));
   document.querySelectorAll("[data-move-development-step]").forEach((button) => button.addEventListener("click", () => moveDevelopmentProgramStep(Number(button.dataset.stepIndex), button.dataset.moveDevelopmentStep)));
@@ -3167,6 +3208,7 @@ function bindAppEvents() {
   document.querySelectorAll("[data-edit-working-genius]").forEach((button) => button.addEventListener("click", () => openWorkingGeniusEditor(button.dataset.editWorkingGenius)));
   document.querySelectorAll("[data-close-working-genius]").forEach((button) => button.addEventListener("click", () => closeWorkingGeniusEditor()));
   document.querySelector("#workingGeniusForm")?.addEventListener("submit", saveWorkingGeniusProfile);
+  document.querySelectorAll("[data-resolve-working-genius-conflict]").forEach((button) => button.addEventListener("click", () => resolveWorkingGeniusConflict(button.dataset.resolveWorkingGeniusConflict)));
   document.querySelector("#deleteWorkingGeniusProfile")?.addEventListener("click", deleteWorkingGeniusProfile);
   document.querySelector("#teamSearchInput")?.addEventListener("input", (event) => {
     state.teamSearch = event.target.value;
@@ -4391,6 +4433,10 @@ function openDevelopmentProgramEditor(programId) {
   const program = programId === "__new__" ? null : state.developmentPrograms.find((item) => item.id === programId) || null;
   state.developmentProgramEditorId = program?.id || "__new__";
   state.developmentProgramDraft = developmentProgramDraftFrom(program);
+  state.developmentProgramEditorVersion = entityVersionToken(program);
+  state.developmentProgramEditorHadDocument = Boolean(program);
+  state.developmentProgramConflict = null;
+  state.developmentProgramForceSave = false;
   renderApp();
 }
 
@@ -4399,12 +4445,20 @@ function openDevelopmentProgramVersion(programId) {
   if (!program || program.status !== "published") return;
   state.developmentProgramEditorId = "__new__";
   state.developmentProgramDraft = developmentProgramDraftFrom(program, true);
+  state.developmentProgramEditorVersion = "";
+  state.developmentProgramEditorHadDocument = false;
+  state.developmentProgramConflict = null;
+  state.developmentProgramForceSave = false;
   renderApp();
 }
 
 function closeDevelopmentProgramEditor(shouldRender = true) {
   state.developmentProgramEditorId = "";
   state.developmentProgramDraft = null;
+  state.developmentProgramEditorVersion = "";
+  state.developmentProgramEditorHadDocument = false;
+  state.developmentProgramConflict = null;
+  state.developmentProgramForceSave = false;
   if (shouldRender) renderApp();
 }
 
@@ -4463,52 +4517,108 @@ async function saveDevelopmentProgram(event) {
   const validation = validateDevelopmentProgram(state.developmentProgramDraft);
   if (!validation.valid) return showToast(validation.errors[0]);
   const intent = event.submitter?.value === "publish" ? "publish" : "draft";
-  const existing = state.developmentPrograms.find((program) => program.id === state.developmentProgramEditorId) || null;
-  if (existing && existing.status !== "draft") return showToast("Une version publiee ne peut pas etre modifiee.");
+  const isExisting = state.developmentProgramEditorId !== "__new__";
   state.busy = true;
   try {
-    const programRef = existing ? doc(db, "developmentPrograms", existing.id) : doc(collection(db, "developmentPrograms"));
-    const payload = {
-      familyId: state.developmentProgramDraft.familyId,
-      title: state.developmentProgramDraft.title.trim(),
-      description: state.developmentProgramDraft.description.trim(),
-      programType: state.developmentProgramDraft.programType,
-      ownerName: state.developmentProgramDraft.ownerName,
-      roleIds: state.developmentProgramDraft.roleIds,
-      version: Number(state.developmentProgramDraft.version || 1),
-      status: intent === "publish" ? "published" : "draft",
-      sourceProgramId: state.developmentProgramDraft.sourceProgramId || null,
-      steps: validation.steps,
-      updatedAt: serverTimestamp(),
-      updatedByUid: state.user.uid,
-      updatedByName: actorName()
-    };
-    if (!existing) {
-      payload.createdAt = serverTimestamp();
-      payload.createdByUid = state.user.uid;
-      payload.createdByName = actorName();
-    }
-    if (intent === "publish") {
-      payload.publishedAt = serverTimestamp();
-      payload.publishedByUid = state.user.uid;
-      payload.publishedByName = actorName();
-    }
-    const batch = writeBatch(db);
-    batch.set(programRef, payload, { merge: Boolean(existing) });
-    if (intent === "publish") {
-      state.developmentPrograms.filter((program) => program.id !== programRef.id && program.familyId === payload.familyId && program.status === "published").forEach((program) => {
-        batch.update(doc(db, "developmentPrograms", program.id), { status: "superseded", supersededAt: serverTimestamp(), updatedAt: serverTimestamp(), updatedByUid: state.user.uid, updatedByName: actorName() });
-      });
-    }
-    batch.set(doc(collection(db, "auditLogs")), auditPayload(intent === "publish" ? "development_program_published" : existing ? "development_program_updated" : "development_program_created", programRef.id, { title: payload.title, version: payload.version, programType: payload.programType }));
-    await batch.commit();
+    const programRef = isExisting ? doc(db, "developmentPrograms", state.developmentProgramEditorId) : doc(collection(db, "developmentPrograms"));
+    const auditRef = doc(collection(db, "auditLogs"));
+    await runTransaction(db, async (transaction) => {
+      const snapshot = isExisting ? await transaction.get(programRef) : null;
+      const current = snapshot?.exists() ? snapshot.data() : null;
+      const existenceChanged = isExisting && state.developmentProgramEditorHadDocument !== Boolean(current);
+      if (current && current.status !== "draft") {
+        const error = versionConflictError(current);
+        error.code = "development-program-locked";
+        throw error;
+      }
+      if (!state.developmentProgramForceSave && (existenceChanged || (current && hasVersionConflict(current, state.developmentProgramEditorVersion)))) {
+        throw versionConflictError(current);
+      }
+      const payload = {
+        familyId: state.developmentProgramDraft.familyId,
+        title: state.developmentProgramDraft.title.trim(),
+        description: state.developmentProgramDraft.description.trim(),
+        programType: state.developmentProgramDraft.programType,
+        ownerName: state.developmentProgramDraft.ownerName,
+        roleIds: state.developmentProgramDraft.roleIds,
+        version: Number(state.developmentProgramDraft.version || 1),
+        status: intent === "publish" ? "published" : "draft",
+        sourceProgramId: state.developmentProgramDraft.sourceProgramId || null,
+        steps: validation.steps,
+        updatedAt: serverTimestamp(),
+        updatedByUid: state.user.uid,
+        updatedByName: actorName()
+      };
+      if (!current) {
+        payload.createdAt = serverTimestamp();
+        payload.createdByUid = state.user.uid;
+        payload.createdByName = actorName();
+      }
+      if (intent === "publish") {
+        payload.publishedAt = serverTimestamp();
+        payload.publishedByUid = state.user.uid;
+        payload.publishedByName = actorName();
+      }
+      transaction.set(programRef, payload, { merge: Boolean(current) });
+      if (intent === "publish") {
+        state.developmentPrograms.filter((program) => program.id !== programRef.id && program.familyId === payload.familyId && program.status === "published").forEach((program) => {
+          transaction.update(doc(db, "developmentPrograms", program.id), { status: "superseded", supersededAt: serverTimestamp(), updatedAt: serverTimestamp(), updatedByUid: state.user.uid, updatedByName: actorName() });
+        });
+      }
+      transaction.set(auditRef, auditPayload(intent === "publish" ? "development_program_published" : current ? "development_program_updated" : "development_program_created", programRef.id, { title: payload.title, version: payload.version, programType: payload.programType }));
+    });
     closeDevelopmentProgramEditor(false);
     showToast(intent === "publish" ? "Programme publie et pret a etre assigne." : "Brouillon du programme sauvegarde.");
     renderApp();
   } catch (error) {
-    showToast(`Programme non enregistre: ${friendlyError(error)}`);
+    if (["version-conflict", "development-program-locked"].includes(error.code)) {
+      const current = error.current ? { id: state.developmentProgramEditorId, ...error.current } : null;
+      if (current) {
+        const index = state.developmentPrograms.findIndex((program) => program.id === current.id);
+        if (index >= 0) state.developmentPrograms[index] = current;
+        else state.developmentPrograms.push(current);
+      }
+      const deleted = isExisting && !error.current;
+      if (deleted) state.developmentPrograms = state.developmentPrograms.filter((program) => program.id !== state.developmentProgramEditorId);
+      state.developmentProgramConflict = { current: error.current || {}, intent, locked: error.code === "development-program-locked", deleted };
+      state.developmentProgramEditorVersion = entityVersionToken(error.current);
+      state.developmentProgramEditorHadDocument = Boolean(error.current);
+      state.developmentProgramForceSave = false;
+      renderApp();
+    } else {
+      showToast(`Programme non enregistre: ${friendlyError(error)}`);
+    }
   } finally {
     state.busy = false;
+  }
+}
+
+function resolveDevelopmentProgramConflict(choice) {
+  if (!state.developmentProgramConflict) return;
+  if (choice === "reload") {
+    if (state.developmentProgramConflict.deleted) {
+      closeDevelopmentProgramEditor(false);
+      showToast("Le brouillon supprime a ete ferme.");
+      renderApp();
+      return;
+    }
+    const current = state.developmentPrograms.find((program) => program.id === state.developmentProgramEditorId) || null;
+    state.developmentProgramDraft = developmentProgramDraftFrom(current);
+    state.developmentProgramEditorVersion = entityVersionToken(current);
+    state.developmentProgramEditorHadDocument = Boolean(current);
+    state.developmentProgramConflict = null;
+    state.developmentProgramForceSave = false;
+    showToast("Version recente chargee.");
+    renderApp();
+    return;
+  }
+  if (choice === "overwrite" && !state.developmentProgramConflict.locked) {
+    const intent = state.developmentProgramConflict.intent || "draft";
+    state.developmentProgramForceSave = true;
+    const submitter = document.querySelector(`#developmentProgramForm [name="intent"][value="${intent}"]`);
+    const form = document.querySelector("#developmentProgramForm");
+    if (submitter) form?.requestSubmit(submitter);
+    else form?.requestSubmit();
   }
 }
 
@@ -4719,11 +4829,20 @@ function openDevelopmentAssignment(assignmentId) {
 function openWorkingGeniusEditor(memberId) {
   if (!state.teamMembers.some((member) => member.id === memberId)) return;
   state.workingGeniusEditorMemberId = memberId;
+  const profile = state.workingGeniusProfiles[memberId] || null;
+  state.workingGeniusEditorVersion = entityVersionToken(profile);
+  state.workingGeniusEditorHadProfile = Boolean(profile);
+  state.workingGeniusConflict = null;
+  state.workingGeniusForceSave = false;
   renderApp();
 }
 
 function closeWorkingGeniusEditor(shouldRender = true) {
   state.workingGeniusEditorMemberId = "";
+  state.workingGeniusEditorVersion = "";
+  state.workingGeniusEditorHadProfile = false;
+  state.workingGeniusConflict = null;
+  state.workingGeniusForceSave = false;
   if (shouldRender) renderApp();
 }
 
@@ -4749,32 +4868,74 @@ async function saveWorkingGeniusProfile(event) {
   if (!validation.valid) return showToast(validation.errors[0]);
   state.busy = true;
   try {
-    const existing = state.workingGeniusProfiles[member.id] || null;
     const reference = doc(db, "workingGeniusProfiles", member.id);
-    const payload = {
-      ...validation.profile,
-      reportUrl: validation.profile.reportUrl ? normalizeExternalUrl(validation.profile.reportUrl) : "",
-      status: validation.status,
-      updatedAt: serverTimestamp(),
-      updatedByUid: state.user.uid,
-      updatedByName: actorName()
-    };
-    if (!existing) {
-      payload.createdAt = serverTimestamp();
-      payload.createdByUid = state.user.uid;
-      payload.createdByName = actorName();
-    }
-    const batch = writeBatch(db);
-    batch.set(reference, payload, { merge: true });
-    batch.set(doc(collection(db, "auditLogs")), auditPayload(existing ? "working_genius_profile_updated" : "working_genius_profile_created", member.id, { teamMemberId: member.id, teamMemberName: member.name, status: validation.status }));
-    await batch.commit();
+    const auditReference = doc(collection(db, "auditLogs"));
+    await runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(reference);
+      const existing = snapshot.exists() ? snapshot.data() : null;
+      const existenceChanged = state.workingGeniusEditorHadProfile !== snapshot.exists();
+      if (!state.workingGeniusForceSave && (existenceChanged || (existing && hasVersionConflict(existing, state.workingGeniusEditorVersion)))) {
+        throw versionConflictError(existing);
+      }
+      const payload = {
+        ...validation.profile,
+        reportUrl: validation.profile.reportUrl ? normalizeExternalUrl(validation.profile.reportUrl) : "",
+        status: validation.status,
+        updatedAt: serverTimestamp(),
+        updatedByUid: state.user.uid,
+        updatedByName: actorName()
+      };
+      if (!existing) {
+        payload.createdAt = serverTimestamp();
+        payload.createdByUid = state.user.uid;
+        payload.createdByName = actorName();
+      }
+      transaction.set(reference, payload, { merge: Boolean(existing) });
+      transaction.set(auditReference, auditPayload(existing ? "working_genius_profile_updated" : "working_genius_profile_created", member.id, { teamMemberId: member.id, teamMemberName: member.name, status: validation.status }));
+    });
     closeWorkingGeniusEditor(false);
     showToast(validation.status === "complete" ? "Profil Working Genius complet." : "Profil Working Genius partiel enregistre.");
     renderApp();
   } catch (error) {
-    showToast(`Profil non enregistre: ${friendlyError(error)}`);
+    if (error.code === "version-conflict") {
+      const deleted = state.workingGeniusEditorHadProfile && !error.current;
+      if (error.current) state.workingGeniusProfiles[member.id] = { teamMemberId: member.id, ...error.current };
+      else delete state.workingGeniusProfiles[member.id];
+      state.workingGeniusConflict = { memberId: member.id, draft: validation.profile, current: error.current || {}, deleted };
+      state.workingGeniusEditorVersion = entityVersionToken(error.current);
+      state.workingGeniusEditorHadProfile = Boolean(error.current);
+      state.workingGeniusForceSave = false;
+      renderApp();
+    } else {
+      showToast(`Profil non enregistre: ${friendlyError(error)}`);
+    }
   } finally {
     state.busy = false;
+  }
+}
+
+function resolveWorkingGeniusConflict(choice) {
+  const memberId = state.workingGeniusEditorMemberId;
+  if (!memberId || !state.workingGeniusConflict) return;
+  if (choice === "reload") {
+    if (state.workingGeniusConflict.deleted) {
+      closeWorkingGeniusEditor(false);
+      showToast("Le profil supprime a ete ferme.");
+      renderApp();
+      return;
+    }
+    const current = state.workingGeniusProfiles[memberId] || null;
+    state.workingGeniusEditorVersion = entityVersionToken(current);
+    state.workingGeniusEditorHadProfile = Boolean(current);
+    state.workingGeniusConflict = null;
+    state.workingGeniusForceSave = false;
+    showToast("Version recente chargee.");
+    renderApp();
+    return;
+  }
+  if (choice === "overwrite") {
+    state.workingGeniusForceSave = true;
+    document.querySelector("#workingGeniusForm")?.requestSubmit();
   }
 }
 
