@@ -185,6 +185,26 @@ service cloud.firestore {
       allow read, create, update, delete: if isOwner();
     }
 
+    match /pilotageMetrics/{metricId} {
+      allow read, create, update, delete: if isOwner();
+    }
+
+    match /pilotageMetricEntries/{entryId} {
+      allow read, create, update, delete: if isOwner();
+    }
+
+    match /pilotageRocks/{rockId} {
+      allow read, create, update, delete: if isOwner();
+    }
+
+    match /pilotageIssues/{issueId} {
+      allow read, create, update, delete: if isOwner();
+    }
+
+    match /pilotageMeetings/{meetingId} {
+      allow read, create, update, delete: if isOwner();
+    }
+
     match /revenueScenarios/{scenarioId} {
       allow read: if isOwner() || (
         ownsTeamMember(resource.data.teamMemberId)

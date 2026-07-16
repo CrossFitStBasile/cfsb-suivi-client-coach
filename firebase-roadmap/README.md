@@ -19,6 +19,9 @@ Le Dashboard Equipe est deploye sur Firebase Hosting avec connexion Google owner
 
 ## Fonctions du Dashboard Equipe
 
+- zone `Pilotage` privee pour Michael et Gabriel avec reunion hebdomadaire, scorecard, priorites 90 jours et liste d'enjeux;
+- conversion d'un indicateur hors cible ou d'une priorite a risque en enjeu, puis d'un enjeu en action dans la liste `A faire` existante;
+- brouillons et historique des rencontres hebdomadaires, sans melanger ces rituels avec les rencontres 1:1 des membres;
 - vue `A faire` inspiree du Dashboard Coach, avec actions de Michael et Gabriel;
 - actions automatiquement projetees depuis les roadmaps a traiter et les etapes de carriere bloquees ou proches de leur echeance;
 - actions manuelles avec membre, responsable et priorite, sans imposer un calendrier dans le dashboard;

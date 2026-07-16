@@ -328,7 +328,8 @@ Action de gestion creee manuellement par Michael ou Gabriel. Les actions directe
 - `status`: `open`, `completed` ou `cancelled`
 - `dueDate`: facultatif et conserve surtout pour les anciennes actions
 - `taskKind`: `general`, `meeting`, `followup` ou `development`
-- `sourceType`: `manual`
+- `sourceType`: `manual`, `pilotage` ou `pilotage_issue` pour les actions persistees
+- `sourceId`: enjeu de pilotage d'origine, si applicable
 - `createdAt`
 - `createdByUid`
 - `createdByName`
@@ -343,6 +344,80 @@ Action de gestion creee manuellement par Michael ou Gabriel. Les actions directe
 - `cancelledByName`
 
 Les actions `completed` et `cancelled` quittent la liste ouverte, mais restent consultables dans l'historique du membre. Une reouverture remet le statut a `open` et efface les dates de fin ou d'annulation.
+
+## Zone Pilotage owner
+
+Les cinq collections suivantes sont reservees aux comptes `owner` et `admin`. Elles ne sont jamais lues par le portail membre ni par le Dashboard Coach.
+
+### `pilotageMetrics/{metricId}`
+
+- `name`
+- `category`
+- `ownerName`
+- `targetDirection`: `gte`, `lte`, `range` ou `exact`
+- `targetValue`
+- `targetMax`: requis seulement pour `range`
+- `unit`
+- `sortOrder`
+- `active`
+- metadonnees de creation et de mise a jour
+
+### `pilotageMetricEntries/{metricId_weekStart}`
+
+- `metricId`
+- `metricName`: libelle historique au moment de la saisie
+- `weekStart`: lundi au format `YYYY-MM-DD`
+- `value`
+- `note`
+- metadonnees de mise a jour
+
+L'identifiant deterministe rend la sauvegarde hebdomadaire idempotente: une nouvelle saisie corrige la meme semaine au lieu de creer un doublon.
+
+### `pilotageRocks/{rockId}`
+
+- `title`
+- `quarter`: format `YYYY-QN`
+- `ownerName`
+- `status`: `on_track`, `off_track` ou `done`
+- `progress`: nombre de 0 a 100
+- `dueDate`: facultatif
+- `successCriteria`
+- `notes`
+- `archivedAt`: reserve pour une phase ulterieure
+- metadonnees de creation et de mise a jour
+
+### `pilotageIssues/{issueId}`
+
+- `title`
+- `details`
+- `priority`: `P1`, `P2` ou `P3`
+- `ownerName`
+- `status`: `open` ou `solved`
+- `resolution`
+- `sourceType`: `manual`, `metric` ou `rock`
+- `sourceId`, `sourceWeek` et `sourceLabel`: contexte facultatif de la source
+- `linkedTaskId`: action `managementTasks` creee depuis l'enjeu
+- `solvedAt`, `solvedByUid`, `solvedByName`
+- metadonnees de creation et de mise a jour
+
+### `pilotageMeetings/{weekStart}`
+
+- `weekStart`: lundi de la semaine et identifiant du document
+- `quarter`
+- `attendees`: Michael et Gabriel dans la phase 1
+- `status`: `draft` ou `finalized`
+- `wins`
+- `headlines`
+- `scorecardNotes`
+- `rocksNotes`
+- `issuesNotes`
+- `conclusion`
+- `nextWeekFocus`
+- `rating`: nombre de 1 a 10, facultatif
+- `snapshot`: compteurs de pilotage au moment de la sauvegarde
+- metadonnees de creation, mise a jour, finalisation et reouverture
+
+La rencontre utilise les donnees en direct de la scorecard, des priorites et des enjeux. Le document conserve les constats et decisions, sans recopier le contenu complet de ces listes.
 
 ## `revenueScenarios/{scenarioId}`
 

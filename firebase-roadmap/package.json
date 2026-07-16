@@ -8,6 +8,6 @@
     "import:apply": "node scripts/import-bundle-to-firestore.mjs --apply",
     "test": "node --test tests/*.test.mjs",
     "test:live": "node tests/live-smoke.mjs",
-    "check": "node --check public/app.js && node --check public/portal.js && node --check public/revenue.js && node --check public/workflow.js && node --check ../firebase-dashboard/public/app.js && node --check scripts/build-import-bundle.mjs && node --check scripts/import-bundle-to-firestore.mjs && node --test tests/*.test.mjs"
+    "check": "node --check public/app.js && node --check public/portal.js && node --check public/revenue.js && node --check public/workflow.js && node --check public/pilotage.js && node --check ../firebase-dashboard/public/app.js && node --check scripts/build-import-bundle.mjs && node --check scripts/import-bundle-to-firestore.mjs && node --test tests/*.test.mjs"
   }
 }

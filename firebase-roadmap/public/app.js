@@ -35,6 +35,16 @@ import {
   submissionBucket,
   teamMemberBucket
 } from "./workflow.js";
+import {
+  metricStatus,
+  pilotageSummary,
+  quarterId,
+  shiftQuarterId,
+  shiftWeekIso,
+  sortPilotageIssues,
+  startOfWeekIso,
+  targetLabel
+} from "./pilotage.js";
 
 const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
@@ -74,6 +84,7 @@ const TASK_STATUS_LABELS = {
 const TASK_FILTER_OPTIONS = [
   ["all", "Toutes"],
   ["urgent", "Priorite haute"],
+  ["pilotage", "Pilotage"],
   ["roadmap", "Roadmaps"],
   ["career", "Parcours"],
   ["meeting", "Rencontres 1:1"],
@@ -126,6 +137,24 @@ const COACH_ID_BY_MEMBER = {
   "hugo-lelievre": "15937",
   "raphael-samson": "15936"
 };
+const PILOTAGE_SECTION_OPTIONS = [
+  ["meeting", "Reunion hebdo", "calendar-range"],
+  ["scorecard", "Indicateurs", "chart-no-axes-combined"],
+  ["rocks", "Priorites 90 jours", "flag"],
+  ["issues", "Enjeux", "list-tree"]
+];
+const PILOTAGE_METRIC_DIRECTIONS = [
+  ["gte", "Au moins"],
+  ["lte", "Au plus"],
+  ["range", "Entre deux valeurs"],
+  ["exact", "Valeur exacte"]
+];
+const PILOTAGE_ROCK_STATUSES = [
+  ["on_track", "Sur la bonne voie"],
+  ["off_track", "A risque"],
+  ["done", "Terminee"]
+];
+const PILOTAGE_MEETING_ATTENDEES = ["Michael", "Gabriel"];
 
 const state = {
   user: null,
@@ -143,6 +172,11 @@ const state = {
   teamMeetings: [],
   memberSharedSummaries: [],
   managementTasks: [],
+  pilotageMetrics: [],
+  pilotageMetricEntries: [],
+  pilotageRocks: [],
+  pilotageIssues: [],
+  pilotageMeetings: [],
   auditLogs: [],
   clientErrors: [],
   view: INITIAL_MEMBER_ID ? "team" : "todo",
@@ -170,6 +204,11 @@ const state = {
   showArchivedCareer: false,
   taskFilter: "all",
   taskOwnerFilter: "all",
+  pilotageSection: "meeting",
+  pilotageWeek: startOfWeekIso(),
+  pilotageQuarter: quarterId(),
+  pilotageEditorType: "",
+  pilotageEditorId: "",
   teamSearch: "",
   teamRosterView: "active",
   activitySearch: "",
@@ -334,6 +373,26 @@ function subscribeData() {
     state.managementTasks = snapshot.docs.map(fromDoc).sort(sortManagementTasks);
     renderFromData();
   }, dataError));
+  state.unsubscribers.push(onSnapshot(collection(db, "pilotageMetrics"), (snapshot) => {
+    state.pilotageMetrics = snapshot.docs.map(fromDoc).sort(sortPilotageMetrics);
+    renderFromData();
+  }, dataError));
+  state.unsubscribers.push(onSnapshot(collection(db, "pilotageMetricEntries"), (snapshot) => {
+    state.pilotageMetricEntries = snapshot.docs.map(fromDoc);
+    renderFromData();
+  }, dataError));
+  state.unsubscribers.push(onSnapshot(collection(db, "pilotageRocks"), (snapshot) => {
+    state.pilotageRocks = snapshot.docs.map(fromDoc).sort(sortPilotageRocks);
+    renderFromData();
+  }, dataError));
+  state.unsubscribers.push(onSnapshot(collection(db, "pilotageIssues"), (snapshot) => {
+    state.pilotageIssues = sortPilotageIssues(snapshot.docs.map(fromDoc));
+    renderFromData();
+  }, dataError));
+  state.unsubscribers.push(onSnapshot(collection(db, "pilotageMeetings"), (snapshot) => {
+    state.pilotageMeetings = snapshot.docs.map(fromDoc).sort((a, b) => String(b.weekStart || "").localeCompare(String(a.weekStart || "")));
+    renderFromData();
+  }, dataError));
   state.unsubscribers.push(onSnapshot(query(collection(db, "auditLogs"), orderBy("createdAt", "desc"), limit(250)), (snapshot) => {
     state.auditLogs = snapshot.docs.map(fromDoc);
     renderFromData();
@@ -364,6 +423,7 @@ function renderApp() {
   if (!state.user || !state.profile) return;
   if (state.taskEditorId && !state.managementTasks.some((item) => item.id === state.taskEditorId)) state.taskEditorId = "";
   const viewMeta = {
+    pilotage: ["Roadmap Business CFSB", "Zone Pilotage", "La rencontre hebdomadaire, les indicateurs, les priorites et les enjeux de Michael et Gabriel."],
     todo: ["Pilotage quotidien", "A faire", "Les prochaines actions de Michael et Gabriel, rassemblees au meme endroit."],
     team: ["Dossiers longitudinaux", state.selectedMemberId ? "Dossier membre" : "Equipe", state.selectedMemberId ? "Roadmaps, actions et evolution de carriere dans un seul dossier." : "Une vue claire de chaque membre et de ce qui demande votre attention."],
     roadmaps: ["Rencontres trimestrielles", "Roadmaps", "Traiter les nouvelles reponses, preparer les rencontres et conserver l'historique."],
@@ -387,7 +447,7 @@ function renderApp() {
             <div class="environment-badge">FIREBASE · TEMPS REEL</div>
           </section>
           ${state.loadError ? `<div class="auth-note">${escapeHtml(state.loadError)}</div>` : ""}
-          ${state.view === "todo" ? renderTodoView() : state.view === "team" ? renderTeamView() : state.view === "roadmaps" ? renderRoadmapModule() : renderActivityView()}
+          ${state.view === "pilotage" ? renderPilotageView() : state.view === "todo" ? renderTodoView() : state.view === "team" ? renderTeamView() : state.view === "roadmaps" ? renderRoadmapModule() : renderActivityView()}
         </main>
       </div>
       ${state.careerEditorId ? renderCareerEditor() : ""}
@@ -395,6 +455,7 @@ function renderApp() {
       ${state.roadmapCompletionId ? renderRoadmapCompletionModal() : ""}
       ${state.teamActionMemberId ? renderTeamActionModal() : ""}
       ${state.taskEditorId ? renderTaskEditorModal() : ""}
+      ${state.pilotageEditorType ? renderPilotageEditor() : ""}
     </div>
   `;
   bindAppEvents();
@@ -406,6 +467,7 @@ function renderCommandSidebar() {
   const openTasks = allOpenManagementTasks().length;
   const queueCount = state.submissions.filter((item) => submissionBucket(item) === "queue").length;
   const unresolvedErrors = state.clientErrors.filter((item) => !item.resolvedAt).length;
+  const pilotage = currentPilotageSummary();
   return `
     <aside class="command-sidebar">
       <div class="command-brand">
@@ -413,6 +475,7 @@ function renderCommandSidebar() {
         <div><strong>Dashboard Equipe</strong><span>CrossFit St-Basile</span></div>
       </div>
       <nav class="command-nav" aria-label="Navigation principale">
+        ${commandNavButton("pilotage", "gauge", "Pilotage", pilotage.openIssues + pilotage.offTrackRocks + pilotage.offTrackMetrics)}
         ${commandNavButton("todo", "list-checks", "A faire", openTasks)}
         ${commandNavButton("team", "users-round", "Equipe", state.teamMembers.filter((item) => !isArchivedTeamMember(item)).length)}
         ${commandNavButton("roadmaps", "clipboard-list", "Roadmaps", queueCount)}
@@ -462,6 +525,331 @@ function renderRoadmapModule() {
 
 function roadmapTab(view, label, count, icon = "") {
   return `<button class="tab-button ${state.roadmapView === view ? "active" : ""}" data-roadmap-view="${view}" type="button">${icon ? `<i data-lucide="${icon}"></i>` : ""}${escapeHtml(label)} <span>${count || 0}</span></button>`;
+}
+
+function renderPilotageView() {
+  const summary = currentPilotageSummary();
+  return `
+    <section class="pilotage-summary" aria-label="Etat du pilotage">
+      ${pilotageSummaryCard(summary.offTrackMetrics, "Indicateurs hors cible", "chart-no-axes-combined", summary.offTrackMetrics ? "red" : "green", "scorecard")}
+      ${pilotageSummaryCard(summary.missingMetrics, "Indicateurs a saisir", "circle-help", summary.missingMetrics ? "amber" : "green", "scorecard")}
+      ${pilotageSummaryCard(summary.offTrackRocks, "Priorites a risque", "flag", summary.offTrackRocks ? "red" : "green", "rocks")}
+      ${pilotageSummaryCard(summary.openIssues, "Enjeux ouverts", "list-tree", summary.openIssues ? "blue" : "green", "issues")}
+      ${pilotageSummaryCard(summary.openActions, "Actions de pilotage", "list-checks", "neutral", "todo")}
+    </section>
+    <section class="panel pilotage-shell">
+      <header class="pilotage-toolbar">
+        <nav class="pilotage-tabs" aria-label="Outils de pilotage">
+          ${PILOTAGE_SECTION_OPTIONS.map(([id, label, icon]) => pilotageSectionButton(id, label, icon)).join("")}
+        </nav>
+        <span class="owner-only-badge"><i data-lucide="lock-keyhole"></i> Michael et Gabriel</span>
+      </header>
+      <div class="pilotage-body">
+        ${state.pilotageSection === "scorecard" ? renderPilotageScorecard() : state.pilotageSection === "rocks" ? renderPilotageRocks() : state.pilotageSection === "issues" ? renderPilotageIssues() : renderPilotageMeeting()}
+      </div>
+    </section>
+  `;
+}
+
+function pilotageSummaryCard(value, label, icon, tone, section) {
+  return `
+    <button class="pilotage-summary-card ${tone}" data-pilotage-jump="${section}" type="button">
+      <i data-lucide="${icon}"></i><span><strong>${value || 0}</strong><small>${escapeHtml(label)}</small></span>
+    </button>
+  `;
+}
+
+function pilotageSectionButton(id, label, icon) {
+  const count = id === "scorecard"
+    ? currentPilotageSummary().offTrackMetrics + currentPilotageSummary().missingMetrics
+    : id === "rocks"
+      ? currentPilotageSummary().offTrackRocks
+      : id === "issues"
+        ? currentPilotageSummary().openIssues
+        : 0;
+  return `<button class="pilotage-tab ${state.pilotageSection === id ? "active" : ""}" data-pilotage-section="${id}" type="button"><i data-lucide="${icon}"></i><span>${escapeHtml(label)}</span>${count ? `<strong>${count}</strong>` : ""}</button>`;
+}
+
+function renderPilotageMeeting() {
+  const meeting = selectedPilotageMeeting();
+  const finalized = meeting?.status === "finalized";
+  const disabled = finalized ? "disabled" : "";
+  const metrics = activePilotageMetrics();
+  const entries = pilotageEntriesForWeek();
+  const entryMap = new Map(entries.map((entry) => [entry.metricId, entry]));
+  const rocks = pilotageRocksForQuarter();
+  const issues = openPilotageIssues();
+  return `
+    <header class="pilotage-section-heading">
+      <div><p class="eyebrow">Rituel de gestion</p><h2>Reunion hebdomadaire</h2><p>Une trame commune pour regarder les faits, choisir les priorites et repartir avec des actions claires.</p></div>
+      ${renderPilotageWeekControl()}
+    </header>
+    <form id="pilotageMeetingForm" class="pilotage-meeting-form">
+      <div class="meeting-state-bar ${finalized ? "finalized" : "draft"}">
+        <span><i data-lucide="${finalized ? "badge-check" : "file-pen-line"}"></i>${finalized ? `Finalisee ${formatDate(meeting.finalizedAt)}` : meeting ? "Brouillon en cours" : "Nouvelle semaine"}</span>
+        <small>Participants: ${PILOTAGE_MEETING_ATTENDEES.join(" et ")}</small>
+      </div>
+      ${pilotageMeetingBlock(1, "Ouverture", "Faits saillants, victoires et nouvelles importantes.", `
+        <div class="pilotage-form-grid">
+          <label class="field">Victoires et progres<textarea name="wins" ${disabled} placeholder="Ce qui avance bien cette semaine...">${escapeHtml(meeting?.wins || "")}</textarea></label>
+          <label class="field">Nouvelles et contexte<textarea name="headlines" ${disabled} placeholder="Informations que l'autre owner doit connaitre...">${escapeHtml(meeting?.headlines || "")}</textarea></label>
+        </div>
+      `)}
+      ${pilotageMeetingBlock(2, "Indicateurs", "Les chiffres servent a reperer une discussion, pas a remplacer le jugement.", metrics.length ? `
+        <div class="meeting-review-list">
+          ${metrics.map((metric) => renderPilotageMeetingMetric(metric, entryMap.get(metric.id))).join("")}
+        </div>
+        <label class="field field-wide">Constats sur les indicateurs<textarea name="scorecardNotes" ${disabled} placeholder="Tendances, explications ou questions a revoir...">${escapeHtml(meeting?.scorecardNotes || "")}</textarea></label>
+      ` : renderPilotageEmpty("chart-no-axes-combined", "Aucun indicateur configure", "Ajoutez les premiers indicateurs dans l'onglet Indicateurs."))}
+      ${pilotageMeetingBlock(3, "Priorites 90 jours", "Confirmer ce qui est sur la bonne voie et ce qui demande une decision.", rocks.length ? `
+        <div class="meeting-review-list">${rocks.map(renderPilotageMeetingRock).join("")}</div>
+        <label class="field field-wide">Constats sur les priorites<textarea name="rocksNotes" ${disabled} placeholder="Blocages, arbitrages et soutien necessaire...">${escapeHtml(meeting?.rocksNotes || "")}</textarea></label>
+      ` : renderPilotageEmpty("flag", "Aucune priorite pour ce trimestre", `Ajoutez une priorite pour ${state.pilotageQuarter}.`))}
+      ${pilotageMeetingBlock(4, "Enjeux a resoudre", "Traiter les sujets les plus importants avant d'en ajouter de nouveaux.", issues.length ? `
+        <div class="meeting-review-list">${issues.slice(0, 8).map(renderPilotageMeetingIssue).join("")}</div>
+        <label class="field field-wide">Decisions et contexte<textarea name="issuesNotes" ${disabled} placeholder="Decisions prises, compromis ou enjeux a poursuivre...">${escapeHtml(meeting?.issuesNotes || "")}</textarea></label>
+      ` : renderPilotageEmpty("circle-check-big", "Aucun enjeu ouvert", "La liste est claire pour cette semaine."))}
+      ${pilotageMeetingBlock(5, "Conclusion", "Resumer le cap avant de quitter la rencontre.", `
+        <div class="pilotage-form-grid conclusion-grid">
+          <label class="field">Decisions prises<textarea name="conclusion" ${disabled} placeholder="Ce qui a ete decide...">${escapeHtml(meeting?.conclusion || "")}</textarea></label>
+          <label class="field">Focus jusqu'a la prochaine rencontre<textarea name="nextWeekFocus" ${disabled} placeholder="Les quelques resultats a proteger...">${escapeHtml(meeting?.nextWeekFocus || "")}</textarea></label>
+          <label class="field compact-field">Qualite de la rencontre (1 a 10)<input name="rating" type="number" min="1" max="10" step="1" value="${escapeAttr(meeting?.rating || "")}" ${disabled}></label>
+        </div>
+      `)}
+      <footer class="pilotage-meeting-actions">
+        ${finalized ? `<button class="button" id="reopenPilotageMeeting" type="button"><i data-lucide="rotate-ccw"></i> Rouvrir la rencontre</button>` : `
+          <span>Le brouillon peut etre repris par Michael ou Gabriel.</span>
+          <button class="button" type="submit"><i data-lucide="save"></i> Enregistrer le brouillon</button>
+          <button class="button primary" id="finalizePilotageMeeting" type="button"><i data-lucide="badge-check"></i> Finaliser la rencontre</button>
+        `}
+      </footer>
+    </form>
+  `;
+}
+
+function pilotageMeetingBlock(number, title, description, content) {
+  return `
+    <section class="pilotage-meeting-block">
+      <header><span>${number}</span><div><h3>${escapeHtml(title)}</h3><p>${escapeHtml(description)}</p></div></header>
+      <div class="pilotage-meeting-block-body">${content}</div>
+    </section>
+  `;
+}
+
+function renderPilotageMeetingMetric(metric, entry) {
+  const status = metricStatus(metric, entry);
+  return `
+    <article class="meeting-review-row ${status}">
+      <span class="review-status-icon"><i data-lucide="${status === "on_track" ? "circle-check" : status === "off_track" ? "circle-alert" : "circle-help"}"></i></span>
+      <div><strong>${escapeHtml(metric.name)}</strong><small>Cible ${escapeHtml(targetLabel(metric))}${entry?.note ? ` · ${escapeHtml(truncate(entry.note, 100))}` : ""}</small></div>
+      <b>${entry && Number.isFinite(Number(entry.value)) ? `${formatNumber(entry.value)} ${escapeHtml(metric.unit || "")}` : "A saisir"}</b>
+      ${status === "off_track" ? `<button class="button icon-only" data-pilotage-metric-issue="${escapeAttr(metric.id)}" type="button" title="Creer un enjeu" aria-label="Creer un enjeu pour ${escapeAttr(metric.name)}"><i data-lucide="list-plus"></i></button>` : ""}
+    </article>
+  `;
+}
+
+function renderPilotageMeetingRock(rock) {
+  const label = Object.fromEntries(PILOTAGE_ROCK_STATUSES)[rock.status] || "A preciser";
+  return `
+    <article class="meeting-review-row ${rock.status}">
+      <span class="review-status-icon"><i data-lucide="${rock.status === "done" ? "circle-check" : rock.status === "off_track" ? "circle-alert" : "circle-dot"}"></i></span>
+      <div><strong>${escapeHtml(rock.title)}</strong><small>${escapeHtml(rock.ownerName || "Michael + Gabriel")} · ${escapeHtml(label)}</small></div>
+      <b>${clampProgress(rock.progress)}%</b>
+      ${rock.status === "off_track" ? `<button class="button icon-only" data-pilotage-rock-issue="${escapeAttr(rock.id)}" type="button" title="Creer un enjeu" aria-label="Creer un enjeu pour ${escapeAttr(rock.title)}"><i data-lucide="list-plus"></i></button>` : ""}
+    </article>
+  `;
+}
+
+function renderPilotageMeetingIssue(issue) {
+  return `
+    <article class="meeting-review-row issue-row">
+      <span class="priority-chip ${escapeAttr(issue.priority || "P2")}">${escapeHtml(issue.priority || "P2")}</span>
+      <div><strong>${escapeHtml(issue.title)}</strong><small>${escapeHtml(issue.ownerName || "Michael + Gabriel")}${issue.linkedTaskId ? " · Action creee" : ""}</small></div>
+      <button class="button" data-solve-pilotage-issue="${escapeAttr(issue.id)}" type="button"><i data-lucide="check"></i> Resoudre</button>
+    </article>
+  `;
+}
+
+function renderPilotageScorecard() {
+  const metrics = activePilotageMetrics();
+  const entryMap = new Map(pilotageEntriesForWeek().map((entry) => [entry.metricId, entry]));
+  return `
+    <header class="pilotage-section-heading">
+      <div><p class="eyebrow">Voir les faits</p><h2>Indicateurs hebdomadaires</h2><p>Une petite liste de chiffres utiles, avec une cible claire et un responsable.</p></div>
+      <div class="pilotage-heading-actions">${renderPilotageWeekControl()}<button class="button primary" data-open-pilotage-editor="metric" type="button"><i data-lucide="plus"></i> Ajouter un indicateur</button></div>
+    </header>
+    ${metrics.length ? `
+      <form id="pilotageEntriesForm" class="pilotage-scorecard-form">
+        <div class="pilotage-table-head"><span>Indicateur</span><span>Cible</span><span>Valeur</span><span>Note</span><span>Etat</span><span></span></div>
+        ${metrics.map((metric) => renderPilotageMetricRow(metric, entryMap.get(metric.id))).join("")}
+        <footer><span>${metrics.length} indicateur(s) actif(s) pour la semaine du ${formatDateOnly(state.pilotageWeek)}.</span><button class="button primary" type="submit"><i data-lucide="save"></i> Enregistrer la semaine</button></footer>
+      </form>
+    ` : renderPilotageEmpty("chart-no-axes-combined", "Construisez votre scorecard", "Ajoutez uniquement les indicateurs qui aident Michael et Gabriel a prendre une decision chaque semaine.", `<button class="button primary" data-open-pilotage-editor="metric" type="button"><i data-lucide="plus"></i> Premier indicateur</button>`)}
+  `;
+}
+
+function renderPilotageMetricRow(metric, entry) {
+  const status = metricStatus(metric, entry);
+  return `
+    <div class="pilotage-table-row ${status}">
+      <div><strong>${escapeHtml(metric.name)}</strong><small>${escapeHtml(metric.category || "General")} · ${escapeHtml(metric.ownerName || "Michael + Gabriel")}</small></div>
+      <span>${escapeHtml(targetLabel(metric))}</span>
+      <label><span class="visually-hidden">Valeur de ${escapeHtml(metric.name)}</span><input name="metric:${escapeAttr(metric.id)}:value" type="number" step="any" value="${entry && Number.isFinite(Number(entry.value)) ? escapeAttr(entry.value) : ""}" placeholder="--"></label>
+      <label><span class="visually-hidden">Note de ${escapeHtml(metric.name)}</span><input name="metric:${escapeAttr(metric.id)}:note" value="${escapeAttr(entry?.note || "")}" maxlength="240" placeholder="Contexte facultatif"></label>
+      <span class="pilotage-state ${status}"><i data-lucide="${status === "on_track" ? "circle-check" : status === "off_track" ? "circle-alert" : "circle-help"}"></i>${status === "on_track" ? "Dans la cible" : status === "off_track" ? "Hors cible" : "A saisir"}</span>
+      <button class="button icon-only" data-edit-pilotage-metric="${escapeAttr(metric.id)}" type="button" title="Modifier l'indicateur" aria-label="Modifier ${escapeAttr(metric.name)}"><i data-lucide="pencil"></i></button>
+    </div>
+  `;
+}
+
+function renderPilotageRocks() {
+  const rocks = pilotageRocksForQuarter();
+  return `
+    <header class="pilotage-section-heading">
+      <div><p class="eyebrow">Garder le cap</p><h2>Priorites 90 jours</h2><p>Les quelques resultats qui comptent vraiment ce trimestre.</p></div>
+      <div class="pilotage-heading-actions">${renderPilotageQuarterControl()}<button class="button primary" data-open-pilotage-editor="rock" type="button"><i data-lucide="plus"></i> Ajouter une priorite</button></div>
+    </header>
+    ${rocks.length ? `<div class="pilotage-rock-grid">${rocks.map(renderPilotageRockCard).join("")}</div>` : renderPilotageEmpty("flag", "Aucune priorite pour ce trimestre", `Ajoutez les resultats importants de ${state.pilotageQuarter}, avec un responsable et un critere de succes.`, `<button class="button primary" data-open-pilotage-editor="rock" type="button"><i data-lucide="plus"></i> Premiere priorite</button>`)}
+  `;
+}
+
+function renderPilotageRockCard(rock) {
+  const label = Object.fromEntries(PILOTAGE_ROCK_STATUSES)[rock.status] || "A preciser";
+  return `
+    <article class="pilotage-rock-card ${escapeAttr(rock.status || "on_track")}">
+      <header><span class="pilotage-state ${escapeAttr(rock.status || "on_track")}"><i data-lucide="${rock.status === "done" ? "circle-check" : rock.status === "off_track" ? "circle-alert" : "circle-dot"}"></i>${escapeHtml(label)}</span><button class="button icon-only" data-edit-pilotage-rock="${escapeAttr(rock.id)}" type="button" title="Modifier la priorite" aria-label="Modifier ${escapeAttr(rock.title)}"><i data-lucide="pencil"></i></button></header>
+      <h3>${escapeHtml(rock.title)}</h3>
+      <p>${escapeHtml(rock.successCriteria || rock.notes || "Critere de succes a preciser.")}</p>
+      <div class="rock-meta"><span><i data-lucide="user-round"></i>${escapeHtml(rock.ownerName || "Michael + Gabriel")}</span><span><i data-lucide="calendar"></i>${rock.dueDate ? formatDateOnly(rock.dueDate) : "Sans date imposee"}</span></div>
+      <div class="rock-progress"><span style="width:${clampProgress(rock.progress)}%"></span></div>
+      <footer><strong>${clampProgress(rock.progress)}%</strong>${rock.status === "off_track" ? `<button class="button" data-pilotage-rock-issue="${escapeAttr(rock.id)}" type="button"><i data-lucide="list-plus"></i> Creer un enjeu</button>` : ""}</footer>
+    </article>
+  `;
+}
+
+function renderPilotageIssues() {
+  const open = openPilotageIssues();
+  const solved = state.pilotageIssues.filter((issue) => issue.status === "solved");
+  return `
+    <header class="pilotage-section-heading">
+      <div><p class="eyebrow">Identifier, discuter, resoudre</p><h2>Liste des enjeux</h2><p>Une file priorisee pour ne pas perdre les sujets qui demandent une vraie decision.</p></div>
+      <button class="button" data-open-pilotage-editor="issue" type="button"><i data-lucide="sliders-horizontal"></i> Ajouter avec details</button>
+    </header>
+    <form id="pilotageQuickIssueForm" class="pilotage-quick-issue">
+      <label class="field"><span class="visually-hidden">Nouvel enjeu</span><input name="title" required maxlength="180" placeholder="Ajouter rapidement un enjeu a discuter..."></label>
+      <label class="field compact-field"><span class="visually-hidden">Priorite</span><select name="priority">${TASK_PRIORITY_OPTIONS.map(([id, label]) => `<option value="${id}" ${id === "P2" ? "selected" : ""}>${id} · ${escapeHtml(label)}</option>`).join("")}</select></label>
+      <button class="button primary" type="submit"><i data-lucide="plus"></i> Ajouter</button>
+    </form>
+    <div class="pilotage-issue-list">
+      ${open.length ? open.map(renderPilotageIssueCard).join("") : renderPilotageEmpty("circle-check-big", "Aucun enjeu ouvert", "La liste est claire. Les nouveaux sujets peuvent etre ajoutes au fil de la semaine.")}
+    </div>
+    ${solved.length ? `<details class="pilotage-solved"><summary>${solved.length} enjeu(x) resolu(s)</summary><div>${solved.slice(0, 20).map(renderPilotageIssueCard).join("")}</div></details>` : ""}
+  `;
+}
+
+function renderPilotageIssueCard(issue) {
+  const solved = issue.status === "solved";
+  return `
+    <article class="pilotage-issue-card ${solved ? "solved" : ""}">
+      <span class="priority-chip ${escapeAttr(issue.priority || "P2")}">${escapeHtml(issue.priority || "P2")}</span>
+      <div><h3>${escapeHtml(issue.title)}</h3><p>${escapeHtml(issue.details || (solved ? issue.resolution || "Enjeu resolu." : "Aucun detail ajoute."))}</p><small>${escapeHtml(issue.ownerName || "Michael + Gabriel")}${issue.sourceLabel ? ` · Source: ${escapeHtml(issue.sourceLabel)}` : ""}${solved ? ` · Resolu ${formatDate(issue.solvedAt)}` : ""}</small></div>
+      <div class="pilotage-issue-actions">
+        <button class="button icon-only" data-edit-pilotage-issue="${escapeAttr(issue.id)}" type="button" title="Modifier l'enjeu" aria-label="Modifier ${escapeAttr(issue.title)}"><i data-lucide="pencil"></i></button>
+        ${!solved && !issue.linkedTaskId ? `<button class="button" data-pilotage-issue-task="${escapeAttr(issue.id)}" type="button"><i data-lucide="list-checks"></i> Creer une action</button>` : ""}
+        ${!solved ? `<button class="button primary" data-solve-pilotage-issue="${escapeAttr(issue.id)}" type="button"><i data-lucide="check"></i> Resoudre</button>` : ""}
+        ${solved ? `<button class="button" data-reopen-pilotage-issue="${escapeAttr(issue.id)}" type="button"><i data-lucide="rotate-ccw"></i> Rouvrir</button>` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function renderPilotageWeekControl() {
+  return `
+    <div class="pilotage-period-control" aria-label="Choisir la semaine">
+      <button class="button icon-only" data-shift-pilotage-week="-1" type="button" title="Semaine precedente" aria-label="Semaine precedente"><i data-lucide="chevron-left"></i></button>
+      <button class="period-current" data-current-pilotage-week type="button"><small>Semaine du</small><strong>${formatDateOnly(state.pilotageWeek)}</strong></button>
+      <button class="button icon-only" data-shift-pilotage-week="1" type="button" title="Semaine suivante" aria-label="Semaine suivante"><i data-lucide="chevron-right"></i></button>
+    </div>
+  `;
+}
+
+function renderPilotageQuarterControl() {
+  return `
+    <div class="pilotage-period-control" aria-label="Choisir le trimestre">
+      <button class="button icon-only" data-shift-pilotage-quarter="-1" type="button" title="Trimestre precedent" aria-label="Trimestre precedent"><i data-lucide="chevron-left"></i></button>
+      <button class="period-current" data-current-pilotage-quarter type="button"><small>Trimestre</small><strong>${escapeHtml(state.pilotageQuarter)}</strong></button>
+      <button class="button icon-only" data-shift-pilotage-quarter="1" type="button" title="Trimestre suivant" aria-label="Trimestre suivant"><i data-lucide="chevron-right"></i></button>
+    </div>
+  `;
+}
+
+function renderPilotageEmpty(icon, title, description, action = "") {
+  return `<div class="pilotage-empty"><i data-lucide="${icon}"></i><div><h3>${escapeHtml(title)}</h3><p>${escapeHtml(description)}</p>${action}</div></div>`;
+}
+
+function renderPilotageEditor() {
+  const type = state.pilotageEditorType;
+  const item = type === "metric"
+    ? state.pilotageMetrics.find((metric) => metric.id === state.pilotageEditorId)
+    : type === "rock"
+      ? state.pilotageRocks.find((rock) => rock.id === state.pilotageEditorId)
+      : state.pilotageIssues.find((issue) => issue.id === state.pilotageEditorId);
+  const title = type === "metric" ? `${item ? "Modifier" : "Ajouter"} un indicateur` : type === "rock" ? `${item ? "Modifier" : "Ajouter"} une priorite` : `${item ? "Modifier" : "Ajouter"} un enjeu`;
+  return `
+    <div class="career-modal pilotage-modal" role="dialog" aria-modal="true" aria-labelledby="pilotageEditorTitle">
+      <button class="career-modal-backdrop" data-close-pilotage-editor type="button" aria-label="Fermer"></button>
+      <section class="career-editor pilotage-editor">
+        <header class="career-editor-header"><div><p class="eyebrow">Zone Pilotage</p><h2 id="pilotageEditorTitle">${escapeHtml(title)}</h2></div><button class="button icon-only" data-close-pilotage-editor type="button" aria-label="Fermer"><i data-lucide="x"></i></button></header>
+        ${type === "metric" ? renderPilotageMetricForm(item) : type === "rock" ? renderPilotageRockForm(item) : renderPilotageIssueForm(item)}
+      </section>
+    </div>
+  `;
+}
+
+function renderPilotageMetricForm(metric = {}) {
+  return `
+    <form id="pilotageMetricForm" class="pilotage-editor-form">
+      <label class="field field-wide">Nom de l'indicateur<input name="name" required maxlength="120" value="${escapeAttr(metric.name || "")}" autofocus placeholder="Ex.: Membres actifs"></label>
+      <label class="field">Categorie<input name="category" maxlength="80" value="${escapeAttr(metric.category || "")}" placeholder="Ventes, retention, operations..."></label>
+      <label class="field">Responsable<select name="ownerName">${OWNER_OPTIONS.map((owner) => `<option value="${escapeAttr(owner)}" ${metric.ownerName === owner ? "selected" : ""}>${escapeHtml(owner)}</option>`).join("")}</select></label>
+      <label class="field">Type de cible<select name="targetDirection">${PILOTAGE_METRIC_DIRECTIONS.map(([id, label]) => `<option value="${id}" ${(metric.targetDirection || "gte") === id ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label>
+      <label class="field">Cible<input name="targetValue" type="number" step="any" required value="${escapeAttr(metric.targetValue ?? "")}"></label>
+      <label class="field">Maximum de la plage<input name="targetMax" type="number" step="any" value="${escapeAttr(metric.targetMax ?? "")}" placeholder="Seulement pour une plage"></label>
+      <label class="field">Unite<input name="unit" maxlength="30" value="${escapeAttr(metric.unit || "")}" placeholder="$ , %, membres..."></label>
+      <label class="field">Ordre<input name="sortOrder" type="number" min="0" step="1" value="${escapeAttr(metric.sortOrder ?? state.pilotageMetrics.length + 1)}"></label>
+      <label class="check-field"><input name="active" type="checkbox" ${metric.active !== false ? "checked" : ""}> Indicateur actif</label>
+      <footer class="pilotage-editor-actions"><button class="button" data-close-pilotage-editor type="button">Annuler</button><button class="button primary" type="submit"><i data-lucide="save"></i> Enregistrer</button></footer>
+    </form>
+  `;
+}
+
+function renderPilotageRockForm(rock = {}) {
+  return `
+    <form id="pilotageRockForm" class="pilotage-editor-form">
+      <label class="field field-wide">Priorite 90 jours<input name="title" required maxlength="180" value="${escapeAttr(rock.title || "")}" autofocus placeholder="Un resultat concret a atteindre"></label>
+      <label class="field">Trimestre<input name="quarter" required pattern="[0-9]{4}-Q[1-4]" value="${escapeAttr(rock.quarter || state.pilotageQuarter)}"></label>
+      <label class="field">Responsable<select name="ownerName">${OWNER_OPTIONS.map((owner) => `<option value="${escapeAttr(owner)}" ${rock.ownerName === owner ? "selected" : ""}>${escapeHtml(owner)}</option>`).join("")}</select></label>
+      <label class="field">Etat<select name="status">${PILOTAGE_ROCK_STATUSES.map(([id, label]) => `<option value="${id}" ${(rock.status || "on_track") === id ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label>
+      <label class="field">Progression (%)<input name="progress" type="number" min="0" max="100" step="5" value="${escapeAttr(rock.progress ?? 0)}"></label>
+      <label class="field">Date cible facultative<input name="dueDate" type="date" value="${escapeAttr(dateInputValue(rock.dueDate))}"></label>
+      <label class="field field-wide">Critere de succes<textarea name="successCriteria" placeholder="Comment saurons-nous que cette priorite est terminee?">${escapeHtml(rock.successCriteria || "")}</textarea></label>
+      <label class="field field-wide">Notes<textarea name="notes" placeholder="Contexte, dependances ou risques...">${escapeHtml(rock.notes || "")}</textarea></label>
+      <footer class="pilotage-editor-actions"><button class="button" data-close-pilotage-editor type="button">Annuler</button><button class="button primary" type="submit"><i data-lucide="save"></i> Enregistrer</button></footer>
+    </form>
+  `;
+}
+
+function renderPilotageIssueForm(issue = {}) {
+  return `
+    <form id="pilotageIssueForm" class="pilotage-editor-form">
+      <label class="field field-wide">Enjeu<input name="title" required maxlength="180" value="${escapeAttr(issue.title || "")}" autofocus placeholder="Le probleme ou la decision a traiter"></label>
+      <label class="field">Priorite<select name="priority">${TASK_PRIORITY_OPTIONS.map(([id, label]) => `<option value="${id}" ${(issue.priority || "P2") === id ? "selected" : ""}>${id} · ${escapeHtml(label)}</option>`).join("")}</select></label>
+      <label class="field">Responsable<select name="ownerName">${OWNER_OPTIONS.map((owner) => `<option value="${escapeAttr(owner)}" ${issue.ownerName === owner ? "selected" : ""}>${escapeHtml(owner)}</option>`).join("")}</select></label>
+      <label class="field field-wide">Details<textarea name="details" placeholder="Faits, impacts et question a resoudre...">${escapeHtml(issue.details || "")}</textarea></label>
+      ${issue.status === "solved" ? `<label class="field field-wide">Resolution<textarea name="resolution">${escapeHtml(issue.resolution || "")}</textarea></label>` : ""}
+      <footer class="pilotage-editor-actions"><button class="button" data-close-pilotage-editor type="button">Annuler</button><button class="button primary" type="submit"><i data-lucide="save"></i> Enregistrer</button></footer>
+    </form>
+  `;
 }
 
 function renderTodoView() {
@@ -551,7 +939,7 @@ function renderActivityView() {
       </label>
       <label class="field">Element
         <select id="activityEntityFilter">
-          ${[["all", "Tous"], ["roadmapSubmission", "Roadmaps"], ["managementTask", "Actions"], ["teamMember", "Equipe"], ["teamMeeting", "Rencontres"], ["memberCareerPlan", "Mandats"], ["careerMilestone", "Parcours"], ["revenueScenario", "Projections"], ["clientError", "Systeme"]].map(([id, label]) => `<option value="${id}" ${state.activityEntity === id ? "selected" : ""}>${label}</option>`).join("")}
+          ${[["all", "Tous"], ["pilotage", "Pilotage"], ["roadmapSubmission", "Roadmaps"], ["managementTask", "Actions"], ["teamMember", "Equipe"], ["teamMeeting", "Rencontres"], ["memberCareerPlan", "Mandats"], ["careerMilestone", "Parcours"], ["revenueScenario", "Projections"], ["clientError", "Systeme"]].map(([id, label]) => `<option value="${id}" ${state.activityEntity === id ? "selected" : ""}>${label}</option>`).join("")}
         </select>
       </label>
     </section>
@@ -635,6 +1023,18 @@ function activityActionMeta(action) {
     submission_trash_restored: ["Roadmap sortie de la corbeille", "rotate-ccw", "amber"],
     submission_deleted_permanently: ["Roadmap supprimee", "trash", "red"],
     owner_notes_saved: ["Notes owner enregistrees", "notebook-pen", "blue"],
+    pilotage_metric_created: ["Indicateur cree", "chart-no-axes-combined", "green"],
+    pilotage_metric_updated: ["Indicateur modifie", "chart-no-axes-combined", "blue"],
+    pilotage_scorecard_saved: ["Scorecard enregistree", "table-properties", "green"],
+    pilotage_rock_created: ["Priorite 90 jours creee", "flag", "green"],
+    pilotage_rock_updated: ["Priorite 90 jours modifiee", "flag", "blue"],
+    pilotage_issue_created: ["Enjeu ajoute", "list-tree", "amber"],
+    pilotage_issue_updated: ["Enjeu modifie", "pencil", "blue"],
+    pilotage_issue_solved: ["Enjeu resolu", "circle-check-big", "green"],
+    pilotage_issue_reopened: ["Enjeu rouvert", "rotate-ccw", "amber"],
+    pilotage_meeting_saved: ["Reunion hebdomadaire enregistree", "save", "blue"],
+    pilotage_meeting_finalized: ["Reunion hebdomadaire finalisee", "badge-check", "green"],
+    pilotage_meeting_reopened: ["Reunion hebdomadaire rouverte", "rotate-ccw", "amber"],
     client_error_resolved: ["Erreur technique resolue", "shield-check", "green"]
   };
   const [label, icon, tone] = values[action] || [humanize(action || "changement"), "history", "neutral"];
@@ -642,6 +1042,7 @@ function activityActionMeta(action) {
 }
 
 function activityTargetLabel(log) {
+  if (log.entityType === "pilotage") return log.details?.title || log.details?.name || log.details?.weekStart || "Zone Pilotage";
   if (log.entityType === "clientError") return log.details?.context || "Etat de sante du dashboard";
   if (log.entityType === "teamMember") {
     return state.teamMembers.find((item) => item.id === log.entityId)?.name || "Dossier equipe";
@@ -668,8 +1069,9 @@ function activityTargetLabel(log) {
 
 function renderTaskCard(task) {
   const member = task.teamMemberId ? state.teamMembers.find((item) => item.id === task.teamMemberId) : null;
-  const sourceLabel = task.sourceType === "roadmap" ? "Roadmap" : task.sourceType === "career" ? "Parcours" : task.sourceType === "meeting" ? "Rencontre 1:1" : "Action manuelle";
-  const sourceIcon = task.sourceType === "roadmap" ? "clipboard-list" : task.sourceType === "career" ? "route" : task.sourceType === "meeting" ? "messages-square" : "check-square";
+  const pilotageTask = ["pilotage", "pilotage_issue"].includes(task.sourceType);
+  const sourceLabel = task.sourceType === "roadmap" ? "Roadmap" : task.sourceType === "career" ? "Parcours" : task.sourceType === "meeting" ? "Rencontre 1:1" : pilotageTask ? "Pilotage" : "Action manuelle";
+  const sourceIcon = task.sourceType === "roadmap" ? "clipboard-list" : task.sourceType === "career" ? "route" : task.sourceType === "meeting" ? "messages-square" : pilotageTask ? "gauge" : "check-square";
   const overdue = taskIsOverdue(task);
   const openAttribute = task.persisted ? `data-edit-task="${escapeAttr(task.id)}"` : `data-open-task-source="${escapeAttr(task.id)}"`;
   return `
@@ -1633,6 +2035,7 @@ function bindAppEvents() {
     closeRoadmapCompletion(false);
     closeTeamAction(false);
     closeTaskEditor(false);
+    closePilotageEditor(false);
     state.view = button.dataset.view;
     state.selectedMemberId = "";
     state.editingMemberId = "";
@@ -1640,6 +2043,57 @@ function bindAppEvents() {
     ensureSelection();
     renderApp();
   }));
+  document.querySelectorAll("[data-pilotage-jump]").forEach((button) => button.addEventListener("click", () => {
+    const target = button.dataset.pilotageJump;
+    if (target === "todo") {
+      state.view = "todo";
+      state.taskFilter = "pilotage";
+    } else {
+      state.view = "pilotage";
+      state.pilotageSection = target;
+    }
+    renderApp();
+  }));
+  document.querySelectorAll("[data-pilotage-section]").forEach((button) => button.addEventListener("click", () => {
+    state.pilotageSection = button.dataset.pilotageSection;
+    renderApp();
+  }));
+  document.querySelectorAll("[data-shift-pilotage-week]").forEach((button) => button.addEventListener("click", () => {
+    state.pilotageWeek = shiftWeekIso(state.pilotageWeek, Number(button.dataset.shiftPilotageWeek));
+    state.pilotageQuarter = quarterId(state.pilotageWeek);
+    renderApp();
+  }));
+  document.querySelector("[data-current-pilotage-week]")?.addEventListener("click", () => {
+    state.pilotageWeek = startOfWeekIso();
+    state.pilotageQuarter = quarterId();
+    renderApp();
+  });
+  document.querySelectorAll("[data-shift-pilotage-quarter]").forEach((button) => button.addEventListener("click", () => {
+    state.pilotageQuarter = shiftQuarterId(state.pilotageQuarter, Number(button.dataset.shiftPilotageQuarter));
+    renderApp();
+  }));
+  document.querySelector("[data-current-pilotage-quarter]")?.addEventListener("click", () => {
+    state.pilotageQuarter = quarterId();
+    renderApp();
+  });
+  document.querySelectorAll("[data-open-pilotage-editor]").forEach((button) => button.addEventListener("click", () => openPilotageEditor(button.dataset.openPilotageEditor)));
+  document.querySelectorAll("[data-edit-pilotage-metric]").forEach((button) => button.addEventListener("click", () => openPilotageEditor("metric", button.dataset.editPilotageMetric)));
+  document.querySelectorAll("[data-edit-pilotage-rock]").forEach((button) => button.addEventListener("click", () => openPilotageEditor("rock", button.dataset.editPilotageRock)));
+  document.querySelectorAll("[data-edit-pilotage-issue]").forEach((button) => button.addEventListener("click", () => openPilotageEditor("issue", button.dataset.editPilotageIssue)));
+  document.querySelectorAll("[data-close-pilotage-editor]").forEach((button) => button.addEventListener("click", () => closePilotageEditor()));
+  document.querySelector("#pilotageMetricForm")?.addEventListener("submit", savePilotageMetric);
+  document.querySelector("#pilotageRockForm")?.addEventListener("submit", savePilotageRock);
+  document.querySelector("#pilotageIssueForm")?.addEventListener("submit", savePilotageIssue);
+  document.querySelector("#pilotageQuickIssueForm")?.addEventListener("submit", savePilotageIssue);
+  document.querySelector("#pilotageEntriesForm")?.addEventListener("submit", savePilotageMetricEntries);
+  document.querySelector("#pilotageMeetingForm")?.addEventListener("submit", (event) => savePilotageMeeting(event, "draft"));
+  document.querySelector("#finalizePilotageMeeting")?.addEventListener("click", (event) => savePilotageMeeting(event, "finalized"));
+  document.querySelector("#reopenPilotageMeeting")?.addEventListener("click", reopenPilotageMeeting);
+  document.querySelectorAll("[data-solve-pilotage-issue]").forEach((button) => button.addEventListener("click", () => solvePilotageIssue(button.dataset.solvePilotageIssue)));
+  document.querySelectorAll("[data-reopen-pilotage-issue]").forEach((button) => button.addEventListener("click", () => reopenPilotageIssue(button.dataset.reopenPilotageIssue)));
+  document.querySelectorAll("[data-pilotage-issue-task]").forEach((button) => button.addEventListener("click", () => convertPilotageIssueToTask(button.dataset.pilotageIssueTask)));
+  document.querySelectorAll("[data-pilotage-metric-issue]").forEach((button) => button.addEventListener("click", () => createPilotageIssueFromMetric(button.dataset.pilotageMetricIssue)));
+  document.querySelectorAll("[data-pilotage-rock-issue]").forEach((button) => button.addEventListener("click", () => createPilotageIssueFromRock(button.dataset.pilotageRockIssue)));
   document.querySelector("#activitySearchInput")?.addEventListener("input", (event) => {
     state.activitySearch = event.target.value;
     const cursor = event.target.selectionStart ?? state.activitySearch.length;
@@ -1845,6 +2299,428 @@ function bindAppEvents() {
   document.querySelectorAll("[data-close-task-editor]").forEach((button) => button.addEventListener("click", () => closeTaskEditor()));
   document.querySelector("#taskEditorForm")?.addEventListener("submit", saveManagementTaskEdit);
   document.querySelectorAll("[data-resolve-task-conflict]").forEach((button) => button.addEventListener("click", () => resolveTaskConflict(button.dataset.resolveTaskConflict)));
+}
+
+function openPilotageEditor(type, id = "") {
+  if (!["metric", "rock", "issue"].includes(type)) return;
+  closeCareerEditor(false);
+  closeMeetingEditor(false, false);
+  closeRoadmapCompletion(false);
+  closeTeamAction(false);
+  closeTaskEditor(false);
+  state.pilotageEditorType = type;
+  state.pilotageEditorId = id;
+  renderApp();
+}
+
+function closePilotageEditor(shouldRender = true) {
+  state.pilotageEditorType = "";
+  state.pilotageEditorId = "";
+  if (shouldRender) renderApp();
+}
+
+async function savePilotageMetric(event) {
+  event.preventDefault();
+  if (state.busy) return;
+  const data = new FormData(event.currentTarget);
+  const name = String(data.get("name") || "").trim();
+  const targetDirection = String(data.get("targetDirection") || "gte");
+  const targetValue = Number(data.get("targetValue"));
+  const targetMaxValue = String(data.get("targetMax") || "").trim();
+  const targetMax = targetMaxValue === "" ? null : Number(targetMaxValue);
+  if (!name || !Number.isFinite(targetValue) || (targetDirection === "range" && !Number.isFinite(targetMax))) {
+    showToast("Precise un nom et une cible valide.");
+    return;
+  }
+  const existing = state.pilotageMetrics.find((metric) => metric.id === state.pilotageEditorId);
+  const reference = existing ? doc(db, "pilotageMetrics", existing.id) : doc(collection(db, "pilotageMetrics"));
+  const payload = {
+    name,
+    category: String(data.get("category") || "").trim(),
+    ownerName: OWNER_OPTIONS.includes(String(data.get("ownerName"))) ? String(data.get("ownerName")) : "Michael + Gabriel",
+    targetDirection: PILOTAGE_METRIC_DIRECTIONS.some(([id]) => id === targetDirection) ? targetDirection : "gte",
+    targetValue,
+    targetMax,
+    unit: String(data.get("unit") || "").trim(),
+    sortOrder: Number(data.get("sortOrder")) || 0,
+    active: data.get("active") === "on",
+    updatedAt: serverTimestamp(),
+    updatedByUid: state.user.uid,
+    updatedByName: actorName()
+  };
+  if (!existing) Object.assign(payload, { createdAt: serverTimestamp(), createdByUid: state.user.uid, createdByName: actorName() });
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.set(reference, payload, { merge: true });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload(existing ? "pilotage_metric_updated" : "pilotage_metric_created", reference.id, { name }));
+    await batch.commit();
+    closePilotageEditor(false);
+    showToast(existing ? "Indicateur mis a jour." : "Indicateur ajoute.");
+    renderApp();
+  } catch (error) {
+    showToast(`Indicateur non enregistre: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function savePilotageMetricEntries(event) {
+  event.preventDefault();
+  if (state.busy) return;
+  const data = new FormData(event.currentTarget);
+  const metrics = activePilotageMetrics();
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    let saved = 0;
+    let cleared = 0;
+    const existingEntries = new Map(pilotageEntriesForWeek().map((entry) => [entry.metricId, entry]));
+    metrics.forEach((metric) => {
+      const raw = String(data.get(`metric:${metric.id}:value`) || "").trim();
+      const note = String(data.get(`metric:${metric.id}:note`) || "").trim();
+      const entryId = `${metric.id}_${state.pilotageWeek}`;
+      if (!raw && !note) {
+        if (existingEntries.has(metric.id)) {
+          batch.delete(doc(db, "pilotageMetricEntries", entryId));
+          cleared += 1;
+        }
+        return;
+      }
+      const value = Number(raw);
+      if (!Number.isFinite(value)) return;
+      batch.set(doc(db, "pilotageMetricEntries", entryId), {
+        metricId: metric.id,
+        metricName: metric.name,
+        weekStart: state.pilotageWeek,
+        value,
+        note,
+        updatedAt: serverTimestamp(),
+        updatedByUid: state.user.uid,
+        updatedByName: actorName()
+      }, { merge: true });
+      saved += 1;
+    });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload("pilotage_scorecard_saved", state.pilotageWeek, { weekStart: state.pilotageWeek, saved, cleared }));
+    await batch.commit();
+    showToast(`${saved} valeur(s) enregistree(s)${cleared ? `, ${cleared} effacee(s)` : ""} pour cette semaine.`);
+    renderApp();
+  } catch (error) {
+    showToast(`Scorecard non enregistree: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function savePilotageRock(event) {
+  event.preventDefault();
+  if (state.busy) return;
+  const data = new FormData(event.currentTarget);
+  const title = String(data.get("title") || "").trim();
+  const quarter = String(data.get("quarter") || "").trim();
+  if (!title || !/^\d{4}-Q[1-4]$/.test(quarter)) {
+    showToast("Precise une priorite et un trimestre valide.");
+    return;
+  }
+  const existing = state.pilotageRocks.find((rock) => rock.id === state.pilotageEditorId);
+  const reference = existing ? doc(db, "pilotageRocks", existing.id) : doc(collection(db, "pilotageRocks"));
+  const payload = {
+    title,
+    quarter,
+    ownerName: OWNER_OPTIONS.includes(String(data.get("ownerName"))) ? String(data.get("ownerName")) : "Michael + Gabriel",
+    status: PILOTAGE_ROCK_STATUSES.some(([id]) => id === data.get("status")) ? String(data.get("status")) : "on_track",
+    progress: clampProgress(data.get("progress")),
+    dueDate: String(data.get("dueDate") || ""),
+    successCriteria: String(data.get("successCriteria") || "").trim(),
+    notes: String(data.get("notes") || "").trim(),
+    archivedAt: null,
+    updatedAt: serverTimestamp(),
+    updatedByUid: state.user.uid,
+    updatedByName: actorName()
+  };
+  if (!existing) Object.assign(payload, { createdAt: serverTimestamp(), createdByUid: state.user.uid, createdByName: actorName() });
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.set(reference, payload, { merge: true });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload(existing ? "pilotage_rock_updated" : "pilotage_rock_created", reference.id, { title, quarter }));
+    await batch.commit();
+    state.pilotageQuarter = quarter;
+    closePilotageEditor(false);
+    showToast(existing ? "Priorite mise a jour." : "Priorite ajoutee.");
+    renderApp();
+  } catch (error) {
+    showToast(`Priorite non enregistree: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function savePilotageIssue(event) {
+  event.preventDefault();
+  if (state.busy) return;
+  const data = new FormData(event.currentTarget);
+  const title = String(data.get("title") || "").trim();
+  if (!title) return;
+  const existing = state.pilotageIssues.find((issue) => issue.id === state.pilotageEditorId);
+  const reference = existing ? doc(db, "pilotageIssues", existing.id) : doc(collection(db, "pilotageIssues"));
+  const payload = {
+    title,
+    details: String(data.get("details") || existing?.details || "").trim(),
+    priority: TASK_PRIORITY_OPTIONS.some(([id]) => id === data.get("priority")) ? String(data.get("priority")) : "P2",
+    ownerName: OWNER_OPTIONS.includes(String(data.get("ownerName"))) ? String(data.get("ownerName")) : existing?.ownerName || "Michael + Gabriel",
+    status: existing?.status || "open",
+    updatedAt: serverTimestamp(),
+    updatedByUid: state.user.uid,
+    updatedByName: actorName()
+  };
+  if (existing?.status === "solved") payload.resolution = String(data.get("resolution") || existing.resolution || "").trim();
+  if (!existing) Object.assign(payload, { createdAt: serverTimestamp(), createdByUid: state.user.uid, createdByName: actorName() });
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.set(reference, payload, { merge: true });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload(existing ? "pilotage_issue_updated" : "pilotage_issue_created", reference.id, { title }));
+    await batch.commit();
+    event.currentTarget.reset();
+    closePilotageEditor(false);
+    state.pilotageSection = "issues";
+    showToast(existing ? "Enjeu mis a jour." : "Enjeu ajoute.");
+    renderApp();
+  } catch (error) {
+    showToast(`Enjeu non enregistre: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function solvePilotageIssue(issueId) {
+  const issue = state.pilotageIssues.find((item) => item.id === issueId);
+  if (!issue || issue.status === "solved" || state.busy) return;
+  const resolution = window.prompt("Quelle decision ou resolution voulez-vous conserver?", issue.resolution || "");
+  if (resolution == null) return;
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, "pilotageIssues", issue.id), {
+      status: "solved",
+      resolution: resolution.trim(),
+      solvedAt: serverTimestamp(),
+      solvedByUid: state.user.uid,
+      solvedByName: actorName(),
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload("pilotage_issue_solved", issue.id, { title: issue.title }));
+    await batch.commit();
+    showToast("Enjeu marque comme resolu.");
+  } catch (error) {
+    showToast(`Enjeu non resolu: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function reopenPilotageIssue(issueId) {
+  const issue = state.pilotageIssues.find((item) => item.id === issueId);
+  if (!issue || issue.status !== "solved" || state.busy) return;
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, "pilotageIssues", issue.id), {
+      status: "open",
+      solvedAt: null,
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload("pilotage_issue_reopened", issue.id, { title: issue.title }));
+    await batch.commit();
+    showToast("Enjeu rouvert.");
+  } catch (error) {
+    showToast(`Enjeu non rouvert: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function convertPilotageIssueToTask(issueId) {
+  const issue = state.pilotageIssues.find((item) => item.id === issueId);
+  if (!issue || issue.status === "solved" || issue.linkedTaskId || state.busy) return;
+  const taskRef = doc(collection(db, "managementTasks"));
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.set(taskRef, {
+      title: issue.title,
+      description: issue.details || `Action issue de la liste des enjeux du pilotage.`,
+      teamMemberId: "",
+      teamMemberName: "",
+      ownerName: issue.ownerName || "Michael + Gabriel",
+      priority: issue.priority || "P2",
+      status: "open",
+      dueDate: "",
+      taskKind: "general",
+      sourceType: "pilotage_issue",
+      sourceId: issue.id,
+      createdAt: serverTimestamp(),
+      createdByUid: state.user.uid,
+      createdByName: actorName(),
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    });
+    batch.update(doc(db, "pilotageIssues", issue.id), { linkedTaskId: taskRef.id, updatedAt: serverTimestamp(), updatedByUid: state.user.uid, updatedByName: actorName() });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload("management_task_created", taskRef.id, { sourceType: "pilotage_issue", sourceId: issue.id }));
+    await batch.commit();
+    showToast("Action ajoutee a la liste A faire.");
+  } catch (error) {
+    showToast(`Action non creee: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function createPilotageIssueFromMetric(metricId) {
+  const metric = state.pilotageMetrics.find((item) => item.id === metricId);
+  if (!metric) return;
+  const existing = openPilotageIssues().find((issue) => issue.sourceType === "metric" && issue.sourceId === metric.id && issue.sourceWeek === state.pilotageWeek);
+  if (existing) {
+    state.pilotageSection = "issues";
+    showToast("Cet indicateur a deja un enjeu ouvert pour cette semaine.");
+    renderApp();
+    return;
+  }
+  const entry = pilotageEntriesForWeek().find((item) => item.metricId === metric.id);
+  await createPilotageIssue({
+    title: `Indicateur hors cible: ${metric.name}`,
+    details: `Semaine du ${formatDateOnly(state.pilotageWeek)}. Valeur: ${formatNumber(entry?.value)} ${metric.unit || ""}. Cible: ${targetLabel(metric)}.`,
+    ownerName: metric.ownerName || "Michael + Gabriel",
+    priority: "P2",
+    sourceType: "metric",
+    sourceId: metric.id,
+    sourceWeek: state.pilotageWeek,
+    sourceLabel: metric.name
+  });
+}
+
+async function createPilotageIssueFromRock(rockId) {
+  const rock = state.pilotageRocks.find((item) => item.id === rockId);
+  if (!rock) return;
+  const existing = openPilotageIssues().find((issue) => issue.sourceType === "rock" && issue.sourceId === rock.id);
+  if (existing) {
+    state.pilotageSection = "issues";
+    showToast("Cette priorite a deja un enjeu ouvert.");
+    renderApp();
+    return;
+  }
+  await createPilotageIssue({
+    title: `Priorite a risque: ${rock.title}`,
+    details: `${rock.quarter}. Progression actuelle: ${clampProgress(rock.progress)}%. ${rock.notes || rock.successCriteria || ""}`.trim(),
+    ownerName: rock.ownerName || "Michael + Gabriel",
+    priority: "P1",
+    sourceType: "rock",
+    sourceId: rock.id,
+    sourceLabel: rock.title
+  });
+}
+
+async function createPilotageIssue(payload) {
+  if (state.busy) return;
+  const reference = doc(collection(db, "pilotageIssues"));
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.set(reference, {
+      ...payload,
+      status: "open",
+      createdAt: serverTimestamp(),
+      createdByUid: state.user.uid,
+      createdByName: actorName(),
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload("pilotage_issue_created", reference.id, { title: payload.title, sourceType: payload.sourceType || "manual" }));
+    await batch.commit();
+    state.pilotageSection = "issues";
+    showToast("Enjeu ajoute a la liste.");
+    renderApp();
+  } catch (error) {
+    showToast(`Enjeu non cree: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function savePilotageMeeting(event, status) {
+  event.preventDefault?.();
+  if (state.busy) return;
+  const form = document.querySelector("#pilotageMeetingForm");
+  if (!form) return;
+  if (status === "finalized" && !window.confirm("Finaliser cette rencontre hebdomadaire? Elle restera consultable et pourra etre rouverte au besoin.")) return;
+  const data = new FormData(form);
+  const existing = selectedPilotageMeeting();
+  const reference = doc(db, "pilotageMeetings", state.pilotageWeek);
+  const payload = {
+    weekStart: state.pilotageWeek,
+    quarter: quarterId(state.pilotageWeek),
+    attendees: PILOTAGE_MEETING_ATTENDEES,
+    wins: String(data.get("wins") || "").trim(),
+    headlines: String(data.get("headlines") || "").trim(),
+    scorecardNotes: String(data.get("scorecardNotes") || "").trim(),
+    rocksNotes: String(data.get("rocksNotes") || "").trim(),
+    issuesNotes: String(data.get("issuesNotes") || "").trim(),
+    conclusion: String(data.get("conclusion") || "").trim(),
+    nextWeekFocus: String(data.get("nextWeekFocus") || "").trim(),
+    rating: String(data.get("rating") || "").trim() ? Math.max(1, Math.min(10, Number(data.get("rating")))) : null,
+    status,
+    snapshot: currentPilotageSummary(),
+    updatedAt: serverTimestamp(),
+    updatedByUid: state.user.uid,
+    updatedByName: actorName()
+  };
+  if (!existing) Object.assign(payload, { createdAt: serverTimestamp(), createdByUid: state.user.uid, createdByName: actorName() });
+  if (status === "finalized") Object.assign(payload, { finalizedAt: serverTimestamp(), finalizedByUid: state.user.uid, finalizedByName: actorName() });
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.set(reference, payload, { merge: true });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload(status === "finalized" ? "pilotage_meeting_finalized" : "pilotage_meeting_saved", reference.id, { weekStart: state.pilotageWeek }));
+    await batch.commit();
+    showToast(status === "finalized" ? "Rencontre hebdomadaire finalisee." : "Brouillon de rencontre enregistre.");
+    renderApp();
+  } catch (error) {
+    showToast(`Rencontre non enregistree: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
+}
+
+async function reopenPilotageMeeting() {
+  const meeting = selectedPilotageMeeting();
+  if (!meeting || meeting.status !== "finalized" || state.busy) return;
+  state.busy = true;
+  try {
+    const batch = writeBatch(db);
+    batch.update(doc(db, "pilotageMeetings", meeting.id), {
+      status: "draft",
+      reopenedAt: serverTimestamp(),
+      reopenedByUid: state.user.uid,
+      reopenedByName: actorName(),
+      updatedAt: serverTimestamp(),
+      updatedByUid: state.user.uid,
+      updatedByName: actorName()
+    });
+    batch.set(doc(collection(db, "auditLogs")), auditPayload("pilotage_meeting_reopened", meeting.id, { weekStart: meeting.weekStart }));
+    await batch.commit();
+    showToast("Rencontre rouverte en brouillon.");
+  } catch (error) {
+    showToast(`Rencontre non rouverte: ${friendlyError(error)}`);
+  } finally {
+    state.busy = false;
+  }
 }
 
 function closeCareerEditor(shouldRender = true) {
@@ -2223,11 +3099,12 @@ function closeTaskEditor(shouldRender = true) {
 }
 
 function hasOpenModal() {
-  return Boolean(state.taskEditorId || state.teamActionMemberId || state.roadmapCompletionId || state.careerEditorId || state.meetingEditorId);
+  return Boolean(state.taskEditorId || state.teamActionMemberId || state.roadmapCompletionId || state.careerEditorId || state.meetingEditorId || state.pilotageEditorType);
 }
 
 function hasProtectedEditor() {
-  return hasOpenModal() || Boolean(state.editingMemberId);
+  const activePilotageForm = document.activeElement?.closest?.("#pilotageMeetingForm, #pilotageEntriesForm, #pilotageQuickIssueForm");
+  return hasOpenModal() || Boolean(state.editingMemberId) || Boolean(activePilotageForm);
 }
 
 function syncModalState() {
@@ -2245,7 +3122,8 @@ function handleGlobalKeydown(event) {
   const dialog = dialogs.at(-1) || null;
   if (event.key === "Escape" && hasOpenModal()) {
     event.preventDefault();
-    if (state.taskEditorId) closeTaskEditor();
+    if (state.pilotageEditorType) closePilotageEditor();
+    else if (state.taskEditorId) closeTaskEditor();
     else if (state.meetingEditorId) closeMeetingEditor();
     else if (state.teamActionMemberId) closeTeamAction();
     else if (state.roadmapCompletionId) closeRoadmapCompletion();
@@ -3131,11 +4009,53 @@ function derivedCareerTasks() {
     });
 }
 
+function currentPilotageSummary() {
+  return pilotageSummary({
+    metrics: state.pilotageMetrics,
+    entries: state.pilotageMetricEntries,
+    rocks: state.pilotageRocks,
+    issues: state.pilotageIssues,
+    tasks: state.managementTasks,
+    weekStart: state.pilotageWeek,
+    quarter: state.pilotageQuarter
+  });
+}
+
+function activePilotageMetrics() {
+  return state.pilotageMetrics.filter((metric) => metric.active !== false).sort(sortPilotageMetrics);
+}
+
+function pilotageEntriesForWeek() {
+  return state.pilotageMetricEntries.filter((entry) => entry.weekStart === state.pilotageWeek);
+}
+
+function pilotageRocksForQuarter() {
+  return state.pilotageRocks.filter((rock) => !rock.archivedAt && rock.quarter === state.pilotageQuarter).sort(sortPilotageRocks);
+}
+
+function openPilotageIssues() {
+  return sortPilotageIssues(state.pilotageIssues.filter((issue) => issue.status !== "solved"));
+}
+
+function selectedPilotageMeeting() {
+  return state.pilotageMeetings.find((meeting) => meeting.weekStart === state.pilotageWeek || meeting.id === state.pilotageWeek) || null;
+}
+
+function sortPilotageMetrics(a, b) {
+  return Number(a.sortOrder || 999) - Number(b.sortOrder || 999) || String(a.name || "").localeCompare(String(b.name || ""));
+}
+
+function sortPilotageRocks(a, b) {
+  const rank = { off_track: 0, on_track: 1, done: 2 };
+  return (rank[a.status] ?? 1) - (rank[b.status] ?? 1) || dateValue(a.dueDate) - dateValue(b.dueDate) || String(a.title || "").localeCompare(String(b.title || ""));
+}
+
 function filteredManagementTasks() {
   return allOpenManagementTasks().filter((task) => {
     if (state.taskOwnerFilter !== "all" && !normalize(task.ownerName).includes(normalize(state.taskOwnerFilter))) return false;
     if (state.taskFilter === "urgent") return taskIsUrgent(task);
     if (["roadmap", "career", "meeting"].includes(state.taskFilter)) return task.sourceType === state.taskFilter;
+    if (state.taskFilter === "pilotage") return ["pilotage", "pilotage_issue"].includes(task.sourceType);
     if (state.taskFilter === "manual") return task.sourceType === "manual";
     return true;
   });
@@ -3470,7 +4390,7 @@ function openTaskSource(taskId) {
 function auditPayload(action, entityId, details = {}) {
   return {
     action,
-    entityType: action.startsWith("team_meeting_") || action.startsWith("meeting_summary_") ? "teamMeeting" : action.startsWith("team_") ? "teamMember" : action.startsWith("member_career_plan_") ? "memberCareerPlan" : action.startsWith("career_") ? "careerMilestone" : action.startsWith("management_") ? "managementTask" : action.startsWith("client_error_") ? "clientError" : "roadmapSubmission",
+    entityType: action.startsWith("pilotage_") ? "pilotage" : action.startsWith("team_meeting_") || action.startsWith("meeting_summary_") ? "teamMeeting" : action.startsWith("team_") ? "teamMember" : action.startsWith("member_career_plan_") ? "memberCareerPlan" : action.startsWith("career_") ? "careerMilestone" : action.startsWith("management_") ? "managementTask" : action.startsWith("client_error_") ? "clientError" : "roadmapSubmission",
     entityId,
     actorUid: state.user.uid,
     actorName: actorName(),
@@ -3531,6 +4451,13 @@ async function resolveClientError(errorId) {
 function openAuditEntity(logId) {
   const log = state.auditLogs.find((item) => item.id === logId);
   if (!log) return;
+  if (log.entityType === "pilotage") {
+    state.view = "pilotage";
+    state.pilotageSection = log.action.includes("metric") || log.action.includes("scorecard") ? "scorecard" : log.action.includes("rock") ? "rocks" : log.action.includes("issue") ? "issues" : "meeting";
+    if (log.details?.weekStart) state.pilotageWeek = log.details.weekStart;
+    renderApp();
+    return;
+  }
   if (log.entityType === "managementTask") {
     if (state.managementTasks.some((item) => item.id === log.entityId)) openTaskEditor(log.entityId);
     else showToast("Cette action n'est plus disponible dans la vue courante.");
@@ -3914,6 +4841,11 @@ function dateValue(value) {
 function formatDate(value) {
   const time = dateValue(value);
   return time ? new Date(time).toLocaleString("fr-CA", { dateStyle: "medium", timeStyle: "short" }) : "Sans date";
+}
+
+function formatNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number.toLocaleString("fr-CA", { maximumFractionDigits: 2 }) : "--";
 }
 
 function formatAnswer(value) {
