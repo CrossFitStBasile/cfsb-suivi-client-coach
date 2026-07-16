@@ -355,9 +355,13 @@ Les cinq collections suivantes sont reservees aux comptes `owner` et `admin`. El
 - `category`
 - `ownerName`
 - `targetDirection`: `gte`, `lte`, `range` ou `exact`
-- `targetValue`
+- `targetValue`: peut etre `null` tant que la cible n'est pas approuvee
 - `targetMax`: requis seulement pour `range`
+- `targetStatus`: `validated` ou `to_validate`
 - `unit`
+- `definition`
+- `sourceLabel`, `sourceUrl` et `sourceReference`: provenance lisible et lien vers la plage source
+- `sourceConfidence`: `high`, `medium` ou `low`
 - `sortOrder`
 - `active`
 - metadonnees de creation et de mise a jour
@@ -369,6 +373,7 @@ Les cinq collections suivantes sont reservees aux comptes `owner` et `admin`. El
 - `weekStart`: lundi au format `YYYY-MM-DD`
 - `value`
 - `note`
+- `sourceLabel` et `sourceReference`: provenance facultative d'un import initial
 - metadonnees de mise a jour
 
 L'identifiant deterministe rend la sauvegarde hebdomadaire idempotente: une nouvelle saisie corrige la meme semaine au lieu de creer un doublon.
@@ -395,7 +400,7 @@ L'identifiant deterministe rend la sauvegarde hebdomadaire idempotente: une nouv
 - `status`: `open` ou `solved`
 - `resolution`
 - `sourceType`: `manual`, `metric` ou `rock`
-- `sourceId`, `sourceWeek` et `sourceLabel`: contexte facultatif de la source
+- `sourceId`, `sourceWeek`, `sourceLabel` et `sourceUrl`: contexte facultatif de la source
 - `linkedTaskId`: action `managementTasks` creee depuis l'enjeu
 - `solvedAt`, `solvedByUid`, `solvedByName`
 - metadonnees de creation et de mise a jour

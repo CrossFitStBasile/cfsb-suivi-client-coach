@@ -20,6 +20,7 @@ Le Dashboard Equipe est deploye sur Firebase Hosting avec connexion Google owner
 ## Fonctions du Dashboard Equipe
 
 - zone `Pilotage` privee pour Michael et Gabriel avec reunion hebdomadaire, scorecard, priorites 90 jours et liste d'enjeux;
+- provenance Drive visible pour chaque indicateur et statut `Cible a valider` lorsqu'aucun seuil officiel n'existe;
 - conversion d'un indicateur hors cible ou d'une priorite a risque en enjeu, puis d'un enjeu en action dans la liste `A faire` existante;
 - brouillons et historique des rencontres hebdomadaires, sans melanger ces rituels avec les rencontres 1:1 des membres;
 - vue `A faire` inspiree du Dashboard Coach, avec actions de Michael et Gabriel;
@@ -110,6 +111,24 @@ node scripts/import-bundle-to-firestore.mjs --apply
 ```
 
 Les identifiants Firestore sont derives des identifiants Apps Script. Une relance met a jour les memes documents et ne cree pas de doublons.
+
+## Configuration initiale du Pilotage
+
+La configuration sourcee du trimestre se trouve dans `config/pilotage-initial-2026-q3.json`. Le chargeur verifie chaque identifiant et cree seulement les documents absents; une metrique deja modifiee dans le dashboard n'est jamais ecrasee.
+
+Verifier sans ecrire:
+
+```powershell
+pnpm run pilotage:seed:dry-run
+```
+
+Creer uniquement les documents manquants:
+
+```powershell
+pnpm run pilotage:seed
+```
+
+La configuration initiale reprend `METRIQUE CFSB` et `TEAM LEADERSHIP CFSB ORGANISER 2026`. Les feuilles `RECUP` et `Archive` ne servent pas de source courante.
 
 ## Prochaine activation
 

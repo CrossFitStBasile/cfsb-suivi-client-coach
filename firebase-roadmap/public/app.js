@@ -533,6 +533,7 @@ function renderPilotageView() {
     <section class="pilotage-summary" aria-label="Etat du pilotage">
       ${pilotageSummaryCard(summary.offTrackMetrics, "Indicateurs hors cible", "chart-no-axes-combined", summary.offTrackMetrics ? "red" : "green", "scorecard")}
       ${pilotageSummaryCard(summary.missingMetrics, "Indicateurs a saisir", "circle-help", summary.missingMetrics ? "amber" : "green", "scorecard")}
+      ${pilotageSummaryCard(summary.missingTargets, "Cibles a cadrer", "circle-dashed", summary.missingTargets ? "amber" : "green", "scorecard")}
       ${pilotageSummaryCard(summary.offTrackRocks, "Priorites a risque", "flag", summary.offTrackRocks ? "red" : "green", "rocks")}
       ${pilotageSummaryCard(summary.openIssues, "Enjeux ouverts", "list-tree", summary.openIssues ? "blue" : "green", "issues")}
       ${pilotageSummaryCard(summary.openActions, "Actions de pilotage", "list-checks", "neutral", "todo")}
@@ -561,7 +562,7 @@ function pilotageSummaryCard(value, label, icon, tone, section) {
 
 function pilotageSectionButton(id, label, icon) {
   const count = id === "scorecard"
-    ? currentPilotageSummary().offTrackMetrics + currentPilotageSummary().missingMetrics
+    ? currentPilotageSummary().offTrackMetrics + currentPilotageSummary().missingMetrics + currentPilotageSummary().missingTargets
     : id === "rocks"
       ? currentPilotageSummary().offTrackRocks
       : id === "issues"
@@ -638,10 +639,11 @@ function pilotageMeetingBlock(number, title, description, content) {
 
 function renderPilotageMeetingMetric(metric, entry) {
   const status = metricStatus(metric, entry);
+  const statusMeta = pilotageMetricStatusMeta(status);
   return `
     <article class="meeting-review-row ${status}">
-      <span class="review-status-icon"><i data-lucide="${status === "on_track" ? "circle-check" : status === "off_track" ? "circle-alert" : "circle-help"}"></i></span>
-      <div><strong>${escapeHtml(metric.name)}</strong><small>Cible ${escapeHtml(targetLabel(metric))}${entry?.note ? ` · ${escapeHtml(truncate(entry.note, 100))}` : ""}</small></div>
+      <span class="review-status-icon"><i data-lucide="${statusMeta.icon}"></i></span>
+      <div><strong>${escapeHtml(metric.name)}</strong><small>${status === "missing_target" ? "Cible a valider" : `Cible ${escapeHtml(targetLabel(metric))}`}${entry?.note ? ` · ${escapeHtml(truncate(entry.note, 100))}` : ""}</small></div>
       <b>${entry && Number.isFinite(Number(entry.value)) ? `${formatNumber(entry.value)} ${escapeHtml(metric.unit || "")}` : "A saisir"}</b>
       ${status === "off_track" ? `<button class="button icon-only" data-pilotage-metric-issue="${escapeAttr(metric.id)}" type="button" title="Creer un enjeu" aria-label="Creer un enjeu pour ${escapeAttr(metric.name)}"><i data-lucide="list-plus"></i></button>` : ""}
     </article>
@@ -690,16 +692,30 @@ function renderPilotageScorecard() {
 
 function renderPilotageMetricRow(metric, entry) {
   const status = metricStatus(metric, entry);
+  const statusMeta = pilotageMetricStatusMeta(status);
+  const sourceUrl = normalizeExternalUrl(metric.sourceUrl);
   return `
     <div class="pilotage-table-row ${status}">
-      <div><strong>${escapeHtml(metric.name)}</strong><small>${escapeHtml(metric.category || "General")} · ${escapeHtml(metric.ownerName || "Michael + Gabriel")}</small></div>
+      <div class="pilotage-metric-identity">
+        <strong>${escapeHtml(metric.name)}</strong>
+        <small>${escapeHtml(metric.category || "General")} · ${escapeHtml(metric.ownerName || "Michael + Gabriel")}</small>
+        ${metric.definition ? `<small class="metric-definition">${escapeHtml(metric.definition)}</small>` : ""}
+        ${sourceUrl ? `<a class="metric-source-link" href="${escapeAttr(sourceUrl)}" target="_blank" rel="noopener" title="${escapeAttr(metric.sourceReference || metric.sourceLabel || "Ouvrir la source")}"><i data-lucide="external-link"></i>${escapeHtml(metric.sourceLabel || "Ouvrir la source")}</a>` : ""}
+      </div>
       <span>${escapeHtml(targetLabel(metric))}</span>
       <label><span class="visually-hidden">Valeur de ${escapeHtml(metric.name)}</span><input name="metric:${escapeAttr(metric.id)}:value" type="number" step="any" value="${entry && Number.isFinite(Number(entry.value)) ? escapeAttr(entry.value) : ""}" placeholder="--"></label>
       <label><span class="visually-hidden">Note de ${escapeHtml(metric.name)}</span><input name="metric:${escapeAttr(metric.id)}:note" value="${escapeAttr(entry?.note || "")}" maxlength="240" placeholder="Contexte facultatif"></label>
-      <span class="pilotage-state ${status}"><i data-lucide="${status === "on_track" ? "circle-check" : status === "off_track" ? "circle-alert" : "circle-help"}"></i>${status === "on_track" ? "Dans la cible" : status === "off_track" ? "Hors cible" : "A saisir"}</span>
+      <span class="pilotage-state ${status}"><i data-lucide="${statusMeta.icon}"></i>${statusMeta.label}</span>
       <button class="button icon-only" data-edit-pilotage-metric="${escapeAttr(metric.id)}" type="button" title="Modifier l'indicateur" aria-label="Modifier ${escapeAttr(metric.name)}"><i data-lucide="pencil"></i></button>
     </div>
   `;
+}
+
+function pilotageMetricStatusMeta(status) {
+  if (status === "on_track") return { icon: "circle-check", label: "Dans la cible" };
+  if (status === "off_track") return { icon: "circle-alert", label: "Hors cible" };
+  if (status === "missing_target") return { icon: "circle-dashed", label: "Cible a valider" };
+  return { icon: "circle-help", label: "A saisir" };
 }
 
 function renderPilotageRocks() {
@@ -749,10 +765,11 @@ function renderPilotageIssues() {
 
 function renderPilotageIssueCard(issue) {
   const solved = issue.status === "solved";
+  const sourceUrl = normalizeExternalUrl(issue.sourceUrl);
   return `
     <article class="pilotage-issue-card ${solved ? "solved" : ""}">
       <span class="priority-chip ${escapeAttr(issue.priority || "P2")}">${escapeHtml(issue.priority || "P2")}</span>
-      <div><h3>${escapeHtml(issue.title)}</h3><p>${escapeHtml(issue.details || (solved ? issue.resolution || "Enjeu resolu." : "Aucun detail ajoute."))}</p><small>${escapeHtml(issue.ownerName || "Michael + Gabriel")}${issue.sourceLabel ? ` · Source: ${escapeHtml(issue.sourceLabel)}` : ""}${solved ? ` · Resolu ${formatDate(issue.solvedAt)}` : ""}</small></div>
+      <div><h3>${escapeHtml(issue.title)}</h3><p>${escapeHtml(issue.details || (solved ? issue.resolution || "Enjeu resolu." : "Aucun detail ajoute."))}</p><small>${escapeHtml(issue.ownerName || "Michael + Gabriel")}${issue.sourceLabel ? ` · ${sourceUrl ? `<a class="issue-source-link" href="${escapeAttr(sourceUrl)}" target="_blank" rel="noopener">Source: ${escapeHtml(issue.sourceLabel)}</a>` : `Source: ${escapeHtml(issue.sourceLabel)}`}` : ""}${solved ? ` · Resolu ${formatDate(issue.solvedAt)}` : ""}</small></div>
       <div class="pilotage-issue-actions">
         <button class="button icon-only" data-edit-pilotage-issue="${escapeAttr(issue.id)}" type="button" title="Modifier l'enjeu" aria-label="Modifier ${escapeAttr(issue.title)}"><i data-lucide="pencil"></i></button>
         ${!solved && !issue.linkedTaskId ? `<button class="button" data-pilotage-issue-task="${escapeAttr(issue.id)}" type="button"><i data-lucide="list-checks"></i> Creer une action</button>` : ""}
@@ -807,17 +824,24 @@ function renderPilotageEditor() {
 }
 
 function renderPilotageMetricForm(metric = {}) {
+  const targetValidated = metric.targetStatus === "validated" || (metric.targetStatus !== "to_validate" && metric.targetValue !== null && metric.targetValue !== "" && Number.isFinite(Number(metric.targetValue)));
   return `
     <form id="pilotageMetricForm" class="pilotage-editor-form">
       <label class="field field-wide">Nom de l'indicateur<input name="name" required maxlength="120" value="${escapeAttr(metric.name || "")}" autofocus placeholder="Ex.: Membres actifs"></label>
+      <label class="field field-wide">Definition<textarea name="definition" maxlength="500" placeholder="Ce que cet indicateur mesure, en une phrase.">${escapeHtml(metric.definition || "")}</textarea></label>
       <label class="field">Categorie<input name="category" maxlength="80" value="${escapeAttr(metric.category || "")}" placeholder="Ventes, retention, operations..."></label>
       <label class="field">Responsable<select name="ownerName">${OWNER_OPTIONS.map((owner) => `<option value="${escapeAttr(owner)}" ${metric.ownerName === owner ? "selected" : ""}>${escapeHtml(owner)}</option>`).join("")}</select></label>
       <label class="field">Type de cible<select name="targetDirection">${PILOTAGE_METRIC_DIRECTIONS.map(([id, label]) => `<option value="${id}" ${(metric.targetDirection || "gte") === id ? "selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label>
-      <label class="field">Cible<input name="targetValue" type="number" step="any" required value="${escapeAttr(metric.targetValue ?? "")}"></label>
+      <label class="field">Cible<input name="targetValue" type="number" step="any" value="${escapeAttr(metric.targetValue ?? "")}" placeholder="Laisser vide si elle reste a cadrer"></label>
       <label class="field">Maximum de la plage<input name="targetMax" type="number" step="any" value="${escapeAttr(metric.targetMax ?? "")}" placeholder="Seulement pour une plage"></label>
       <label class="field">Unite<input name="unit" maxlength="30" value="${escapeAttr(metric.unit || "")}" placeholder="$ , %, membres..."></label>
       <label class="field">Ordre<input name="sortOrder" type="number" min="0" step="1" value="${escapeAttr(metric.sortOrder ?? state.pilotageMetrics.length + 1)}"></label>
+      <label class="check-field"><input name="targetValidated" type="checkbox" ${targetValidated ? "checked" : ""}> Cible validee</label>
       <label class="check-field"><input name="active" type="checkbox" ${metric.active !== false ? "checked" : ""}> Indicateur actif</label>
+      <label class="field">Nom de la source<input name="sourceLabel" maxlength="100" value="${escapeAttr(metric.sourceLabel || "")}" placeholder="Ex.: METRIQUE CFSB"></label>
+      <label class="field">Niveau de confiance<select name="sourceConfidence">${[["high", "Eleve"], ["medium", "Moyen"], ["low", "Faible"]].map(([id, label]) => `<option value="${id}" ${(metric.sourceConfidence || "medium") === id ? "selected" : ""}>${label}</option>`).join("")}</select></label>
+      <label class="field field-wide">Lien vers la source<input name="sourceUrl" type="url" value="${escapeAttr(metric.sourceUrl || "")}" placeholder="https://docs.google.com/..."></label>
+      <label class="field field-wide">Reference exacte<input name="sourceReference" maxlength="180" value="${escapeAttr(metric.sourceReference || "")}" placeholder="Dashboard Hebdo!A13:J80"></label>
       <footer class="pilotage-editor-actions"><button class="button" data-close-pilotage-editor type="button">Annuler</button><button class="button primary" type="submit"><i data-lucide="save"></i> Enregistrer</button></footer>
     </form>
   `;
@@ -2325,23 +2349,36 @@ async function savePilotageMetric(event) {
   const data = new FormData(event.currentTarget);
   const name = String(data.get("name") || "").trim();
   const targetDirection = String(data.get("targetDirection") || "gte");
-  const targetValue = Number(data.get("targetValue"));
+  const targetValidated = data.get("targetValidated") === "on";
+  const targetValueRaw = String(data.get("targetValue") || "").trim();
+  const targetValue = targetValueRaw === "" ? null : Number(targetValueRaw);
   const targetMaxValue = String(data.get("targetMax") || "").trim();
   const targetMax = targetMaxValue === "" ? null : Number(targetMaxValue);
-  if (!name || !Number.isFinite(targetValue) || (targetDirection === "range" && !Number.isFinite(targetMax))) {
-    showToast("Precise un nom et une cible valide.");
+  if (!name || (targetValidated && !Number.isFinite(targetValue)) || (targetValidated && targetDirection === "range" && !Number.isFinite(targetMax))) {
+    showToast(targetValidated ? "Precise un nom et une cible validee." : "Precise un nom valide.");
+    return;
+  }
+  const sourceUrl = normalizeExternalUrl(data.get("sourceUrl"));
+  if (String(data.get("sourceUrl") || "").trim() && !sourceUrl) {
+    showToast("Le lien de source doit commencer par http ou https.");
     return;
   }
   const existing = state.pilotageMetrics.find((metric) => metric.id === state.pilotageEditorId);
   const reference = existing ? doc(db, "pilotageMetrics", existing.id) : doc(collection(db, "pilotageMetrics"));
   const payload = {
     name,
+    definition: String(data.get("definition") || "").trim(),
     category: String(data.get("category") || "").trim(),
     ownerName: OWNER_OPTIONS.includes(String(data.get("ownerName"))) ? String(data.get("ownerName")) : "Michael + Gabriel",
     targetDirection: PILOTAGE_METRIC_DIRECTIONS.some(([id]) => id === targetDirection) ? targetDirection : "gte",
     targetValue,
     targetMax,
+    targetStatus: targetValidated ? "validated" : "to_validate",
     unit: String(data.get("unit") || "").trim(),
+    sourceLabel: String(data.get("sourceLabel") || "").trim(),
+    sourceUrl,
+    sourceReference: String(data.get("sourceReference") || "").trim(),
+    sourceConfidence: ["high", "medium", "low"].includes(String(data.get("sourceConfidence"))) ? String(data.get("sourceConfidence")) : "medium",
     sortOrder: Number(data.get("sortOrder")) || 0,
     active: data.get("active") === "on",
     updatedAt: serverTimestamp(),

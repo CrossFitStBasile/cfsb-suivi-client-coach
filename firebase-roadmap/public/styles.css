@@ -863,7 +863,7 @@ body.modal-open { overflow: hidden; }
 
 .pilotage-summary {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -965,6 +965,7 @@ body.modal-open { overflow: hidden; }
 .meeting-review-row.done .review-status-icon { background: #e4f2ed; color: var(--green); }
 .meeting-review-row.off_track .review-status-icon { background: #fae7e3; color: var(--red); }
 .meeting-review-row.missing .review-status-icon { background: #fff2d5; color: #926009; }
+.meeting-review-row.missing_target .review-status-icon { background: #fff2d5; color: #926009; }
 .meeting-review-row.issue-row { grid-template-columns: 40px minmax(0, 1fr) auto; }
 .pilotage-meeting-actions { display: flex; align-items: center; justify-content: flex-end; gap: 9px; padding-top: 3px; }
 .pilotage-meeting-actions > span { margin-right: auto; color: var(--muted); font-size: 11px; }
@@ -981,9 +982,24 @@ body.modal-open { overflow: hidden; }
 .pilotage-table-row { min-height: 72px; padding: 9px 11px; border-top: 1px solid #e4e8e6; background: #fff; }
 .pilotage-table-row.off_track { box-shadow: inset 4px 0 var(--red); }
 .pilotage-table-row.on_track { box-shadow: inset 4px 0 var(--green); }
+.pilotage-table-row.missing_target { box-shadow: inset 4px 0 var(--amber); }
 .pilotage-table-row > div { display: grid; gap: 3px; }
 .pilotage-table-row strong { font-size: 13px; }
 .pilotage-table-row small { color: var(--muted); font-size: 11px; }
+.pilotage-metric-identity .metric-definition { max-width: 390px; line-height: 1.35; }
+.metric-source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  margin-top: 2px;
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 750;
+  text-decoration: none;
+}
+.metric-source-link:hover { text-decoration: underline; }
+.metric-source-link svg { width: 13px; height: 13px; }
 .pilotage-table-row input { width: 100%; min-height: 40px; padding: 8px 9px; border: 1px solid var(--line); border-radius: 5px; }
 .pilotage-scorecard-form > footer { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 12px; border-top: 1px solid var(--line); background: #fafbf9; }
 .pilotage-scorecard-form > footer span { margin-right: auto; color: var(--muted); font-size: 11px; }
@@ -993,6 +1009,7 @@ body.modal-open { overflow: hidden; }
 .pilotage-state.done { color: var(--green); }
 .pilotage-state.off_track { color: var(--red); }
 .pilotage-state.missing { color: #93620c; }
+.pilotage-state.missing_target { color: #93620c; }
 
 .pilotage-rock-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .pilotage-rock-card { display: grid; align-content: start; gap: 11px; min-height: 255px; padding: 15px; border: 1px solid var(--line); border-top: 4px solid var(--green); border-radius: 7px; background: #fff; }
@@ -1016,6 +1033,8 @@ body.modal-open { overflow: hidden; }
 .pilotage-issue-card h3 { margin: 0; font-size: 14px; }
 .pilotage-issue-card p { margin: 4px 0; color: #52615b; line-height: 1.4; }
 .pilotage-issue-card small { color: var(--muted); }
+.issue-source-link { color: var(--blue); font-weight: 750; text-decoration: none; }
+.issue-source-link:hover { text-decoration: underline; }
 .pilotage-issue-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
 .priority-chip { display: grid; place-items: center; width: 36px; height: 28px; border-radius: 5px; background: #edf0ef; color: #53615b; font-size: 11px; font-weight: 850; }
 .priority-chip.P1 { background: #fae7e3; color: var(--red); }

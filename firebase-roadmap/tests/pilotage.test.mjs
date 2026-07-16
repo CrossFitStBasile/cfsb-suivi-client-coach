@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
   metricStatus,
+  metricTargetIsValidated,
   pilotageSummary,
   quarterId,
   shiftQuarterId,
@@ -30,7 +31,12 @@ test("metric status supports minimum, maximum, exact and range targets", () => {
   assert.equal(metricStatus({ targetDirection: "exact", targetValue: 8 }, { value: 8 }), "on_track");
   assert.equal(metricStatus({ targetDirection: "range", targetValue: 3, targetMax: 5 }, { value: 6 }), "off_track");
   assert.equal(metricStatus({ targetDirection: "gte", targetValue: 1 }, null), "missing");
+  assert.equal(metricStatus({ targetDirection: "gte", targetValue: null, targetStatus: "to_validate" }, null), "missing_target");
+  assert.equal(metricStatus({ targetDirection: "gte", targetValue: 10, targetStatus: "to_validate" }, { value: 12 }), "missing_target");
+  assert.equal(metricTargetIsValidated({ targetValue: 10 }), true);
+  assert.equal(metricTargetIsValidated({ targetValue: 10, targetStatus: "to_validate" }), false);
   assert.equal(targetLabel({ targetDirection: "range", targetValue: 3, targetMax: 5, unit: "visites" }), "3 a 5 visites");
+  assert.equal(targetLabel({ targetStatus: "to_validate", targetValue: null }), "Cible a valider");
 });
 
 test("issues are sorted open first, then by priority", () => {
@@ -56,6 +62,7 @@ test("summary uses the selected week and quarter", () => {
     metricCount: 2,
     offTrackMetrics: 1,
     missingMetrics: 1,
+    missingTargets: 0,
     offTrackRocks: 1,
     openIssues: 1,
     openActions: 1

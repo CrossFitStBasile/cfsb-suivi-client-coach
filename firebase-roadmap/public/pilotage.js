@@ -26,12 +26,12 @@ export function shiftQuarterId(value, amount) {
 }
 
 export function metricStatus(metric, entry) {
+  if (!metricTargetIsValidated(metric)) return "missing_target";
   const value = Number(entry?.value);
   if (!Number.isFinite(value)) return "missing";
   const target = Number(metric?.targetValue);
   const maximum = Number(metric?.targetMax);
   const direction = metric?.targetDirection || "gte";
-  if (!Number.isFinite(target)) return "missing_target";
   if (direction === "lte") return value <= target ? "on_track" : "off_track";
   if (direction === "exact") return value === target ? "on_track" : "off_track";
   if (direction === "range") {
@@ -42,6 +42,7 @@ export function metricStatus(metric, entry) {
 }
 
 export function targetLabel(metric) {
+  if (!metricTargetIsValidated(metric)) return "Cible a valider";
   const unit = String(metric?.unit || "").trim();
   const suffix = unit ? ` ${unit}` : "";
   const target = numericLabel(metric?.targetValue);
@@ -50,6 +51,11 @@ export function targetLabel(metric) {
   }
   const symbol = metric?.targetDirection === "lte" ? "<=" : metric?.targetDirection === "exact" ? "=" : ">=";
   return `${symbol} ${target}${suffix}`;
+}
+
+export function metricTargetIsValidated(metric) {
+  if (metric?.targetStatus === "to_validate") return false;
+  return Number.isFinite(Number(metric?.targetValue));
 }
 
 export function sortPilotageIssues(issues) {
@@ -71,6 +77,7 @@ export function pilotageSummary({ metrics = [], entries = [], rocks = [], issues
     metricCount: activeMetrics.length,
     offTrackMetrics: metricStates.filter((status) => status === "off_track").length,
     missingMetrics: metricStates.filter((status) => status === "missing").length,
+    missingTargets: metricStates.filter((status) => status === "missing_target").length,
     offTrackRocks: quarterRocks.filter((rock) => rock.status === "off_track").length,
     openIssues: issues.filter((issue) => issue.status !== "solved").length,
     openActions: tasks.filter((task) => task.status === "open" && (task.sourceType === "pilotage" || task.sourceType === "pilotage_issue")).length
@@ -104,4 +111,3 @@ function timestampValue(value) {
   if (typeof value.toDate === "function") return value.toDate().getTime();
   return new Date(value).getTime() || 0;
 }
-
