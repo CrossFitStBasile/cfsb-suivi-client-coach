@@ -59,3 +59,15 @@ test("strategy data stays owner-only and separate from the coach dashboard", asy
     assert.doesNotMatch(coachSource, new RegExp(collection));
   }
 });
+
+test("strategy edits use Firestore transactions and expose an explicit conflict choice", async () => {
+  const ownerSource = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+  assert.match(ownerSource, /strategyEditorVersion: ""/);
+  assert.match(ownerSource, /strategyDecisionEditorVersion: ""/);
+  assert.match(ownerSource, /runTransaction\(db, async \(transaction\) => \{/);
+  assert.match(ownerSource, /hasVersionConflict\(existing, state\.strategyEditorVersion\)/);
+  assert.match(ownerSource, /hasVersionConflict\(existing, state\.strategyDecisionEditorVersion\)/);
+  assert.match(ownerSource, /data-resolve-strategy-conflict="reload"/);
+  assert.match(ownerSource, /data-resolve-strategy-conflict="overwrite"/);
+  assert.match(ownerSource, /Tes changements sont conserves ici/);
+});

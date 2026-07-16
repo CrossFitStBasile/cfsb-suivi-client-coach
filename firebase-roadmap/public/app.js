@@ -268,7 +268,12 @@ const state = {
   pilotageEditorId: "",
   strategyView: "overview",
   strategyEditorType: "",
+  strategyEditorVersion: "",
+  strategyEditorHadDocument: false,
   strategyDecisionEditorId: "",
+  strategyDecisionEditorVersion: "",
+  strategyConflict: null,
+  strategyEditorForceSave: false,
   developmentSection: "assignments",
   developmentAssignmentView: "active",
   selectedDevelopmentAssignmentId: "",
@@ -1323,7 +1328,8 @@ function renderPilotageEditor() {
 
 function renderStrategyEditor() {
   if (state.strategyEditorType === "decision") return renderStrategyDecisionEditor();
-  const profile = currentStrategyProfile();
+  const conflict = state.strategyConflict?.type === "profile" ? state.strategyConflict : null;
+  const profile = conflict?.draft || currentStrategyProfile();
   const values = Array.from({ length: 4 }, (_, index) => profile.values[index] || { id: `value-${index + 1}`, name: "", description: "" });
   return `
     <div class="career-modal pilotage-modal" role="dialog" aria-modal="true" aria-labelledby="strategyEditorTitle">
@@ -1332,6 +1338,7 @@ function renderStrategyEditor() {
         <header class="career-editor-header"><div><p class="eyebrow">Cap durable</p><h2 id="strategyEditorTitle">Modifier la strategie CFSB</h2></div><button class="button icon-only" data-close-strategy-editor type="button" aria-label="Fermer"><i data-lucide="x"></i></button></header>
         <div class="career-editor-scroll">
           <form id="strategyProfileForm" class="strategy-editor-form">
+            ${conflict ? renderStrategyConflictAlert(conflict.current) : ""}
             <section class="strategy-editor-intro"><i data-lucide="database-zap"></i><p>La base initiale vient de Drive. Valider signifie que Michael et Gabriel confirment le contenu actuel, pas seulement qu'une source existe.</p></section>
             <div class="strategy-editor-grid">
               <label class="field">Titre<input name="title" required value="${escapeAttr(profile.title)}"></label>
@@ -1363,13 +1370,15 @@ function renderStrategyEditor() {
 }
 
 function renderStrategyDecisionEditor() {
-  const decision = state.strategyDecisions.find((item) => item.id === state.strategyDecisionEditorId) || {};
+  const conflict = state.strategyConflict?.type === "decision" && state.strategyConflict.id === state.strategyDecisionEditorId ? state.strategyConflict : null;
+  const decision = conflict?.draft || state.strategyDecisions.find((item) => item.id === state.strategyDecisionEditorId) || {};
   return `
     <div class="career-modal pilotage-modal" role="dialog" aria-modal="true" aria-labelledby="strategyDecisionEditorTitle">
       <button class="career-modal-backdrop" data-close-strategy-editor type="button" aria-label="Fermer"></button>
       <section class="action-editor panel">
         <header class="career-editor-header"><div><p class="eyebrow">Registre de decisions</p><h2 id="strategyDecisionEditorTitle">${decision.id ? "Modifier la decision" : "Nouvelle decision"}</h2></div><button class="button icon-only" data-close-strategy-editor type="button" aria-label="Fermer"><i data-lucide="x"></i></button></header>
         <form id="strategyDecisionForm" class="action-modal-form">
+          ${conflict ? renderStrategyConflictAlert(conflict.current) : ""}
           <label class="field">Date<input name="decisionDate" type="date" required value="${escapeAttr(decision.decisionDate || todayInputValue())}"></label>
           <label class="field">Titre<input name="title" required maxlength="160" value="${escapeAttr(decision.title || "")}" autofocus placeholder="Le sujet tranche"></label>
           <label class="field">Decision<textarea name="decision" required placeholder="Ce qui a ete decide, en termes concrets.">${escapeHtml(decision.decision || "")}</textarea></label>
@@ -1381,6 +1390,19 @@ function renderStrategyDecisionEditor() {
           <footer class="notes-actions"><button class="button" data-close-strategy-editor type="button">Annuler</button><button class="button primary" type="submit"><i data-lucide="save"></i> Enregistrer</button></footer>
         </form>
       </section>
+    </div>
+  `;
+}
+
+function renderStrategyConflictAlert(current = {}) {
+  return `
+    <div class="conflict-alert" role="alert">
+      <i data-lucide="git-merge"></i>
+      <div><strong>Une version plus recente existe</strong><p>${escapeHtml(current.updatedByName || "L'autre owner")} a modifie cet element pendant ton edition. Tes changements sont conserves ici jusqu'a ce que tu choisisses la version a garder.</p></div>
+      <div class="conflict-actions">
+        <button class="button" data-resolve-strategy-conflict="reload" type="button">Utiliser la version recente</button>
+        <button class="button primary" data-resolve-strategy-conflict="overwrite" type="button">Garder mes changements</button>
+      </div>
     </div>
   `;
 }
@@ -2956,6 +2978,7 @@ function bindAppEvents() {
   document.querySelectorAll("[data-close-strategy-editor]").forEach((button) => button.addEventListener("click", () => closeStrategyEditor()));
   document.querySelector("#strategyProfileForm")?.addEventListener("submit", saveStrategyProfile);
   document.querySelector("#strategyDecisionForm")?.addEventListener("submit", saveStrategyDecision);
+  document.querySelectorAll("[data-resolve-strategy-conflict]").forEach((button) => button.addEventListener("click", () => resolveStrategyConflict(button.dataset.resolveStrategyConflict)));
   document.querySelectorAll("[data-shift-pilotage-week]").forEach((button) => button.addEventListener("click", () => {
     state.pilotageWeek = shiftWeekIso(state.pilotageWeek, Number(button.dataset.shiftPilotageWeek));
     state.pilotageQuarter = quarterId(state.pilotageWeek);
@@ -3360,12 +3383,23 @@ function openStrategyEditor(type, id = "") {
   closeTaskEditor(false);
   state.strategyEditorType = type;
   state.strategyDecisionEditorId = type === "decision" ? id : "";
+  state.strategyEditorVersion = type === "profile" ? entityVersionToken(state.businessStrategy) : "";
+  state.strategyEditorHadDocument = type === "profile" ? Boolean(state.businessStrategy) : false;
+  const decision = type === "decision" ? state.strategyDecisions.find((item) => item.id === id) : null;
+  state.strategyDecisionEditorVersion = entityVersionToken(decision);
+  state.strategyConflict = null;
+  state.strategyEditorForceSave = false;
   renderApp();
 }
 
 function closeStrategyEditor(shouldRender = true) {
   state.strategyEditorType = "";
+  state.strategyEditorVersion = "";
+  state.strategyEditorHadDocument = false;
   state.strategyDecisionEditorId = "";
+  state.strategyDecisionEditorVersion = "";
+  state.strategyConflict = null;
+  state.strategyEditorForceSave = false;
   if (shouldRender) renderApp();
 }
 
@@ -3410,29 +3444,45 @@ async function saveStrategyProfile(event) {
   if (!validation.valid) return showToast(validation.errors[0]);
   state.busy = true;
   try {
-    const existing = state.businessStrategy;
-    const payload = {
-      ...validation.profile,
-      updatedAt: serverTimestamp(),
-      updatedByUid: state.user.uid,
-      updatedByName: actorName()
-    };
-    delete payload.id;
-    if (!existing) {
-      payload.createdAt = serverTimestamp();
-      payload.createdByUid = state.user.uid;
-      payload.createdByName = actorName();
-    }
-    const action = validation.profile.status === "validated" && existing?.status !== "validated" ? "business_strategy_validated" : existing ? "business_strategy_updated" : "business_strategy_created";
-    const batch = writeBatch(db);
-    batch.set(doc(db, "businessStrategy", "current"), payload, { merge: true });
-    batch.set(doc(collection(db, "auditLogs")), auditPayload(action, "current", { status: validation.profile.status, coverage: validation.coverage.percent }));
-    await batch.commit();
+    const reference = doc(db, "businessStrategy", "current");
+    const auditReference = doc(collection(db, "auditLogs"));
+    await runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(reference);
+      const existing = snapshot.exists() ? snapshot.data() : null;
+      const existenceChanged = state.strategyEditorHadDocument !== snapshot.exists();
+      if (!state.strategyEditorForceSave && (existenceChanged || (existing && hasVersionConflict(existing, state.strategyEditorVersion)))) {
+        throw versionConflictError(existing);
+      }
+      const payload = {
+        ...validation.profile,
+        updatedAt: serverTimestamp(),
+        updatedByUid: state.user.uid,
+        updatedByName: actorName()
+      };
+      delete payload.id;
+      if (!existing) {
+        payload.createdAt = serverTimestamp();
+        payload.createdByUid = state.user.uid;
+        payload.createdByName = actorName();
+      }
+      const action = validation.profile.status === "validated" && existing?.status !== "validated" ? "business_strategy_validated" : existing ? "business_strategy_updated" : "business_strategy_created";
+      transaction.set(reference, payload, { merge: Boolean(existing) });
+      transaction.set(auditReference, auditPayload(action, "current", { status: validation.profile.status, coverage: validation.coverage.percent }));
+    });
     closeStrategyEditor(false);
     showToast(validation.profile.status === "validated" ? "Strategie validee et enregistree." : "Strategie enregistree avec son statut de validation.");
     renderApp();
   } catch (error) {
-    showToast(`Strategie non enregistree: ${friendlyError(error)}`);
+    if (error.code === "version-conflict") {
+      state.businessStrategy = error.current ? { id: "current", ...error.current } : null;
+      state.strategyConflict = { type: "profile", draft: validation.profile, current: error.current || {} };
+      state.strategyEditorVersion = entityVersionToken(error.current);
+      state.strategyEditorHadDocument = Boolean(error.current);
+      state.strategyEditorForceSave = false;
+      renderApp();
+    } else {
+      showToast(`Strategie non enregistree: ${friendlyError(error)}`);
+    }
   } finally {
     state.busy = false;
   }
@@ -3457,32 +3507,73 @@ async function saveStrategyDecision(event) {
   if (!validation.valid) return showToast(validation.errors[0]);
   state.busy = true;
   try {
-    const existing = state.strategyDecisions.find((item) => item.id === state.strategyDecisionEditorId) || null;
-    const reference = existing ? doc(db, "strategyDecisions", existing.id) : doc(collection(db, "strategyDecisions"));
-    const payload = {
-      ...validation.decision,
-      sourceUrl: validation.decision.sourceUrl ? normalizeExternalUrl(validation.decision.sourceUrl) : "",
-      updatedAt: serverTimestamp(),
-      updatedByUid: state.user.uid,
-      updatedByName: actorName()
-    };
-    delete payload.id;
-    if (!existing) {
-      payload.createdAt = serverTimestamp();
-      payload.createdByUid = state.user.uid;
-      payload.createdByName = actorName();
-    }
-    const batch = writeBatch(db);
-    batch.set(reference, payload, { merge: Boolean(existing) });
-    batch.set(doc(collection(db, "auditLogs")), auditPayload(existing ? "strategy_decision_updated" : "strategy_decision_created", reference.id, { title: payload.title, status: payload.status }));
-    await batch.commit();
+    const isExisting = Boolean(state.strategyDecisionEditorId);
+    const reference = isExisting ? doc(db, "strategyDecisions", state.strategyDecisionEditorId) : doc(collection(db, "strategyDecisions"));
+    const auditReference = doc(collection(db, "auditLogs"));
+    await runTransaction(db, async (transaction) => {
+      const snapshot = isExisting ? await transaction.get(reference) : null;
+      const existing = snapshot?.exists() ? snapshot.data() : null;
+      if (isExisting && !state.strategyEditorForceSave && (!existing || hasVersionConflict(existing, state.strategyDecisionEditorVersion))) {
+        throw versionConflictError(existing);
+      }
+      const payload = {
+        ...validation.decision,
+        sourceUrl: validation.decision.sourceUrl ? normalizeExternalUrl(validation.decision.sourceUrl) : "",
+        updatedAt: serverTimestamp(),
+        updatedByUid: state.user.uid,
+        updatedByName: actorName()
+      };
+      delete payload.id;
+      if (!existing) {
+        payload.createdAt = serverTimestamp();
+        payload.createdByUid = state.user.uid;
+        payload.createdByName = actorName();
+      }
+      transaction.set(reference, payload, { merge: Boolean(existing) });
+      transaction.set(auditReference, auditPayload(existing ? "strategy_decision_updated" : "strategy_decision_created", reference.id, { title: payload.title, status: payload.status }));
+    });
     closeStrategyEditor(false);
-    showToast(existing ? "Decision mise a jour." : "Decision ajoutee au registre.");
+    showToast(isExisting ? "Decision mise a jour." : "Decision ajoutee au registre.");
     renderApp();
   } catch (error) {
-    showToast(`Decision non enregistree: ${friendlyError(error)}`);
+    if (error.code === "version-conflict") {
+      const current = error.current ? { id: state.strategyDecisionEditorId, ...error.current } : null;
+      if (current) {
+        const index = state.strategyDecisions.findIndex((item) => item.id === current.id);
+        if (index >= 0) state.strategyDecisions[index] = current;
+        else state.strategyDecisions.push(current);
+      }
+      state.strategyConflict = { type: "decision", id: state.strategyDecisionEditorId, draft: validation.decision, current: error.current || {} };
+      state.strategyDecisionEditorVersion = entityVersionToken(error.current);
+      state.strategyEditorForceSave = false;
+      renderApp();
+    } else {
+      showToast(`Decision non enregistree: ${friendlyError(error)}`);
+    }
   } finally {
     state.busy = false;
+  }
+}
+
+function resolveStrategyConflict(choice) {
+  if (!state.strategyConflict) return;
+  if (choice === "reload") {
+    state.strategyConflict = null;
+    state.strategyEditorForceSave = false;
+    if (state.strategyEditorType === "profile") {
+      state.strategyEditorVersion = entityVersionToken(state.businessStrategy);
+      state.strategyEditorHadDocument = Boolean(state.businessStrategy);
+    } else {
+      const decision = state.strategyDecisions.find((item) => item.id === state.strategyDecisionEditorId);
+      state.strategyDecisionEditorVersion = entityVersionToken(decision);
+    }
+    showToast("Version recente chargee.");
+    renderApp();
+    return;
+  }
+  if (choice === "overwrite") {
+    state.strategyEditorForceSave = true;
+    document.querySelector(state.strategyEditorType === "profile" ? "#strategyProfileForm" : "#strategyDecisionForm")?.requestSubmit();
   }
 }
 
