@@ -1238,6 +1238,20 @@ exports.scheduledQuestionnaireSendPlans = onSchedule(
         continue;
       }
 
+      const clientSnap = await db.collection("clients").doc(clientId).get();
+      const client = clientSnap.exists ? clientSnap.data() || {} : {};
+      if (!clientSnap.exists
+        || cleanString(client.coachId || client.coachRxId) !== coachId
+        || !clientRecordAvailableForMatching(client)) {
+        skipped += 1;
+        batch.set(docSnap.ref, {
+          status: "paused",
+          lastError: "Planification suspendue: appartenance client a valider.",
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+        continue;
+      }
+
       const sendRef = db.collection("questionnaireSends").doc(`scheduled_${docSnap.id}_${today}`);
       const sendSnap = await sendRef.get();
       if (sendSnap.exists) {

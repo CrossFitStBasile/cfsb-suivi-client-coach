@@ -117,6 +117,7 @@ function main() {
   must(indexSource, /CLIENT_OWNERSHIP_LOCK_PATH = "systemLocks\/clientOwnershipSync"/, "verrou anti-sync");
   must(indexSource, /questionnaireOnlyWhileLocked/, "ingestion questionnaire maintenue sous verrou");
   must(indexSource, /source === "firebase_function_questionnaire_response_sync_scheduled"/, "exception limitee au scheduled questionnaire");
+  must(indexSource, /scheduledQuestionnaireSendPlans[\s\S]*clientRecordAvailableForMatching\(client\)[\s\S]*status: "paused"[\s\S]*appartenance client a valider/, "planifications questionnaire suspendues pour les clients bloques");
   must(indexSource, /clientRecordAvailableForMatching/, "matching exclut la quarantaine");
   must(indexSource, /cleanString\(data\.entityType\) !== "member"[\s\S]*cleanString\(data\.ownershipStatus\) !== "confirmed"[\s\S]*data\.clientSelectable !== true/, "matching serveur fail-closed apres backfill");
   must(indexSource, /"removed",[\s\S]*"archived",[\s\S]*"alumni",[\s\S]*"do_not_contact",[\s\S]*"import_stale",[\s\S]*"ownership_quarantine",[\s\S]*"deleted"/, "statuts clients inactifs alignes cote serveur");
