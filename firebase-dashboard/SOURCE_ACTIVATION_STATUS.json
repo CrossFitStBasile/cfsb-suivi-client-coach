@@ -1,0 +1,729 @@
+{
+  "version": "2026-06-11-source-activation-mvp-published",
+  "updatedAt": "2026-06-11",
+  "purpose": "Track what is already locally ready, what is blocked by live access, and what evidence is required before declaring each source active for the real Dashboard Coach pilot.",
+  "localReadiness": {
+    "validatedAt": "2026-06-11",
+    "pipeline": "verify-dashboard-before-deploy.cmd",
+    "localValidation": "26/26",
+    "localVersionReady": "20260707-coachrx-extraction-guard",
+    "liveHostingVersionObserved": "20260707-coachrx-extraction-guard",
+    "liveValidation": "verify-dashboard-live.cmd pending for 20260707-coachrx-extraction-guard after publication.",
+    "deploymentBlockedBy": "",
+    "nextHumanCommand": "Validate live with pilot coaches; run valider-dashboard-equipe.cmd after field checks.",
+    "notes": [
+      "Live Hosting serves 20260707-coachrx-extraction-guard after publication.",
+      "Strict live validation passes 9/9 on 20260707-coachrx-extraction-guard.",
+      "Firestore live audit passes with status needs_source_activation; next limit is field validation and Rebooking parity."
+    ],
+    "blocker": "",
+    "evidence": [
+      "Local bundle is ready: 20260707-coachrx-extraction-guard.",
+      "Live Hosting target is 20260707-coachrx-extraction-guard.",
+      "Strict live validation passes 9/9.",
+      "Firestore live audit passes and reports needs_source_activation."
+    ]
+  },
+  "currentLiveAuditAttempt": {
+    "attemptedAt": "2026-06-12T12:08:29.993Z",
+    "command": "audit-live-firestore.cmd --summary",
+    "status": "ok",
+    "error": "",
+    "meaning": "Firestore live audit is reachable after Hosting publication.",
+    "nextHumanCommand": "Use the live audit totals as the baseline for the 7-coach field validation.",
+    "latestUsableLiveAudit": "lastPostPublicationAudit"
+  },
+  "lastPostPublicationAudit": {
+    "generatedAt": "2026-06-11T11:44:57.145Z",
+    "latestSyncRunId": "tkXWsfjf1VSB312ZWMkL",
+    "latestSyncSource": "firebase_function_sync_sheets_scheduled",
+    "latestSyncCreatedAt": "2026-06-11T09:54:06.259Z",
+    "latestSyncWarningCount": 21,
+    "liveHostingVersion": "20260707-coachrx-extraction-guard",
+    "summary": "MVP Hosting and Firestore are reachable after publication. Technical validation is green; remaining proof is human validation of the seven pilot coach portfolios.",
+    "globalDiagnostic": {
+      "status": "needs_source_activation",
+      "totals": {
+        "activeClients": 89,
+        "clientsMissingPhone": 5,
+        "openTasks": 10,
+        "questionnaireResponses": 28,
+        "questionnaireSends": 0,
+        "unmatchedQuestionnaireResponses": 4,
+        "toReadQuestionnaireResponses": 5,
+        "rebookings": 29,
+        "openRebookings": 24,
+        "rebookingsMissingPhone": 18,
+        "rebookingsMissingClientId": 18
+      },
+      "taskSources": {
+        "google_sheets_tasks_current": 9,
+        "google_sheets_questionnaire_responses": 1
+      },
+      "taskTypes": {
+        "rebooking": 3,
+        "manual": 2,
+        "validation": 4,
+        "questionnaire_followup": 1
+      }
+    },
+    "auditCommand": "audit-live-firestore.cmd --summary",
+    "auditGeneratedAt": "2026-06-12T12:08:29.993Z"
+  },
+  "lastLiveReadOnlyAudit": {
+    "generatedAt": "2026-06-09T20:28:53.565Z",
+    "latestSyncRunId": "94Cn9f4X1SRbQqubbsnP",
+    "latestSyncSource": "firebase_function_sync_sheets_scheduled",
+    "latestSyncCreatedAt": "2026-06-09T15:53:08.906Z",
+    "latestSyncWarningCount": 25,
+    "liveHostingVersion": "20260609-coachrx-validation",
+    "summary": "Live Hosting and Firestore are reachable. Scheduled sheet sync is still running for the seven pilot coaches. AUTO-009 now pushes new questionnaire responses toward Firestore through syncRequests; remaining warnings are data quality/source activation issues.",
+    "globalDiagnostic": {
+      "status": "needs_source_activation",
+      "totals": {
+        "activeClients": 89,
+        "clientsMissingPhone": 17,
+        "openTasks": 13,
+        "questionnaireResponses": 28,
+        "questionnaireSends": 0,
+        "unmatchedQuestionnaireResponses": 16,
+        "toReadQuestionnaireResponses": 6,
+        "rebookings": 29,
+        "openRebookings": 24,
+        "rebookingsMissingPhone": 19,
+        "rebookingsMissingClientId": 18
+      },
+      "taskSources": {
+        "google_sheets_questionnaire_responses": 4,
+        "google_sheets_tasks_current": 9
+      },
+      "highestLeverageNextActions": [
+        "Brancher ou confirmer la source officielle de telephone client avant de juger Questionnaire/GHL.",
+        "Auditer TASKS_Current comme source d'actions explicites et separer les vraies missions du bruit importe.",
+        "Prioriser le matching questionnaire par telephone et transformer les couleurs en filtres/action lisibles.",
+        "Tester l'envoi questionnaire seulement avec un client dont le telephone est confirme dans GHL, puis valider le journal Firestore.",
+        "Garder l'app rebooking legacy comme reference et ne migrer qu'apres parite telephone/sourceId."
+      ]
+    }
+  },
+  "globalRules": [
+    "Firestore is the operational database read by the dashboard.",
+    "Google Sheets is allowed as backup, audit, or temporary source, but not as a mandatory bridge when a live script can push directly.",
+    "Every direct source must pass previewDashboardImportPayload_ before pushDashboardSourceToFirebase_.",
+    "No secret, tokenized Apps Script URL, GHL token, .env, token.json, or oauth-client.json can be stored in public files.",
+    "A live Apps Script or GHL change requires explicit Michael approval or a previously authorized source activation.",
+    "Rebooking legacy remains active until parity with Firebase is proven."
+  ],
+  "pilotSymptomTriage": [
+    {
+      "symptom": "A coach has no visible To-do or too many noisy To-do.",
+      "likelySource": "tasks",
+      "sourceTypesToCheck": [
+        "coachrx_clients",
+        "questionnaire_responses",
+        "rebooking"
+      ],
+      "evidenceToCheck": [
+        "openTasks by source in audit-live-firestore.cmd --summary",
+        "sourceImportRuns for google_sheets_tasks_current or direct task generation",
+        "task source, type, status and sourceStale fields in Firestore"
+      ],
+      "doNotDo": [
+        "Do not create program tasks from ambiguous CoachRx program context.",
+        "Do not reopen completed, ignored, archived or sourceStale tasks on import."
+      ],
+      "nextAction": "Audit the task source first; keep only explicit coach actions and route ambiguous items to diagnostics instead of To-do."
+    },
+    {
+      "symptom": "Clients are active but show missing phone.",
+      "likelySource": "clients",
+      "sourceTypesToCheck": [
+        "client_directory",
+        "ghl_contacts",
+        "coachrx_clients"
+      ],
+      "evidenceToCheck": [
+        "Sans telephone counter by coach",
+        "phoneResolutionPolicy in SOURCE_REGISTRY.json",
+        "GHL exact phone/contact diagnostic and client_directory import proof"
+      ],
+      "doNotDo": [
+        "Do not let questionnaire or rebooking overwrite client phone.",
+        "Do not let a blank source value erase an existing phone.",
+        "Do not create active clients from orphan GHL contacts."
+      ],
+      "nextAction": "Enrich existing clients through client_directory or GHL server-side exact match, then verify the missing-phone count decreases."
+    },
+    {
+      "symptom": "Questionnaire send fails or a response does not appear for the coach.",
+      "likelySource": "questionnaire",
+      "sourceTypesToCheck": [
+        "ghl_contacts",
+        "questionnaire_responses",
+        "client_directory"
+      ],
+      "evidenceToCheck": [
+        "questionnaireSends trace before GHL call",
+        "GHL exact normalized phone match",
+        "questionnaireResponses processingStatus and matched clientId",
+        "A valider queue for unmatched phone or coach"
+      ],
+      "doNotDo": [
+        "Do not count Non envoye as a relance.",
+        "Do not create a false To-do without a real sent questionnaire or response action.",
+        "Do not expose GHL token or workflow details in public assets."
+      ],
+      "nextAction": "Confirm phone and GHL exact match, then verify send log and response import path by field key."
+    },
+    {
+      "symptom": "Firebase Rebooking differs from the existing Apps Script app.",
+      "likelySource": "rebooking",
+      "sourceTypesToCheck": [
+        "rebooking"
+      ],
+      "evidenceToCheck": [
+        "legacy app open dossier count by coach",
+        "Firestore rebookings by status and matchMethod",
+        "history entries for Gere, Rebooke, Absence coach and Reouvrir"
+      ],
+      "doNotDo": [
+        "Do not replace the legacy app before parity is proven.",
+        "Do not publish tokenized Apps Script URLs.",
+        "Do not write back rebooking statuses until Michael approves the pilot write."
+      ],
+      "nextAction": "Run a read-only parity audit for one coach and keep the legacy app as source of use until counts and statuses match."
+    },
+    {
+      "symptom": "A real coach cannot access or self-activate the dashboard.",
+      "likelySource": "coach_access",
+      "sourceTypesToCheck": [
+        "firebase_auth",
+        "pilot_coach_access"
+      ],
+      "evidenceToCheck": [
+        "PILOT_COACH_ACCESS.json email and CoachRx ID",
+        "users/{uid} role, coachId and active fields",
+        "coaches/{coachId} canonical display name"
+      ],
+      "doNotDo": [
+        "Do not open self-provision to coaches outside the approved pilot list.",
+        "Do not let a non-admin change coachId after activation."
+      ],
+      "nextAction": "Validate the email/CoachRx ID pair and create or repair the Firestore access record through the approved self-provision/admin path."
+    }
+  ],
+  "diagnosticPlaybooks": [
+    {
+      "id": "todo_noise_or_empty",
+      "symptomFamily": "To-do",
+      "questionToAnswer": "Est-ce que la To-do montre des actions coach reelles ou du bruit importe?",
+      "sourcePriority": [
+        "tasks",
+        "questionnaire_responses",
+        "rebooking",
+        "coachrx_clients"
+      ],
+      "inspectCollections": [
+        "tasks",
+        "sourceImportRuns",
+        "coachSyncStatus"
+      ],
+      "requiredEvidence": [
+        "Compter les tasks ouvertes par source, type, status et sourceStale.",
+        "Verifier si les actions viennent de TASKS_Current, questionnaire, rebooking ou deduction CoachRx.",
+        "Confirmer que chaque action visible a un bouton clair et une prochaine action coach."
+      ],
+      "safeNextAction": "Classer les items ambigus en diagnostic/source a verifier; ne garder en To-do que les actions explicites.",
+      "writeAllowedWhen": "La source et le type de chaque To-do ouverte sont connus, non stale et actionnables.",
+      "doNotDo": [
+        "Ne pas generer de tache programme depuis un contexte CoachRx ambigu.",
+        "Ne pas rouvrir une tache completee, ignoree, archivee ou stale."
+      ]
+    },
+    {
+      "id": "client_missing_phone",
+      "symptomFamily": "missing phone",
+      "questionToAnswer": "Quelle source fiable peut confirmer le telephone du client actif?",
+      "sourcePriority": [
+        "manual_admin_correction",
+        "ghl_contacts",
+        "client_directory",
+        "coachrx_clients"
+      ],
+      "inspectCollections": [
+        "clients",
+        "sourceImportRuns",
+        "coachSyncStatus"
+      ],
+      "requiredEvidence": [
+        "Lister les clients actifs sans phoneNormalized par coach.",
+        "Verifier si GHL ou client_directory possede un telephone exact pour le client existant.",
+        "Confirmer qu'aucune valeur vide ne remplace un telephone deja utile."
+      ],
+      "safeNextAction": "Enrichir seulement les clients existants par match exact ou validation admin; garder les conflits en A valider.",
+      "writeAllowedWhen": "Le telephone vient d'une source prioritaire, matche un client existant et ne contredit pas silencieusement une valeur presente.",
+      "doNotDo": [
+        "Ne pas creer de client actif depuis un contact GHL orphelin.",
+        "Ne pas laisser questionnaire ou rebooking corriger automatiquement le telephone."
+      ]
+    },
+    {
+      "id": "questionnaire_send_or_response_missing",
+      "symptomFamily": "Questionnaire",
+      "questionToAnswer": "Le probleme vient-il de l'envoi GHL, du matching telephone ou de l'import des reponses?",
+      "sourcePriority": [
+        "questionnaireSends",
+        "ghl_contacts",
+        "questionnaire_responses",
+        "client_directory"
+      ],
+      "inspectCollections": [
+        "questionnaireSends",
+        "questionnaireResponses",
+        "clients",
+        "sourceImportRuns"
+      ],
+      "requiredEvidence": [
+        "Verifier qu'un clic d'envoi cree une trace questionnaireSends avant l'appel GHL.",
+        "Verifier le match exact du telephone normalise dans GHL.",
+        "Verifier que la reponse importee est liee au coach/client ou envoyee dans A valider."
+      ],
+      "safeNextAction": "Afficher l'erreur exacte au coach/admin et garder l'inbox en cinq vues: Reponses a lire, Envoyer, A relancer, A valider, Archives.",
+      "writeAllowedWhen": "L'envoi est journalise, l'erreur est explicite, et une reponse est matchee par telephone ou classee A valider.",
+      "doNotDo": [
+        "Ne pas compter Non envoye comme relance.",
+        "Ne pas creer une To-do questionnaire sans vrai envoi ou vraie reponse actionnable."
+      ]
+    },
+    {
+      "id": "rebooking_legacy_mismatch",
+      "symptomFamily": "Rebooking",
+      "questionToAnswer": "Firebase represente-t-il la meme realite que l'app rebooking legacy?",
+      "sourcePriority": [
+        "rebooking_legacy_app",
+        "rebooking"
+      ],
+      "inspectCollections": [
+        "rebookings",
+        "sourceImportRuns",
+        "actionLogs"
+      ],
+      "requiredEvidence": [
+        "Comparer le nombre de dossiers ouverts par coach avec l'app legacy.",
+        "Comparer les statuts Ouvert, Gere, Rebooke, Absence coach et l'historique.",
+        "Verifier les rebookings sans clientId, sans telephone ou avec matchMethod fragile."
+      ],
+      "safeNextAction": "Garder l'app legacy comme reference active et utiliser Firebase en lecture/diagnostic jusqu'a parite.",
+      "writeAllowedWhen": "Les comptes, statuts et historiques matchent pour un coach pilote et Michael approuve le writeback.",
+      "doNotDo": [
+        "Ne pas publier d'URL Apps Script tokenisee.",
+        "Ne pas remplacer l'app legacy avant preuve de parite."
+      ]
+    },
+    {
+      "id": "coach_access_issue",
+      "symptomFamily": "access",
+      "questionToAnswer": "Le courriel Google du coach correspond-il au CoachRx ID pilote autorise?",
+      "sourcePriority": [
+        "pilot_coach_access",
+        "firebase_auth",
+        "users",
+        "coaches"
+      ],
+      "inspectCollections": [
+        "users",
+        "coaches"
+      ],
+      "requiredEvidence": [
+        "Verifier le courriel officiel du coach dans PILOT_COACH_ACCESS.json.",
+        "Verifier users/{uid}.role, coachId et active.",
+        "Verifier coaches/{coachId}.coachRxId et displayName."
+      ],
+      "safeNextAction": "Reparer l'acces avec le chemin admin/self-provision approuve seulement pour les sept coachs pilotes.",
+      "writeAllowedWhen": "Le courriel est dans la liste officielle et le coachId correspond au CoachRx ID autorise.",
+      "doNotDo": [
+        "Ne pas ouvrir l'auto-activation hors liste pilote.",
+        "Ne pas permettre a un coach non admin de changer coachId."
+      ]
+    }
+  ],
+  "sharedEvidenceAlreadyDone": [
+    "functions/index.js accepts ingestDashboardSource payloads for the supported sourceTypes.",
+    "firebase-dashboard/apps-script/dashboard-import-bridge-template.gs contains previewDashboardImportPayload_ and pushDashboardSourceToFirebase_.",
+    "firebase-dashboard/SOURCE_PAYLOAD_CONTRACTS.json defines source payload contracts.",
+    "firebase-dashboard/SOURCE_PAYLOAD_SAMPLES.json provides non-sensitive preview payloads for each sourceType.",
+    "firebase-dashboard/SOURCE_PAYLOAD_PLAYBOOK.md explains source payload activation.",
+    "firebase-dashboard/SOURCE_ACTIVATION_KIT.md explains the human activation path.",
+    "verify-dashboard-before-deploy.cmd validates the source architecture before deployment."
+  ],
+  "sources": [
+    {
+      "sourceType": "coachrx_clients",
+      "domain": "Client portfolio and CoachRx context",
+      "priority": 1,
+      "targetCollections": [
+        "clients"
+      ],
+      "currentStatus": "quick_path_uses_existing_extension_apps_script_sheets_then_firebase_sync",
+      "liveSource": "CoachRx Sync Extension -> Apps Script Web App -> Google Sheets mirror -> Firebase dashboard sync",
+      "localEvidence": [
+        "Backend accepts coachrx_clients.",
+        "Payload contract exists.",
+        "Activation kit has CoachRx card.",
+        "CoachRx direct does not require a Google Sheet intermediary when the extractor already has the live data.",
+        "CoachRx direct must not require a Google Sheet when the private extractor can send the same client payload to Firestore.",
+        "CoachRx imports must not create false program tasks from ambiguous program context.",
+        "Local no-overwrite validation confirms CoachRx enrichment preserves manualMembershipEndDate, kiloPlannedRecurrenceEndDate, riskLevel and notes.",
+        "Local sync tests cover seven pilot coaches and phone-first dedupe.",
+        "The quick pilot path keeps the existing CoachRx extension and Apps Script/Sheets mirror as the active source path.",
+        "Automatic To-do generation from ambiguous CoachRx program/compliance signals has been disabled in the Apps Script source; CoachRx is treated as client context unless another explicit action source creates work."
+      ],
+      "blockedBy": [
+        "Need to deploy the patched Apps Script Web App files used by the CoachRx Sync Extension.",
+        "Need one real CoachRx extension import for one pilot coach after Apps Script deployment.",
+        "Need to run the existing Firebase/dashboard sync and confirm Clients/To-do reflect the updated Sheets source."
+      ],
+      "canDoWithoutMichael": [
+        "Improve local validation and docs.",
+        "Prepare sample payloads and rollback instructions.",
+        "Keep filtering false CoachRx client rows in local import logic."
+      ],
+      "needsMichaelOrBob": [
+        "Authorize or run the Apps Script deployment for the live dashboard Web App.",
+        "Run the CoachRx Sync Extension on one pilot coach after deployment.",
+        "Confirm that the resulting Clients tab matches the visible CoachRx portfolio."
+      ],
+      "activationEvidenceRequired": [
+        "The extension response reports the expected sourceSheet and dashboard rebuild diagnostics.",
+        "SRC_CoachRx_Browser_All contains fresh rows for the pilot coach.",
+        "Firebase/dashboard sync consumes the updated Sheets source.",
+        "Clients tab matches the live CoachRx portfolio.",
+        "To-do does not show false program tasks from ambiguous CoachRx context."
+      ],
+      "rollback": "Keep using the existing historical Sheet mirror import and ignore direct CoachRx-to-Firestore bridge work until the dashboard pilot is stable."
+    },
+    {
+      "sourceType": "client_directory",
+      "domain": "Phone, email, membership and admin client enrichment",
+      "priority": 2,
+      "targetCollections": [
+        "clients"
+      ],
+      "currentStatus": "backend_ready_waiting_source_confirmation",
+      "liveSource": "CSM/Kilo/admin directory, CORE_Clients, CORE_Clients_Manual, or another confirmed phone source",
+      "localEvidence": [
+        "Backend accepts client_directory.",
+        "Payload contract exists.",
+        "Merge rules protect useful existing values and manual fields.",
+        "Local no-overwrite validation confirms external client enrichment cannot erase manual membership end, Kilo recurrence, coach risk, notes, existing phone, existing email or existing membership.",
+        "The official source for client phone numbers must be confirmed before activation.",
+        "A successful client_directory import should reduce the Sans telephone count.",
+        "Manual membership end and Kilo recurrence must remain protected dashboard fields."
+      ],
+      "blockedBy": [
+        "Need to confirm the official source for client phone numbers.",
+        "Need a private bridge from that source to Firebase or an approved temporary Sheet sync."
+      ],
+      "canDoWithoutMichael": [
+        "Maintain phone-first matching rules.",
+        "Document expected fields and conflicts.",
+        "Validate that empty imports cannot erase useful values."
+      ],
+      "needsMichaelOrBob": [
+        "Confirm whether GHL, CSM, Kilo, or a manual directory wins for phone.",
+        "Authorize Bob Operator to add the bridge to the chosen source."
+      ],
+      "activationEvidenceRequired": [
+        "Clients missing phone decreases for at least one real coach.",
+        "The Sans telephone counter decreases when the client_directory source provides a reliable phone.",
+        "Questionnaire send becomes available for clients enriched by phone.",
+        "Manual membership end, Kilo recurrence, coach risk and coach notes remain unchanged after import.",
+        "Conflicting phone changes go to validation instead of silent replacement."
+      ],
+      "rollback": "Disable the bridge, keep verified phone enrichments, and use CORE_Clients / CORE_Clients_Manual as backup audit."
+    },
+    {
+      "sourceType": "ghl_contacts",
+      "domain": "GHL contactId and phone enrichment",
+      "priority": 3,
+      "targetCollections": [
+        "clients"
+      ],
+      "currentStatus": "backend_ready_waiting_private_server_bridge",
+      "liveSource": "GoHighLevel server-side lookup or private Apps Script bridge",
+      "localEvidence": [
+        "Backend protects GHL from stale cleanup.",
+        "Questionnaire send uses server-side GHL token logic.",
+        "GHL matching is strict by normalized phone for questionnaire sends."
+      ],
+      "blockedBy": [
+        "Need a private server-side bridge for bulk contact enrichment.",
+        "Need to avoid any browser-side GHL call.",
+        "Need to confirm GHL API permission and rate behavior for enrichment."
+      ],
+      "canDoWithoutMichael": [
+        "Keep GHL non-destructive rules in validators.",
+        "Improve error reporting and docs around phone mismatches."
+      ],
+      "needsMichaelOrBob": [
+        "Confirm GHL access path or authorize Bob Operator / server bridge setup.",
+        "Approve whether bulk contact enrichment is allowed during the pilot."
+      ],
+      "activationEvidenceRequired": [
+        "A known phone matches exactly one GHL contactId.",
+        "No client is archived, deleted, transferred, or marked stale by GHL.",
+        "GHL errors are visible in sourceImportRuns or questionnaireSends.",
+        "No GHL token or private URL appears in public assets."
+      ],
+      "rollback": "Disable GHL enrichment and keep questionnaire sends reporting clear phone/contact errors."
+    },
+    {
+      "sourceType": "questionnaire_responses",
+      "domain": "Questionnaire inbox and coach follow-up signals",
+      "priority": 4,
+      "targetCollections": [
+        "questionnaireResponses"
+      ],
+      "currentStatus": "live_queue_active_needs_real_response_validation",
+      "liveSource": "Questionnaire client-coach V2 endpoint / AUTO-009",
+      "localEvidence": [
+        "Backend accepts questionnaire_responses.",
+        "Questionnaire follow-up tests protect the 7-day relance rule.",
+        "Product audit verifies robust unknown field display and action-oriented response cards.",
+        "AUTO-009 Questionnaire client-coach V2 now queues new responses into Firestore syncRequests through Apps Script version 11.",
+        "Activation report exists in QUESTIONNAIRE_FIRESTORE_QUEUE_ACTIVATION.json and deployment report exists in QUESTIONNAIRE_APPS_SCRIPT_DEPLOYMENT.json."
+      ],
+      "blockedBy": [
+        "Need one new real/test response after Apps Script version 11 to prove runtime Firestore queue authorization.",
+        "Need to validate phone-first matching and coach matching in the dashboard.",
+        "Need historical response backfill only after the new live path is proven."
+      ],
+      "canDoWithoutMichael": [
+        "Keep reading by field key instead of column order.",
+        "Improve local rendering and validators.",
+        "Prepare historical backfill script and rollback notes without running it on production data."
+      ],
+      "needsMichaelOrBob": [
+        "Submit or approve one safe questionnaire test response for one pilot coach.",
+        "Confirm whether unmatched responses should be backfilled after the live path is proven."
+      ],
+      "activationEvidenceRequired": [
+        "A submitted response appears in Reponses a lire for the right coach.",
+        "Phone matching links the response to the right client when possible.",
+        "Unmatched responses land in A valider.",
+        "Lu and Creer une mission work without modifying immutable response content.",
+        "No false To-do is created for non-sent questionnaires."
+      ],
+      "rollback": "Continue reading Responses/Test_Responses from the questionnaire Sheet while direct bridge is corrected."
+    },
+    {
+      "sourceType": "checkups",
+      "domain": "CSM check-ups for Performance and client history",
+      "priority": 5,
+      "targetCollections": [
+        "checkups"
+      ],
+      "currentStatus": "backend_ready_waiting_csm_bridge",
+      "liveSource": "CSM check-up forms/sheets / AUTO-002",
+      "localEvidence": [
+        "Backend accepts checkups.",
+        "Performance logic includes check-ups by period.",
+        "Activation kit protects check-ups as read-only for client manual fields."
+      ],
+      "blockedBy": [
+        "Need to confirm the live CSM check-up source and headers.",
+        "Need an Apps Script or scheduled bridge to push direct payloads."
+      ],
+      "canDoWithoutMichael": [
+        "Maintain Performance period validation.",
+        "Document expected checkup fields and no-write-to-client-manual rule."
+      ],
+      "needsMichaelOrBob": [
+        "Authorize Bob Operator to inspect/update AUTO-002.",
+        "Confirm which CSM tab/form is authoritative for coach check-ups."
+      ],
+      "activationEvidenceRequired": [
+        "Check-ups count correctly in Performance for 7/30/60 days and month ranges.",
+        "Client history shows the latest relevant check-up.",
+        "No manual client fields change because of check-up import."
+      ],
+      "rollback": "Disable direct checkup bridge and keep the CSM form/sheet as admin register."
+    },
+    {
+      "sourceType": "rebooking",
+      "domain": "Semi-private rebooking follow-up",
+      "priority": 6,
+      "targetCollections": [
+        "rebookings"
+      ],
+      "currentStatus": "backend_ready_audit_before_writeback",
+      "liveSource": "Existing rebooking Apps Script app / AUTO-003",
+      "localEvidence": [
+        "Backend accepts rebooking.",
+        "Product audit protects rebooking status, history, reopen and absence flow.",
+        "Activation kit says legacy app remains the safety net."
+      ],
+      "blockedBy": [
+        "Need parity audit between Firebase and the legacy app before direct write.",
+        "Need to confirm the source behind the legacy app.",
+        "Need to avoid tokenized Apps Script URLs in public files."
+      ],
+      "canDoWithoutMichael": [
+        "Improve diagnostics and local validators.",
+        "Document comparison requirements.",
+        "Keep status protection rules."
+      ],
+      "needsMichaelOrBob": [
+        "Authorize Bob Operator to inspect AUTO-003 if deeper source comparison is needed.",
+        "Approve any direct rebooking write after parity is shown."
+      ],
+      "activationEvidenceRequired": [
+        "Firebase and legacy app show the same open dossier counts for one coach.",
+        "Gere, Rebooke, Absence coach and Reouvrir preserve history.",
+        "A reimport does not reopen a handled/rebooked/absence item.",
+        "No tokenized legacy URL appears in public assets or docs."
+      ],
+      "rollback": "Keep the legacy rebooking app as source of use and disable direct Firebase rebooking bridge."
+    }
+  ],
+  "liveActivationWorkPackages": [
+    {
+      "id": "coachrx_live_bridge",
+      "sourceType": "coachrx_clients",
+      "objective": "Make the existing CoachRx Sync Extension path reliably feed the dashboard quickly through the Apps Script/Sheets mirror and Firebase sync, without forcing a Google Sheet intermediary when the live extractor can push the same safe payload later.",
+      "operator": "Dashboard Apps Script owner or Bob Operator, only after explicit approval.",
+      "blockedUntil": [
+        "The patched Apps Script receiver is deployed to the Web App used by the extension.",
+        "Michael runs one extension import for one pilot coach.",
+        "The existing Firebase/dashboard sync is run after the extension import."
+      ],
+      "previewLimit": "1 to 3 clients for one pilot coach.",
+      "firstWriteLimit": "One pilot coach only; no global write.",
+      "mustProve": [
+        "sourceImportRuns and coachSyncStatus show a successful import for the pilot coach.",
+        "Clients tab displays the expected portfolio after sync.",
+        "The extension response reports the expected Sheets mirror write.",
+        "SRC_CoachRx_Browser_All receives fresh rows for the pilot coach.",
+        "The dashboard sync imports the updated Sheets rows.",
+        "Clients tab matches the expected live CoachRx portfolio.",
+        "To-do does not create false program tasks from ambiguous CoachRx context."
+      ],
+      "rollback": "Disable direct CoachRx bridge and ignore direct_coachrx_extension documents until corrected."
+    },
+    {
+      "id": "client_directory_phone_bridge",
+      "sourceType": "client_directory",
+      "objective": "Enrich Firestore clients with reliable phone, email and membership context while protecting manual dashboard fields.",
+      "operator": "Bob Operator or chosen private directory source owner, only after source of truth is confirmed.",
+      "blockedUntil": [
+        "Official phone source is confirmed: GHL, CSM, Kilo or admin directory.",
+        "DASHBOARD_IMPORT_TOKEN is available in the source script properties.",
+        "Michael approves a first pilot import."
+      ],
+      "previewLimit": "One pilot coach with at least one known missing-phone client.",
+      "firstWriteLimit": "One pilot coach only; no silent phone replacement on conflicts.",
+      "mustProve": [
+        "Sans telephone decreases for the pilot coach.",
+        "Questionnaire send becomes available for newly enriched clients.",
+        "Manual membership end, Kilo recurrence, risk and notes are preserved.",
+        "Conflicting phones are routed to validation instead of silent replacement."
+      ],
+      "rollback": "Disable directory bridge and keep verified client fields plus CORE_Clients / CORE_Clients_Manual as audit."
+    },
+    {
+      "id": "ghl_private_enrichment",
+      "sourceType": "ghl_contacts",
+      "objective": "Use GHL only as private server-side phone/contact enrichment and questionnaire action support.",
+      "operator": "Firebase Function or private Apps Script bridge with GHL access; never the browser.",
+      "blockedUntil": [
+        "GHL access path and permissions are confirmed.",
+        "Bulk enrichment is approved for the pilot.",
+        "Exact phone matching behavior is validated."
+      ],
+      "previewLimit": "Known test phones only; no broad contact export.",
+      "firstWriteLimit": "Enrichment only: contactId, phone, email or name. No archive, stale, delete or coach transfer.",
+      "mustProve": [
+        "A known phone matches exactly one GHL contact.",
+        "No fallback to the first search result occurs.",
+        "GHL errors are visible in sourceImportRuns or questionnaireSends.",
+        "No GHL token appears in public assets.",
+        "No archive, stale, delete or transfer action is possible from this package."
+      ],
+      "rollback": "Disable GHL enrichment and keep questionnaire sends reporting explicit contact or phone errors."
+    },
+    {
+      "id": "questionnaire_v2_inbox_bridge",
+      "sourceType": "questionnaire_responses",
+      "objective": "Validate the active AUTO-009 direct queue so questionnaire V2 responses reliably feed the coach inbox by phone-first matching.",
+      "operator": "AUTO-009 Apps Script version 11 plus Firebase processSyncRequest.",
+      "blockedUntil": [
+        "One new questionnaire response is submitted after Apps Script version 11.",
+        "Firestore syncRequests processing is confirmed for that response.",
+        "The response lands in the right coach inbox or A valider."
+      ],
+      "previewLimit": "One safe pilot response.",
+      "firstWriteLimit": "New responses only; response content remains immutable after import and content remains immutable for coach read/archive actions.",
+      "mustProve": [
+        "Reponses a lire shows the imported response in the correct inbox.",
+        "Response appears in Reponses a lire for the right coach or A valider if unmatched.",
+        "Phone matching links to the right client when possible.",
+        "Lu and Creer une mission work without modifying response content.",
+        "No false To-do is created for non-sent questionnaires."
+      ],
+      "rollback": "Return temporarily to reading Responses/Test_Responses while direct bridge is corrected."
+    },
+    {
+      "id": "checkups_csm_bridge",
+      "sourceType": "checkups",
+      "objective": "Feed Performance and client history from CSM check-ups without modifying manual client fields.",
+      "operator": "Bob Operator on AUTO-002 or the CSM source owner.",
+      "blockedUntil": [
+        "Authoritative CSM check-up tab/form is confirmed.",
+        "Headers are mapped by key instead of column position.",
+        "A pilot coach import is approved."
+      ],
+      "previewLimit": "One pilot coach and a small recent date range.",
+      "firstWriteLimit": "Check-up documents only; no client manual field writes.",
+      "mustProve": [
+        "Performance counts check-ups for the selected period.",
+        "Client history shows the latest relevant check-up.",
+        "No manual client field is overwritten by a check-up import.",
+        "No manual membership end, Kilo recurrence, risk or notes are changed."
+      ],
+      "rollback": "Disable direct checkup bridge and keep CSM form/sheet as admin register."
+    },
+    {
+      "id": "rebooking_legacy_parity_bridge",
+      "sourceType": "rebooking",
+      "objective": "Compare Firebase rebooking with the active legacy app before any direct writeback and keep the legacy rebooking app as active source until parity is proven.",
+      "operator": "Bob Operator on AUTO-003 or the legacy rebooking source owner.",
+      "blockedUntil": [
+        "Legacy source behind the current rebooking app is confirmed.",
+        "Parity counts are compared for one pilot coach.",
+        "Michael approves any Firebase writeback beyond read-only comparison."
+      ],
+      "previewLimit": "One pilot coach, read-only comparison against the legacy app.",
+      "firstWriteLimit": "No writeback until parity is proven. If approved later, one pilot coach only.",
+      "mustProve": [
+        "Firebase and legacy app show the same open dossier counts for the pilot coach.",
+        "Gere, Rebooke, Absence coach and Reouvrir preserve history.",
+        "A reimport does not reopen handled, rebooked or absence items.",
+        "No tokenized legacy URL appears in public assets or docs."
+      ],
+      "rollback": "Keep the legacy rebooking app as active source, keep the legacy rebooking app as active source of use, and disable direct Firebase rebooking writes."
+    }
+  ],
+  "nextNoInterventionWork": [
+    "Keep validators aligned with this status registry.",
+    "Continue expanding local tests for source conflicts and no-overwrite rules.",
+    "Keep sample payloads for each sourceType aligned with contracts without real client data.",
+    "Document exact Bob Operator handoff steps per live script once access is approved."
+  ],
+  "knownHumanActions": [
+    "Approve Bob Operator live Apps Script inspection before modifying scripts.",
+    "Confirm source of truth for client phone numbers.",
+    "Approve first direct write for one coach per source.",
+    "Verify live app behavior with real coach/client data after each activation."
+  ]
+}
+

@@ -1,0 +1,80 @@
+{
+  "version": "2026-06-09-pilot-coach-access",
+  "updatedAt": "2026-06-09",
+  "source": "Kilo staff list plus CFSB owner decision for shared admin access",
+  "principle": "Only real pilot coaches with a CoachRx ID can self-activate a coach dashboard account. The shared info account remains admin/coprop access.",
+  "adminAccounts": [
+    {
+      "email": "info@crossfitstbasilelegrand.com",
+      "role": "admin",
+      "coachId": "admin",
+      "displayName": "Michael / Gabriel admin",
+      "reason": "Shared coproprietaire/admin dashboard access. Not a simple coach self-provision profile."
+    }
+  ],
+  "pilotCoaches": [
+    {
+      "coachId": "15935",
+      "coachRxId": "15935",
+      "displayName": "Marc-Andre Menard",
+      "email": "marcandremenard89@gmail.com",
+      "accessMode": "self_provision_coach"
+    },
+    {
+      "coachId": "15928",
+      "coachRxId": "15928",
+      "displayName": "Iheb Yahyaoui",
+      "email": "ihebya73@gmail.com",
+      "accessMode": "self_provision_coach"
+    },
+    {
+      "coachId": "17242",
+      "coachRxId": "17242",
+      "displayName": "Camille Proulx",
+      "email": "camproulxx@gmail.com",
+      "accessMode": "self_provision_coach"
+    },
+    {
+      "coachId": "15902",
+      "coachRxId": "15902",
+      "displayName": "David Olivier",
+      "email": "davidolivier1997@gmail.com",
+      "accessMode": "self_provision_coach"
+    },
+    {
+      "coachId": "15893",
+      "coachRxId": "15893",
+      "displayName": "Gabriel Mayer Bedard",
+      "email": "info@crossfitstbasilelegrand.com",
+      "accessMode": "admin_shared_account"
+    },
+    {
+      "coachId": "15937",
+      "coachRxId": "15937",
+      "displayName": "Hugo Lelievre",
+      "email": "hugolelievre34@gmail.com",
+      "accessMode": "self_provision_coach"
+    },
+    {
+      "coachId": "15936",
+      "coachRxId": "15936",
+      "displayName": "Raphael Samson",
+      "email": "raphael.samson@usherbrooke.ca",
+      "accessMode": "self_provision_coach"
+    }
+  ],
+  "explicitlyNotPilotAccess": [
+    "audrey.laurence.farmer@gmail.com",
+    "cmartineau88@gmail.com",
+    "cw.chloe.willis@gmail.com",
+    "sylvain070@yahoo.ca",
+    "kim.theriault22@gmail.com",
+    "michael.grondin9@gmail.com",
+    "valerie.savard@me.com"
+  ],
+  "securityRules": {
+    "selfProvisionSource": "firebase_self_provision_pilot",
+    "nonAdminCannotChangeCoachId": true,
+    "coachEmailMustMatchAuthToken": true
+  }
+}

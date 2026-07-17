@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Roadmap Trimestrielle CFSB</title>
-    <link rel="stylesheet" href="./styles.css?v=20260612-resume-snapshot-ui">
+    <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
     <div class="app-shell">
@@ -46,7 +46,7 @@
               vision, operations, coaching, communaute et support se tiennent ensemble.
             </p>
           </div>
-          <div class="org-grid" id="orgGrid">
+          <div class="org-grid">
             <article class="org-column owners">
               <h3>Direction</h3>
               <ul>
@@ -94,15 +94,14 @@
           </aside>
 
           <form class="form-area" id="roadmapForm">
-            <div class="notice" id="formNotice" role="status" aria-live="polite">
+            <div class="notice" id="formNotice">
               Choisis un role pour generer le formulaire.
             </div>
             <div id="roleResources"></div>
             <div id="sections"></div>
             <div class="actions" id="formActions" hidden>
-              <span class="draft-status" id="draftStatus" aria-live="polite"></span>
               <button class="button secondary" id="saveDraftButton" type="button">Sauvegarder brouillon</button>
-              <button class="button" id="submitButton" type="submit">Soumettre</button>
+              <button class="button" type="submit">Soumettre</button>
             </div>
           </form>
         </section>
@@ -130,6 +129,6 @@
       </div>
     </div>
 
-    <script src="./app.js?v=20260623-team-members"></script>
+    <script src="./app.js"></script>
   </body>
 </html>

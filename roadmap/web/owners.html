@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Dashboard Owners - Roadmap CFSB</title>
-    <link rel="stylesheet" href="./styles.css?v=20260625-snapshot-fallback">
+    <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
     <div class="owner-gate" id="ownerGate">
@@ -31,13 +31,12 @@
           <a class="button secondary" href="./index.html">Formulaire employe</a>
           <button class="button secondary" id="settingsButton" type="button">Parametres</button>
           <button class="button secondary" id="importButton" type="button">Importer JSON</button>
-          <button class="button secondary" id="syncButton" type="button">Synchroniser</button>
           <button class="button secondary" id="lockOwnersButton" type="button">Verrouiller</button>
           <button class="button warn" id="clearLocalButton" type="button">Vider tests locaux</button>
         </div>
       </header>
 
-      <main class="container owner-container">
+      <main class="container">
         <section class="hero">
           <div>
             <h1>Lire, annoter, preparer.</h1>
@@ -47,48 +46,23 @@
             </p>
           </div>
           <aside class="status-panel">
-            <h2>Base Roadmap</h2>
-            <p id="syncStatus">Les soumissions serveur seront chargees depuis Google Sheets.</p>
+            <h2>Vue locale MVP</h2>
+            <p>
+              Pour le prototype, les soumissions et notes sont gardees dans ce navigateur.
+              L'Apps Script utilisera les memes champs dans Google Sheets.
+            </p>
           </aside>
         </section>
 
-        <section class="owner-toolbar" aria-label="Filtres dashboard owners">
-          <label class="field">
-            <span>Recherche</span>
-            <input class="input" id="ownerSearchInput" type="search" placeholder="Nom, role, trimestre...">
-          </label>
-          <label class="field">
-            <span>Role</span>
-            <select id="ownerRoleFilter">
-              <option value="all">Tous les roles</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>Trimestre</span>
-            <select id="ownerQuarterFilter">
-              <option value="all">Tous les trimestres</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>Statut</span>
-            <select id="ownerStatusFilter">
-              <option value="all">Tous les statuts</option>
-            </select>
-          </label>
-        </section>
-
-        <div class="owner-view-tabs" role="tablist" aria-label="Vue dashboard owners">
-          <button class="view-tab active" id="activeViewButton" type="button">Actifs</button>
-          <button class="view-tab" id="archiveViewButton" type="button">Archives</button>
-          <button class="view-tab" id="teamViewButton" type="button">Portrait equipe</button>
-          <button class="view-tab" id="teamAdminViewButton" type="button">Equipe / organigramme</button>
-        </div>
-
-        <section class="pipeline-board" id="pipelineBoard" aria-label="Pipeline roadmap"></section>
-
         <section class="admin-grid">
+          <aside class="panel">
+            <h2>Soumissions</h2>
+            <p id="submissionCount">Aucune soumission locale.</p>
+            <div class="submission-list" id="submissionList"></div>
+          </aside>
+
           <section class="form-area" id="detailArea">
-            <div class="notice">Selectionne une soumission.</div>
+            <div class="notice">Selectionne une soumission a gauche.</div>
           </section>
         </section>
       </main>
@@ -114,7 +88,7 @@
         <label class="field">
           <span>URL Apps Script Web App</span>
           <input class="input" id="endpointInput" type="url" placeholder="https://script.google.com/macros/s/.../exec">
-          <small>Sur GitHub Pages, l'URL officielle est forcee pour eviter les vieux parametres locaux. En local, laisse vide pour tester sans serveur.</small>
+          <small>Utilise la meme URL que le formulaire. Laisse vide pour sauvegarder les notes localement.</small>
         </label>
         <div class="actions">
           <button class="button secondary" id="closeSettingsButton" type="button">Fermer</button>
@@ -123,6 +97,6 @@
       </div>
     </div>
 
-    <script src="./owners.js?v=20260625-snapshot-fallback"></script>
+    <script src="./owners.js"></script>
   </body>
 </html>

@@ -3,8 +3,16 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Dashboard Coach CFSB Firebase</title>
-    <link rel="stylesheet" href="./styles.css">
+    <title>Dashboard Coach CFSB</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=20260709-voice-firestore-queue-mobile">
+    <link rel="shortcut icon" href="./favicon.svg?v=20260709-voice-firestore-queue-mobile">
+    <link rel="manifest" href="./manifest.webmanifest?v=20260709-voice-firestore-queue-mobile">
+    <meta name="theme-color" content="#e51f2a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Coach CFSB">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="stylesheet" href="./styles.css?v=20260715-firebase-questionnaire-suite">
   </head>
   <body>
     <div id="app">
@@ -15,6 +23,47 @@
       </main>
     </div>
     <div id="toast" class="toast" role="status"></div>
-    <script type="module" src="./app.js"></script>
-  </body>
+    <script>
+      window.__CFSB_BOOT_ERRORS = [];
+      window.addEventListener("error", function (event) {
+        window.__CFSB_BOOT_ERRORS.push(
+          (event.message || "Erreur JavaScript") +
+            (event.filename ? " @ " + event.filename + ":" + event.lineno : "")
+        );
+      });
+      window.addEventListener("unhandledrejection", function (event) {
+        var reason = event.reason || {};
+        window.__CFSB_BOOT_ERRORS.push("Promise: " + (reason.message || reason.code || String(reason)));
+      });
+      window.__CFSB_FORCE_RELOAD = function (clearSession) {
+        if (clearSession) {
+          localStorage.clear();
+          sessionStorage.clear();
+        }
+        var url = new URL(window.location.href);
+        url.searchParams.set("fresh", String(Date.now()));
+        window.location.replace(url.toString());
+      };
+      window.setTimeout(function () {
+        var app = document.getElementById("app");
+        if (!app || !app.innerText || app.innerText.indexOf("Chargement") === -1) return;
+        var errors = window.__CFSB_BOOT_ERRORS && window.__CFSB_BOOT_ERRORS.length
+          ? '<pre class="diagnostic-errors">' + window.__CFSB_BOOT_ERRORS.join("\n") + "</pre>"
+          : "";
+        app.innerHTML = [
+          '<main class="auth-card">',
+          '<div class="brand-kicker">CHARGEMENT</div>',
+          '<h1>Dashboard Coach</h1>',
+          "<p>L'application prend plus de temps que prevu a demarrer. Essaie de recharger. Si le probleme revient, vide la session puis reconnecte ton compte.</p>",
+          errors,
+          '<div class="action-row">',
+          '<button class="primary" onclick="window.__CFSB_FORCE_RELOAD(false)">Recharger</button>',
+          '<button class="secondary" onclick="window.__CFSB_FORCE_RELOAD(true)">Vider la session</button>',
+          "</div>",
+          "</main>"
+        ].join("");
+      }, 9000);
+    </script>
+    <script type="module" src="./app.js?v=20260715-firebase-questionnaire-suite"></script>
+</body>
 </html>

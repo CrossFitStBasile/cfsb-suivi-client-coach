@@ -1,0 +1,210 @@
+{
+  "version": "2026-06-08-source-payload-samples",
+  "updatedAt": "2026-06-08",
+  "purpose": "Non-sensitive sample payloads for validating source bridges before any live write to Firestore.",
+  "rules": [
+    "All records are fictional and must not be used as real client data.",
+    "Every sample is safe to run through previewDashboardImportPayload_ only.",
+    "Do not add Apps Script URLs, API keys, bearer tokens, contact secrets, or real client phone numbers here.",
+    "Use these samples to compare shape, keys, matching behavior, and manual-field protection before activating a live source."
+  ],
+  "samples": [
+    {
+      "sourceType": "coachrx_clients",
+      "expectedTargetCollections": ["clients"],
+      "previewOnly": true,
+      "samplePayload": {
+        "sourceType": "coachrx_clients",
+        "coachRxId": "15935",
+        "coachName": "Marc-Andre Menard",
+        "requestedBy": "local-validation",
+        "sourceRunId": "sample-coachrx-20260608",
+        "sourceGeneratedAt": "2026-06-08T12:00:00Z",
+        "records": [
+          {
+            "Client": "Client Exemple CoachRx",
+            "Phone": "514-555-0101",
+            "Email": "coachrx.example.client@example.test",
+            "Client ID": "coachrx-sample-client-001",
+            "Active package": "Semi-Prive 1x/semaine",
+            "Program": "Programme actuel visible",
+            "Exercise due": "2026-06-15",
+            "Lifestyle due": "",
+            "Compliance %": "82"
+          }
+        ]
+      },
+      "expectedPreviewSignals": [
+        "sourceType is coachrx_clients",
+        "coachRxId is 15935",
+        "sampleKeys include Client and Phone",
+        "recordsReceived is 1"
+      ],
+      "mustNotDo": [
+        "Do not create false program tasks from future program context.",
+        "Do not overwrite manual membership end, Kilo recurrence, coach risk, notes, or goals."
+      ]
+    },
+    {
+      "sourceType": "client_directory",
+      "expectedTargetCollections": ["clients"],
+      "previewOnly": true,
+      "samplePayload": {
+        "sourceType": "client_directory",
+        "coachRxId": "15935",
+        "coachName": "Marc-Andre Menard",
+        "requestedBy": "local-validation",
+        "sourceRunId": "sample-client-directory-20260608",
+        "sourceGeneratedAt": "2026-06-08T12:00:00Z",
+        "records": [
+          {
+            "Client": "Client Exemple Repertoire",
+            "Phone": "514-555-0102",
+            "Email": "directory.example.client@example.test",
+            "Membership": "Semi-Prive 2x/semaine",
+            "membership end source note": "manual-only-dashboard-field"
+          }
+        ]
+      },
+      "expectedPreviewSignals": [
+        "sourceType is client_directory",
+        "sampleKeys include Client, Phone, Email and Membership",
+        "recordsReceived is 1"
+      ],
+      "mustNotDo": [
+        "Do not replace useful phone/email values with blanks.",
+        "Do not calculate manual membership end or Kilo recurrence from this source."
+      ]
+    },
+    {
+      "sourceType": "ghl_contacts",
+      "expectedTargetCollections": ["clients"],
+      "previewOnly": true,
+      "samplePayload": {
+        "sourceType": "ghl_contacts",
+        "coachRxId": "15935",
+        "coachName": "Marc-Andre Menard",
+        "requestedBy": "local-validation",
+        "sourceRunId": "sample-ghl-contacts-20260608",
+        "sourceGeneratedAt": "2026-06-08T12:00:00Z",
+        "records": [
+          {
+            "phone": "514-555-0103",
+            "contactId": "ghl-sample-contact-001",
+            "email": "ghl.example.client@example.test",
+            "name": "Client Exemple GHL"
+          }
+        ]
+      },
+      "expectedPreviewSignals": [
+        "sourceType is ghl_contacts",
+        "sampleKeys include phone and contactId",
+        "recordsReceived is 1"
+      ],
+      "mustNotDo": [
+        "Do not call GHL from the browser.",
+        "Do not archive, delete, stale, transfer, or hide a client from GHL enrichment."
+      ]
+    },
+    {
+      "sourceType": "questionnaire_responses",
+      "expectedTargetCollections": ["questionnaireResponses"],
+      "previewOnly": true,
+      "samplePayload": {
+        "sourceType": "questionnaire_responses",
+        "coachName": "Marc-Andre Menard",
+        "requestedBy": "local-validation",
+        "sourceRunId": "sample-questionnaire-20260608",
+        "sourceGeneratedAt": "2026-06-08T12:00:00Z",
+        "records": [
+          {
+            "response_id": "sample-response-001",
+            "submitted_at": "2026-06-08T12:00:00Z",
+            "client_name": "Client Exemple Questionnaire",
+            "client_phone_normalized": "5145550104",
+            "coach_name": "Marc-Andre Menard",
+            "triage_status": "orange",
+            "coach_action_type": "discussion_structuree",
+            "results_satisfaction_score": "3",
+            "program_fit": "programme_moins_aligne",
+            "pain_status": "non",
+            "open_note": "Exemple de note ouverte sans donnee reelle"
+          }
+        ]
+      },
+      "expectedPreviewSignals": [
+        "sourceType is questionnaire_responses",
+        "sampleKeys include response_id, client_phone_normalized and triage_status",
+        "recordsReceived is 1"
+      ],
+      "mustNotDo": [
+        "Do not create a fake To-do for a questionnaire that was never sent.",
+        "Do not modify immutable response content when marking read or creating a mission."
+      ]
+    },
+    {
+      "sourceType": "checkups",
+      "expectedTargetCollections": ["checkups"],
+      "previewOnly": true,
+      "samplePayload": {
+        "sourceType": "checkups",
+        "coachName": "Marc-Andre Menard",
+        "requestedBy": "local-validation",
+        "sourceRunId": "sample-checkups-20260608",
+        "sourceGeneratedAt": "2026-06-08T12:00:00Z",
+        "records": [
+          {
+            "Client": "Client Exemple Checkup",
+            "Phone": "514-555-0105",
+            "Dernier check-up": "2026-06-08",
+            "Coach": "Marc-Andre Menard",
+            "Notes": "Resume fictif du check-up",
+            "Risque": "jaune",
+            "Assiduite": "Bonne"
+          }
+        ]
+      },
+      "expectedPreviewSignals": [
+        "sourceType is checkups",
+        "sampleKeys include Client, Phone and Dernier check-up",
+        "recordsReceived is 1"
+      ],
+      "mustNotDo": [
+        "Do not update manual client fields from a check-up import.",
+        "Do not count a check-up outside the selected Performance period."
+      ]
+    },
+    {
+      "sourceType": "rebooking",
+      "expectedTargetCollections": ["rebookings"],
+      "previewOnly": true,
+      "samplePayload": {
+        "sourceType": "rebooking",
+        "coachName": "Marc-Andre Menard",
+        "requestedBy": "local-validation",
+        "sourceRunId": "sample-rebooking-20260608",
+        "sourceGeneratedAt": "2026-06-08T12:00:00Z",
+        "records": [
+          {
+            "Event ID": "sample-event-001",
+            "Client": "Client Exemple Rebooking",
+            "Phone": "514-555-0106",
+            "Debut RDV": "2026-06-10 10:30",
+            "Service": "Semi-Prive",
+            "Statut": "OUVERT",
+            "annulations": "1"
+          }
+        ]
+      },
+      "expectedPreviewSignals": [
+        "sourceType is rebooking",
+        "sampleKeys include Event ID, Client and Debut RDV",
+        "recordsReceived is 1"
+      ],
+      "mustNotDo": [
+        "Do not replace the legacy app before parity is proven.",
+        "Do not reopen handled, rebooked, or absence coach items after a reimport."
+      ]
+    }
+  ]
+}

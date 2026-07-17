@@ -154,7 +154,7 @@ Le test lance un serveur local sur le dossier `dashboard`, ouvre `dashboard/live
 - ouverture d'une fiche client;
 - edition de la fin membership manuelle;
 - retour dans la To-do;
-- creation d'une capture rapide.
+- creation d'une note rapide avec `Ajouter une note`.
 
 Installation locale:
 
@@ -209,11 +209,39 @@ firebase functions:secrets:set GHL_PRIVATE_TOKEN
 
 Le location ID GoHighLevel du centre est configure dans la Function, parce qu'il n'est pas un secret.
 
-Deploiement complet:
+Deploiement frontend seulement, a utiliser pour les ajustements visuels et UX:
 
 ```powershell
 cd "C:\Users\micha\Documents\Codex\2026-05-08\j-ai-un-gros-projet-d\generated\github-pages-repo"
-firebase deploy --only hosting,functions,firestore:rules,firestore:indexes
+.\deploy-hosting-dashboard.cmd
 ```
+
+Validation locale avant deploiement:
+
+```powershell
+cd "C:\Users\micha\Documents\Codex\2026-05-08\j-ai-un-gros-projet-d\generated\github-pages-repo"
+.\verify-dashboard-before-deploy.cmd
+```
+
+Cette validation verifie la syntaxe front-end/back-end, les helpers d'import Google Sheets vers Firestore et la couverture des collections par `firestore.rules`.
+
+Deploiement complet, seulement quand la Cloud Function ou les regles Firestore changent:
+
+```powershell
+cd "C:\Users\micha\Documents\Codex\2026-05-08\j-ai-un-gros-projet-d\generated\github-pages-repo"
+.\deploy-dashboard-complet.cmd
+```
+
+Si `firebase` n'est pas reconnu dans PowerShell ou `cmd.exe`, ouvrir d'abord `C:\Users\micha\Downloads\firebase-tools-instant-win.exe`, attendre le prompt Firebase, puis coller les deux lignes `cd ...` et `deploy-...cmd`. Ne pas ajouter `deploy` directement apres le `.exe` dans la commande Windows.
+
+Apres un deploiement complet, les donnees ne sont pas automatiquement garanties dans chaque coach. Ouvrir le dashboard, aller dans `Guide`, lancer `Synchroniser tous les coachs`, puis valider Marc-Andre et Iheb dans `Clients`, `To-do`, `Questionnaires` et `Rebooking`.
+
+Si un coach reste vide, verifier d'abord le diagnostic de synchronisation avant de modifier l'interface. Les causes probables sont:
+
+- la source Google Sheets n'a pas encore ete importee dans Firestore;
+- la source contient le nom du coach sans CoachRx ID;
+- le coach est ecrit avec une variante non reconnue;
+- la ligne match le coach, mais le nom client ou le telephone est absent;
+- les donnees existent dans l'ancien systeme, mais pas encore dans le flux Firebase.
 
 Si la Function n'est pas encore deployee ou si les secrets ne sont pas configures, le dashboard affiche une erreur au coach au lieu de laisser croire que le SMS est parti.

@@ -1,0 +1,13 @@
+{
+  "report": {
+    "scriptId": "1RzTyLvUdw6NdVI2vsDoi7a2bjWGAZDXml94QYG4TCs9wF5KJdKm3HFBa",
+    "deployedAt": "2026-06-09T20:19:01.549Z",
+    "previousDeploymentId": "AKfycbxnhlehsj_NQU73k3csMQPj0NAm3QSQrpjk0Ar6VYOjXYZO-m9_GSxtmEqYw9y_9DSQEA",
+    "previousVersionNumber": 10,
+    "newVersionNumber": 11,
+    "updatedDeploymentId": "AKfycbxnhlehsj_NQU73k3csMQPj0NAm3QSQrpjk0Ar6VYOjXYZO-m9_GSxtmEqYw9y_9DSQEA",
+    "webAppUrl": "https://script.google.com/macros/s/AKfycbxnhlehsj_NQU73k3csMQPj0NAm3QSQrpjk0Ar6VYOjXYZO-m9_GSxtmEqYw9y_9DSQEA/exec",
+    "deploymentsCount": 2
+  },
+  "bobReportPath": "C:\\Users\\micha\\Documents\\Codex\\Bob Operator\\bob-operator\\generated\\questionnaire-deployment-2026-06-09T20-19-01-549Z.json"
+}

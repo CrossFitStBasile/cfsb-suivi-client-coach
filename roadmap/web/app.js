@@ -6,47 +6,11 @@ const STORAGE_KEYS = {
   submissions: "cfsb-roadmap-submissions",
   draft: "cfsb-roadmap-draft"
 };
-const AUTOSAVE_DELAY_MS = 800;
-const ORG_DEPARTMENTS = [
-  { id: "direction", label: "Direction", className: "owners", sortOrder: 10 },
-  { id: "operations", label: "Operations", className: "operations", sortOrder: 20 },
-  { id: "coaching", label: "Coaching", className: "coaching", sortOrder: 30 },
-  { id: "support", label: "Communaute et support", className: "support", sortOrder: 40 }
-];
-const DEFAULT_TEAM_MEMBERS = [
-  { memberId: "michael-grondin", name: "Michael Grondin", departmentId: "direction", displayTitle: "Proprietaire - Ventes, marketing, vision", sortOrder: 10, active: true },
-  { memberId: "gabriel-mayer-bedard", name: "Gabriel Mayer Bedard", departmentId: "direction", displayTitle: "Proprietaire - Operations, finances, RH, integration", sortOrder: 20, active: true },
-  { memberId: "caroline-martineau", name: "Caroline Martineau", departmentId: "operations", displayTitle: "Chef d'equipe, coordination, ventes", sortOrder: 10, active: true },
-  { memberId: "tiffany-bolduc-brossier", name: "Tiffany Bolduc-Brossier", departmentId: "operations", displayTitle: "Conciliation de la paie", sortOrder: 20, active: true },
-  { memberId: "hugo-lelievre", name: "Hugo Lelievre", departmentId: "coaching", displayTitle: "Coach en chef, formateur", sortOrder: 10, active: true },
-  { memberId: "marc-andre-menard", name: "Marc-Andre Menard", departmentId: "coaching", displayTitle: "Coach professionnel", sortOrder: 20, active: true },
-  { memberId: "raphael-samson", name: "Raphael Samson", departmentId: "coaching", displayTitle: "Coach professionnel", sortOrder: 30, active: true },
-  { memberId: "camille-proulx", name: "Camille Proulx", departmentId: "coaching", displayTitle: "Coach professionnel", sortOrder: 40, active: true },
-  { memberId: "david-olivier", name: "David Olivier", departmentId: "coaching", displayTitle: "Coach professionnel", sortOrder: 50, active: true },
-  { memberId: "iheb-yahyaoui", name: "Iheb Yahyaoui", departmentId: "coaching", displayTitle: "Coach professionnel", sortOrder: 60, active: true },
-  { memberId: "roxanne-vincent", name: "Roxanne Vincent", departmentId: "coaching", displayTitle: "Coach developpement", sortOrder: 70, active: true },
-  { memberId: "nathan-goupil", name: "Nathan Goupil", departmentId: "coaching", displayTitle: "Coach developpement", sortOrder: 80, active: true },
-  { memberId: "chloe-willis", name: "Chloe Willis", departmentId: "coaching", displayTitle: "Coach developpement", sortOrder: 90, active: true },
-  { memberId: "serge-thibault", name: "Serge Thibault", departmentId: "coaching", displayTitle: "Coach communaute", sortOrder: 100, active: true },
-  { memberId: "kim-theriault", name: "Kim Theriault", departmentId: "coaching", displayTitle: "Coach communaute", sortOrder: 110, active: true },
-  { memberId: "jean-sylvain-cote", name: "Jean-Sylvain Cote", departmentId: "coaching", displayTitle: "Coach communaute", sortOrder: 120, active: true },
-  { memberId: "karolina-milewska", name: "Karolina Milewska", departmentId: "support", displayTitle: "Gestionnaire Club Social", sortOrder: 10, active: true },
-  { memberId: "lysanne-gosselin", name: "Lysanne Gosselin", departmentId: "support", displayTitle: "Entretien menager", sortOrder: 20, active: true },
-  { memberId: "michel-jasen-mallet", name: "Michel Jasen Mallet", departmentId: "support", displayTitle: "Entretien menager", sortOrder: 30, active: true },
-  { memberId: "valerie-savard", name: "Valerie Savard", departmentId: "support", displayTitle: "Equipe CFSB", sortOrder: 40, active: true }
-];
 
 const state = {
   config: null,
-  teamMembers: DEFAULT_TEAM_MEMBERS,
-  teamDepartments: ORG_DEPARTMENTS,
   selectedRoleId: "",
   answers: {},
-  clientSubmissionId: "",
-  resumeSubmissionId: "",
-  autosaveTimer: null,
-  submitFeedbackTimer: null,
-  isSubmitting: false,
   settings: {
     endpointUrl: IS_LOCAL_PREVIEW ? "" : DEFAULT_ENDPOINT_URL,
     quarter: "2026-Q2"
@@ -70,7 +34,7 @@ function loadSettings() {
   if (stored) {
     state.settings = { ...state.settings, ...JSON.parse(stored) };
   }
-  if (!IS_LOCAL_PREVIEW) {
+  if (!IS_LOCAL_PREVIEW && !state.settings.endpointUrl) {
     state.settings.endpointUrl = DEFAULT_ENDPOINT_URL;
   }
   $("#endpointInput").placeholder = DEFAULT_ENDPOINT_URL;
@@ -79,7 +43,7 @@ function loadSettings() {
 }
 
 function saveSettings() {
-  state.settings.endpointUrl = IS_LOCAL_PREVIEW ? $("#endpointInput").value.trim() : DEFAULT_ENDPOINT_URL;
+  state.settings.endpointUrl = $("#endpointInput").value.trim();
   state.settings.quarter = $("#quarterInput").value.trim() || "2026-Q2";
   localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(state.settings));
   closeSettings();
@@ -91,60 +55,6 @@ async function loadConfig() {
     throw new Error(`Configuration introuvable (${response.status})`);
   }
   state.config = await response.json();
-}
-
-async function loadTeamMembers() {
-  if (!state.settings.endpointUrl) {
-    state.teamMembers = DEFAULT_TEAM_MEMBERS;
-    state.teamDepartments = ORG_DEPARTMENTS;
-    return;
-  }
-
-  try {
-    const result = await fetchJsonp(state.settings.endpointUrl, {
-      action: "list_team_members",
-      project: state.config?.meta?.project || "roadmap-trimestrielle-cfsb"
-    }, 15000);
-
-    if (!result.ok) throw new Error(result.error || "Charte organisationnelle indisponible.");
-    state.teamMembers = (result.members || []).filter((member) => member.active !== false);
-    state.teamDepartments = result.departments?.length ? result.departments : ORG_DEPARTMENTS;
-  } catch (error) {
-    state.teamMembers = DEFAULT_TEAM_MEMBERS;
-    state.teamDepartments = ORG_DEPARTMENTS;
-  }
-}
-
-function renderOrgChart() {
-  const grid = $("#orgGrid");
-  if (!grid) return;
-
-  const departments = [...state.teamDepartments].sort((a, b) => Number(a.sortOrder || 999) - Number(b.sortOrder || 999));
-  const members = [...state.teamMembers]
-    .filter((member) => member.active !== false)
-    .sort((a, b) => Number(a.sortOrder || 999) - Number(b.sortOrder || 999) || String(a.name || "").localeCompare(String(b.name || "")));
-
-  grid.innerHTML = departments.map((department) => {
-    const departmentMembers = members.filter((member) => member.departmentId === department.id);
-    return `
-      <article class="org-column ${escapeHtml(department.className || department.id)}">
-        <h3>${escapeHtml(department.label)}</h3>
-        <ul>
-          ${departmentMembers.length ? departmentMembers.map((member) => `
-            <li><strong>${escapeHtml(member.name)}</strong><span>${escapeHtml(member.displayTitle || roleLabelsForMember(member))}</span></li>
-          `).join("") : '<li><strong>Aucun membre actif</strong><span>A completer dans le dashboard owners.</span></li>'}
-        </ul>
-      </article>
-    `;
-  }).join("");
-}
-
-function roleLabelsForMember(member) {
-  const roleIds = member.roleIds || [];
-  return roleIds
-    .map((roleId) => state.config?.roles?.find((role) => role.id === roleId)?.label || roleId)
-    .filter(Boolean)
-    .join(", ");
 }
 
 function roleById(roleId) {
@@ -178,19 +88,12 @@ function renderRoles() {
 }
 
 function selectRole(roleId) {
-  if (state.selectedRoleId && roleId !== state.selectedRoleId && Object.keys(state.answers).length) {
-    const shouldContinue = confirm("Changer de role va recommencer le brouillon actuel. Continuer?");
-    if (!shouldContinue) return;
-  }
   state.selectedRoleId = roleId;
   state.answers = {};
-  state.clientSubmissionId = createClientSubmissionId();
-  state.resumeSubmissionId = "";
   renderRoles();
   renderForm();
   $("#formDot").classList.add("done");
   localStorage.removeItem(STORAGE_KEYS.draft);
-  updateDraftStatus("");
 }
 
 function renderForm() {
@@ -434,148 +337,6 @@ function handleFieldChange(event) {
   }
 
   refreshConditionalFields();
-  scheduleAutosave();
-}
-
-function createClientSubmissionId() {
-  if (crypto.randomUUID) return crypto.randomUUID();
-  return `roadmap_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-}
-
-function updateDraftStatus(message) {
-  const status = $("#draftStatus");
-  if (!status) return;
-  status.textContent = message || "";
-}
-
-function scheduleAutosave() {
-  window.clearTimeout(state.autosaveTimer);
-  state.autosaveTimer = window.setTimeout(() => {
-    saveDraft({ silent: true });
-  }, AUTOSAVE_DELAY_MS);
-}
-
-function restoreDraftIfAvailable() {
-  const raw = localStorage.getItem(STORAGE_KEYS.draft);
-  if (!raw) return;
-
-  let draft;
-  try {
-    draft = JSON.parse(raw);
-  } catch (error) {
-    localStorage.removeItem(STORAGE_KEYS.draft);
-    return;
-  }
-
-  if (!draft.selectedRoleId || !draft.answers) return;
-  const shouldRestore = confirm("Un brouillon Roadmap existe dans ce navigateur. Veux-tu le reprendre?");
-  if (!shouldRestore) return;
-
-  state.selectedRoleId = draft.selectedRoleId;
-  state.answers = { ...(draft.answers || {}) };
-  state.clientSubmissionId = draft.clientSubmissionId || createClientSubmissionId();
-  if (draft.quarter) state.settings.quarter = draft.quarter;
-  $("#quarterInput").value = state.settings.quarter || "2026-Q2";
-  renderRoles();
-  renderForm();
-  populateFormValues();
-  refreshConditionalFields();
-  $("#formDot").classList.add("done");
-  showNotice("Brouillon restaure dans ce navigateur.", "success");
-}
-
-function populateFormValues() {
-  $$("[data-question-id]").forEach((input) => {
-    const questionId = input.dataset.questionId;
-    const value = state.answers[questionId];
-    if (value === undefined || value === null) return;
-
-    if (input.type === "radio") {
-      input.checked = String(input.value) === String(value);
-      return;
-    }
-
-    if (input.type === "checkbox") {
-      const selected = Array.isArray(value)
-        ? value.map(String)
-        : String(value).split(",").map((item) => item.trim());
-      input.checked = selected.includes(input.value);
-      return;
-    }
-
-    input.value = value;
-  });
-}
-
-function fetchJsonp(url, params = {}, timeoutMs = 15000) {
-  return new Promise((resolve, reject) => {
-    const callbackName = `roadmapFormCallback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    const script = document.createElement("script");
-    const timer = window.setTimeout(() => {
-      cleanup();
-      reject(new Error("Delai depasse pendant le chargement."));
-    }, timeoutMs);
-
-    function cleanup() {
-      window.clearTimeout(timer);
-      delete window[callbackName];
-      script.remove();
-    }
-
-    window[callbackName] = (payload) => {
-      cleanup();
-      resolve(payload);
-    };
-
-    const query = new URLSearchParams({
-      ...params,
-      callback: callbackName,
-      _: String(Date.now())
-    });
-    const separator = url.includes("?") ? "&" : "?";
-    script.src = `${url}${separator}${query.toString()}`;
-    script.onerror = () => {
-      cleanup();
-      reject(new Error("Impossible de rejoindre Apps Script."));
-    };
-    document.head.appendChild(script);
-  });
-}
-
-async function restoreResumeFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  const resumeSubmissionId = params.get("resume") || params.get("resumeSubmissionId");
-  if (!resumeSubmissionId) return false;
-  if (!state.settings.endpointUrl) {
-    throw new Error("Le lien de reprise exige le backend Apps Script. Ouvre la version connectee ou demande un nouveau lien.");
-  }
-  showNotice("Chargement de tes reponses precedentes...", "");
-  const result = await fetchJsonp(state.settings.endpointUrl, {
-    action: "get_roadmap_submission",
-    project: state.config.meta.project,
-    submissionId: resumeSubmissionId
-  });
-
-  if (!result.ok || !result.submission) {
-    throw new Error(result.error || "Impossible de charger cette soumission.");
-  }
-
-  const submission = result.submission;
-  state.resumeSubmissionId = submission.serverSubmissionId || submission.id || resumeSubmissionId;
-  state.selectedRoleId = submission.selectedRoleId || "";
-  state.answers = { ...(submission.answers || {}) };
-  state.clientSubmissionId = createClientSubmissionId();
-  if (submission.quarter) state.settings.quarter = submission.quarter;
-  $("#quarterInput").value = state.settings.quarter || "2026-Q2";
-
-  renderRoles();
-  renderForm();
-  populateFormValues();
-  refreshConditionalFields();
-  $("#formDot").classList.add("done");
-  saveDraft({ silent: true });
-  showNotice("Reprise chargee. Complete les champs manquants, puis soumets la version finale.", "success");
-  return true;
 }
 
 function renderPathwayPreview(pathwayId) {
@@ -633,11 +394,8 @@ function refreshConditionalFields() {
 
 function buildPayload(status = "submitted") {
   const role = roleById(state.selectedRoleId);
-  if (!state.clientSubmissionId) state.clientSubmissionId = createClientSubmissionId();
   return {
     project: state.config.meta.project,
-    clientSubmissionId: state.clientSubmissionId,
-    resumeSubmissionId: state.resumeSubmissionId || "",
     configVersion: state.config.meta.version,
     status,
     quarter: state.settings.quarter,
@@ -666,21 +424,17 @@ function readCurrentFormValues() {
   });
 }
 
-function saveDraft(options = {}) {
-  const silent = options && options.silent === true;
-  if (!state.selectedRoleId) return;
+function saveDraft() {
   readCurrentFormValues();
   const payload = buildPayload("draft");
   localStorage.setItem(STORAGE_KEYS.draft, JSON.stringify(payload));
-  updateDraftStatus(`Brouillon sauvegarde a ${new Date().toLocaleTimeString("fr-CA", { hour: "2-digit", minute: "2-digit" })}.`);
-  if (!silent) showNotice("Brouillon sauvegarde dans ce navigateur.", "success");
+  showNotice("Brouillon sauvegarde dans ce navigateur.", "success");
 }
 
 function saveLocalSubmission(payload, id = crypto.randomUUID()) {
   const existing = JSON.parse(localStorage.getItem(STORAGE_KEYS.submissions) || "[]");
-  const filtered = existing.filter((submission) => submission.id !== id && submission.clientSubmissionId !== payload.clientSubmissionId);
-  filtered.unshift({ id, ...payload });
-  localStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(filtered));
+  existing.unshift({ id, ...payload });
+  localStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(existing));
 }
 
 async function submitPayload(payload) {
@@ -711,71 +465,25 @@ async function submitPayload(payload) {
 
 async function handleSubmit(event) {
   event.preventDefault();
-  if (state.isSubmitting) return;
   readCurrentFormValues();
 
   if (!event.target.reportValidity()) return;
 
   const payload = buildPayload("submitted");
   try {
-    setSubmitInProgress(true);
     const result = await submitPayload(payload);
     if (!result.localOnly) {
       const localPayload = result.submissionId ? { ...payload, serverSubmissionId: result.submissionId } : payload;
-      saveLocalSubmission(localPayload, result.submissionId || payload.clientSubmissionId);
+      saveLocalSubmission(localPayload, result.submissionId || undefined);
     }
     $("#submitDot").classList.add("done");
     event.target.reset();
     state.answers = {};
-    state.clientSubmissionId = createClientSubmissionId();
-    state.resumeSubmissionId = "";
-    localStorage.removeItem(STORAGE_KEYS.draft);
-    updateDraftStatus("");
     refreshConditionalFields();
     showPayload(payload, state.settings.endpointUrl ? "Soumission envoyee et copie locale conservee." : "Soumission conservee localement pour test.");
   } catch (error) {
     showNotice(error.message, "error");
-  } finally {
-    setSubmitInProgress(false);
   }
-}
-
-function setSubmitInProgress(isInProgress) {
-  const submitButton = $("#submitButton");
-  const saveDraftButton = $("#saveDraftButton");
-  state.isSubmitting = isInProgress;
-  window.clearTimeout(state.submitFeedbackTimer);
-  state.submitFeedbackTimer = null;
-
-  if (submitButton) {
-    submitButton.disabled = isInProgress;
-    submitButton.textContent = isInProgress ? "Envoi en cours..." : "Soumettre";
-    submitButton.setAttribute("aria-busy", isInProgress ? "true" : "false");
-  }
-
-  if (saveDraftButton) {
-    saveDraftButton.disabled = isInProgress;
-  }
-
-  if (!isInProgress) {
-    if ($("#draftStatus")?.textContent === "Sauvegarde en cours vers la base Roadmap...") {
-      updateDraftStatus("");
-    }
-    return;
-  }
-
-  showNotice(
-    "Envoi en cours. Ne ferme pas cette page et ne reclique pas: la sauvegarde peut prendre jusqu'a 30 secondes.",
-    "sending"
-  );
-  updateDraftStatus("Sauvegarde en cours vers la base Roadmap...");
-  state.submitFeedbackTimer = window.setTimeout(() => {
-    if (!state.isSubmitting) return;
-    showNotice(
-      "Toujours en sauvegarde. C'est normal si Apps Script prend quelques secondes; garde cette page ouverte jusqu'au message de confirmation.",
-      "sending"
-    );
-  }, 12000);
 }
 
 function showNotice(message, type = "") {
@@ -802,7 +510,6 @@ function closeSettings() {
 }
 
 async function init() {
-  state.clientSubmissionId = createClientSubmissionId();
   loadSettings();
   $("#settingsButton").addEventListener("click", openSettings);
   $("#closeSettingsButton").addEventListener("click", closeSettings);
@@ -812,14 +519,7 @@ async function init() {
 
   try {
     await loadConfig();
-    await loadTeamMembers();
-    renderOrgChart();
     renderRoles();
-    const resumedFromLink = await restoreResumeFromUrl();
-    if (!resumedFromLink) restoreDraftIfAvailable();
-    window.addEventListener("beforeunload", () => {
-      if (state.selectedRoleId && Object.keys(state.answers).length) saveDraft({ silent: true });
-    });
   } catch (error) {
     showNotice(error.message, "error");
   }

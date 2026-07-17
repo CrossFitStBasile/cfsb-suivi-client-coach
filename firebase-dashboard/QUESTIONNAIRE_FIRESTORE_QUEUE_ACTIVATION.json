@@ -1,0 +1,13 @@
+{
+  "scriptId": "1RzTyLvUdw6NdVI2vsDoi7a2bjWGAZDXml94QYG4TCs9wF5KJdKm3HFBa",
+  "changed": true,
+  "activationAlreadyPresent": false,
+  "backupPath": "C:\\Users\\micha\\Documents\\Codex\\Bob Operator\\bob-operator\\generated\\questionnaire-before-firestore-queue-2026-06-09T20-16-46-593Z.json",
+  "activatedAt": "2026-06-09T20:16:48.780Z",
+  "behavior": [
+    "Le Sheet Responses continue d'etre ecrit comme avant.",
+    "Le miroir dashboard historique continue d'etre tente comme avant.",
+    "Une demande Firestore syncRequests est ajoutee en mode non bloquant.",
+    "Une erreur Firestore est loggee mais ne bloque pas la soumission client."
+  ]
+}

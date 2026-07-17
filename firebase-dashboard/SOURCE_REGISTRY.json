@@ -1,0 +1,687 @@
+{
+  "version": "2026-06-08-source-registry",
+  "updatedAt": "2026-06-09",
+  "principle": "Firestore est la base operationnelle du dashboard. Les sources externes alimentent Firestore par Cloud Functions securisees. Sheets seulement comme backup/audit ou source temporaire lorsqu'il est encore le systeme vivant.",
+  "security": {
+    "publicAssetsMayContain": [
+      "Firebase web config",
+      "coach names",
+      "non-secret source labels"
+    ],
+    "publicAssetsMustNotContain": [
+      "GHL private token",
+      "DASHBOARD_IMPORT_TOKEN",
+      "Apps Script rebooking URLs with token",
+      "client data snapshots"
+    ],
+    "serverOnlySystems": [
+      "GoHighLevel",
+      "Firebase Secret Manager",
+      "Apps Script import token"
+    ]
+  },
+  "systems": {
+    "firestore": {
+      "role": "operational_database",
+      "description": "Base lue par le dashboard pour garder l'interface rapide et interactive."
+    },
+    "firebase_functions": {
+      "role": "secure_backend",
+      "description": "Couche serveur pour GHL, imports directs, synchronisations et journalisation."
+    },
+    "google_sheets": {
+      "role": "backup_audit_temporary_source",
+      "description": "Encore utile pour les formulaires, historiques et reconciliations, mais pas obligatoire entre une source vivante et Firestore."
+    },
+    "apps_script": {
+      "role": "legacy_automation_and_bridge",
+      "description": "Peut continuer a alimenter Sheets et peut pousser directement vers Firebase via ingestDashboardSource."
+    },
+    "bob_operator": {
+      "role": "workspace_operator",
+      "description": "Permet de retrouver, auditer et modifier les projets Google Workspace/Apps Script. Ce n'est pas une base de donnees."
+    },
+    "coachrx": {
+      "role": "external_source",
+      "description": "Source du portefeuille coach-client et du contexte programme. Ne fournit pas toujours le telephone."
+    },
+    "gohighlevel": {
+      "role": "external_source_and_action_system",
+      "description": "Source/validation telephone possible, tags SMS, notes client. Acces serveur seulement."
+    }
+  },
+  "phoneResolutionPolicy": {
+    "purpose": "Donner une source de decision unique pour reduire les clients sans telephone, permettre l'envoi questionnaire et eviter les doublons de matching.",
+    "canonicalField": "phoneNormalized",
+    "matchingPriority": [
+      "phoneNormalized",
+      "ghlContactId",
+      "sourceClientId",
+      "normalizedName"
+    ],
+    "sourcePriority": [
+      {
+        "source": "dashboard_manual",
+        "role": "correction_humaine_prioritaire",
+        "canSetPhone": true,
+        "canClearPhone": false,
+        "notes": "Une correction manuelle dans la fiche client gagne sauf conflit explicite valide par admin."
+      },
+      {
+        "source": "gohighlevel",
+        "role": "confirmation_contact_et_enrichissement",
+        "canSetPhone": true,
+        "canClearPhone": false,
+        "notes": "GHL est la meilleure source pour confirmer un contact par telephone, mais seulement cote serveur et seulement comme enrichissement d'un client existant."
+      },
+      {
+        "source": "client_directory",
+        "role": "repertoire_admin_csm_kilo",
+        "canSetPhone": true,
+        "canClearPhone": false,
+        "notes": "CSM/Kilo/admin peut combler les telephones et courriels lorsqu'une ligne client est reconnue."
+      },
+      {
+        "source": "coachrx_clients",
+        "role": "portefeuille_et_contexte_coach",
+        "canSetPhone": true,
+        "canClearPhone": false,
+        "notes": "CoachRx peut fournir un telephone si present, mais ne doit pas etre suppose complet pour GHL ou questionnaire."
+      },
+      {
+        "source": "questionnaire_responses",
+        "role": "preuve_de_reponse_client",
+        "canSetPhone": false,
+        "canClearPhone": false,
+        "notes": "Le telephone de reponse sert au matching et a la file A valider, mais ne remplace pas automatiquement le telephone d'une fiche client."
+      },
+      {
+        "source": "rebooking",
+        "role": "signal_operationnel_fragile",
+        "canSetPhone": false,
+        "canClearPhone": false,
+        "notes": "Le rebooking est souvent sans telephone; il ne doit pas corriger l'identite client par lui-meme."
+      }
+    ],
+    "conflictHandling": [
+      "Une valeur vide ne remplace jamais un telephone existant.",
+      "Deux telephones differents pour un meme client vont dans une validation admin, jamais en remplacement silencieux.",
+      "Un contact GHL sans client existant est journalise comme non matche; il ne cree pas de client actif.",
+      "Le questionnaire peut lier une reponse au client par telephone, mais ne doit pas ecraser les champs manuels.",
+      "Les envois GHL utilisent seulement un telephone normalise present et un match exact."
+    ],
+    "dashboardEvidence": [
+      "compteur Sans telephone par coach",
+      "source principale du telephone dans la fiche client",
+      "diagnostic GHL: match exact, introuvable ou conflit",
+      "questionnaire non matche par telephone dans A valider",
+      "sourceImportRuns pour chaque enrichissement"
+    ]
+  },
+  "bobAutomations": [
+    {
+      "id": "AUTO-002",
+      "name": "Menage CSM hebdomadaire",
+      "status": "preparation",
+      "sheetId": "1a2j7IFiDmD6svB4p12IIXwcGQRoLrJ_lejhn0dXUtIw",
+      "scriptIds": [
+        "1pQ9ecmaVvulUauVMqNKNqQMDX0CDhOaQuolCIm4U_7n87hrMuuklxyLB",
+        "1upjaGrsWIxwsVz_Ht--CjNNeo3zC4uSlAfdRgMCdevwog1FV7Q-_MbIL"
+      ],
+      "dashboardUse": [
+        "client_directory",
+        "checkups",
+        "phones_when_available"
+      ],
+      "targetPath": "Apps Script or sheet sync -> Firebase Function -> Firestore checkups/clients"
+    },
+    {
+      "id": "AUTO-003",
+      "name": "Suivi semi-prives annulations et bookings",
+      "status": "active_legacy_do_not_break",
+      "sheetId": "1s7shtrkL0gs1DO0LbzkbabZteidGnYLhVou6KliHXVU",
+      "scriptIds": [
+        "1OsXzGrmJacMYHMIEcTM3dTK-UvaA01bDf0F90HkFNt29XYgK2iHkyBlE"
+      ],
+      "dashboardUse": [
+        "rebooking_open",
+        "rebooking_managed",
+        "rebooking_rebooked",
+        "coach_absence",
+        "history"
+      ],
+      "targetPath": "Existing Apps Script remains live; add secure rebooking import to Firestore when validated"
+    },
+    {
+      "id": "AUTO-004",
+      "name": "Dashboard coach historique",
+      "status": "legacy_migration_reference",
+      "sheetId": "18-S_a5L6fXYZXtcgHBlCKpcygmnr5Ekj_WM5358KZ7E",
+      "scriptIds": [
+        "1SeGMN1w7iqn_7ETcmg5qwY6wIys4GZy5GbJHWasg6bToThcxrucYfOLk"
+      ],
+      "dashboardUse": [
+        "current_sheet_sync",
+        "migration_reference",
+        "temporary_mirror"
+      ],
+      "targetPath": "Reduce dependency as direct imports become reliable"
+    },
+    {
+      "id": "AUTO-009",
+      "name": "Questionnaire client-coach endpoint",
+      "status": "active_pilot",
+      "sheetId": "11QO5GOQGHCpT8_nLEgKHqjFFsZ4emPwZEt2Vlu3WRJo",
+      "scriptIds": [
+        "1RzTyLvUdw6NdVI2vsDoi7a2bjWGAZDXml94QYG4TCs9wF5KJdKm3HFBa"
+      ],
+      "dashboardUse": [
+        "questionnaire_responses",
+        "client_phone_normalized",
+        "triage_status",
+        "coach_action_type"
+      ],
+      "targetPath": "Questionnaire -> Firestore direct, with Sheet/GHL backup when ready"
+    }
+  ],
+  "dataDomains": [
+    {
+      "id": "coach_access",
+      "label": "Acces coach",
+      "firestoreCollections": [
+        "users",
+        "coaches"
+      ],
+      "operationalSource": "Firebase Auth + Firestore users/coaches",
+      "temporarySources": [
+        "seed/coaches.json",
+        "Kilo staff list for email verification"
+      ],
+      "writeAuthority": "admin",
+      "conflictRule": "Le coachId et le role dans users gagnent. Les coachs pilotes peuvent s'auto-activer seulement avec la paire courriel officiel/CoachRx ID autorisee. Gabriel/Michael utilisent info@ comme admin/coproprietaire."
+    },
+    {
+      "id": "client_identity",
+      "label": "Fiche client et coach responsable",
+      "firestoreCollections": [
+        "clients"
+      ],
+      "operationalSource": "Firestore clients",
+      "temporarySources": [
+        "CoachRx snapshots",
+        "CORE_Clients",
+        "CORE_Clients_Manual",
+        "CSM/Kilo exports"
+      ],
+      "targetImport": "coachrx_clients or client_directory -> ingestDashboardSource",
+      "matchingPriority": [
+        "phoneNormalized",
+        "sourceClientId",
+        "normalizedName"
+      ],
+      "conflictRule": "Une valeur vide n'ecrase jamais une valeur utile. Les fiches manuelles peuvent etre enrichies mais pas dupliquees."
+    },
+    {
+      "id": "client_phone",
+      "label": "Telephone client",
+      "firestoreCollections": [
+        "clients",
+        "questionnaireResponses",
+        "questionnaireSends"
+      ],
+      "operationalSource": "Firestore phoneNormalized",
+      "temporarySources": [
+        "CORE_Clients",
+        "CORE_Clients_Manual",
+        "CSM checkups",
+        "GoHighLevel server-side lookup"
+      ],
+      "targetImport": "ghl_contacts or client_directory -> ingestDashboardSource",
+      "conflictRule": "GHL peut enrichir ou confirmer, mais ne peut jamais supprimer/perimer un client."
+    },
+    {
+      "id": "todo",
+      "label": "To-do coach",
+      "firestoreCollections": [
+        "tasks"
+      ],
+      "operationalSource": "Firestore tasks",
+      "temporarySources": [
+        "TASKS_Current",
+        "questionnaire triage",
+        "coach quick notes",
+        "rebooking"
+      ],
+      "targetImport": "Generate explicit tasks in Firebase from trusted source events",
+      "conflictRule": "Une tache fermee, ignoree, archivee ou sourceStale ne doit pas redevenir visible par import."
+    },
+    {
+      "id": "questionnaire_responses",
+      "label": "Reponses questionnaire",
+      "firestoreCollections": [
+        "questionnaireResponses"
+      ],
+      "operationalSource": "Firestore questionnaireResponses",
+      "temporarySources": [
+        "Responses",
+        "Test_Responses"
+      ],
+      "targetImport": "questionnaire_responses -> ingestDashboardSource or direct questionnaire Function",
+      "conflictRule": "Matching par telephone en priorite. Non matche va dans la file a valider et ne doit jamais etre perdu."
+    },
+    {
+      "id": "questionnaire_send",
+      "label": "Envoi questionnaire",
+      "firestoreCollections": [
+        "questionnaireSends",
+        "actionLogs"
+      ],
+      "operationalSource": "Firestore attempt + GHL tag result",
+      "temporarySources": [
+        "GHL workflow dashboardcoach"
+      ],
+      "targetImport": "sendQuestionnaire Cloud Function",
+      "conflictRule": "Chaque tentative doit etre journalisee avant ou pendant l'appel GHL. Les erreurs GHL restent visibles."
+    },
+    {
+      "id": "rebooking",
+      "label": "Rebooking",
+      "firestoreCollections": [
+        "rebookings"
+      ],
+      "operationalSource": "Firestore rebookings after sync",
+      "temporarySources": [
+        "AUTO-003 Apps Script app",
+        "SRC_Rebookings_SemiPrive"
+      ],
+      "targetImport": "rebooking -> ingestDashboardSource after legacy source confirmed",
+      "conflictRule": "Ne pas casser l'app actuelle. Un item gere/rebooke/absence coach dans Firestore ne revient pas ouvert par reimport."
+    },
+    {
+      "id": "checkups",
+      "label": "Check-ups CSM",
+      "firestoreCollections": [
+        "checkups"
+      ],
+      "operationalSource": "Firestore checkups",
+      "temporarySources": [
+        "AUTO-002 CSM Formulaire Checkup"
+      ],
+      "targetImport": "checkups -> ingestDashboardSource",
+      "conflictRule": "Import lecture seulement pour Performance. Ne modifie pas les champs manuels client."
+    },
+    {
+      "id": "performance_impacts",
+      "label": "Impacts et performance",
+      "firestoreCollections": [
+        "impacts",
+        "checkups",
+        "clients"
+      ],
+      "operationalSource": "Firestore",
+      "temporarySources": [
+        "IMPACT_Log",
+        "IMPACT_Opportunities",
+        "CSM checkups"
+      ],
+      "targetImport": "Dashboard writes impacts directly to Firestore; historical rows can be migrated",
+      "conflictRule": "Les impacts crees dans le dashboard sont source primaire et gardent une trace de changement."
+    },
+    {
+      "id": "alumni",
+      "label": "Alumni",
+      "firestoreCollections": [
+        "alumni"
+      ],
+      "operationalSource": "Firestore alumni",
+      "temporarySources": [
+        "CORE_Alumni"
+      ],
+      "targetImport": "Admin import or dashboard actions",
+      "conflictRule": "Alumni reste separe de Performance. Les decisions ne pas contacter/reactiver/archiver sont protegees."
+    }
+  ],
+  "domainGovernance": [
+    {
+      "domainId": "coach_access",
+      "primaryWriter": "Firebase Auth + admin Firestore user provisioning",
+      "allowedSecondaryWriters": ["pilot coach self-activation with approved email/CoachRx pair"],
+      "syncMayOverwrite": "no",
+      "protectedFields": ["role", "coachId", "active"],
+      "freshnessEvidence": ["users/{uid}", "coaches/{coachId}", "actionLogs"],
+      "conflictDestination": "admin review; never auto-transfer access"
+    },
+    {
+      "domainId": "client_identity",
+      "primaryWriter": "Firestore clients merged by phone/sourceId/name",
+      "allowedSecondaryWriters": ["coachrx_clients", "client_directory", "admin correction"],
+      "syncMayOverwrite": "only non-manual imported fields from same source family",
+      "protectedFields": ["manualMembershipEndDate", "kiloPlannedRecurrenceEndDate", "riskLevel", "notes", "objectives"],
+      "freshnessEvidence": ["sourceImportRuns", "coachSyncStatus", "clients.updatedAt", "clients.sourceUpdatedAt"],
+      "conflictDestination": "client validation queue when phone/source conflict exists"
+    },
+    {
+      "domainId": "client_phone",
+      "primaryWriter": "trusted directory or GHL server-side enrichment",
+      "allowedSecondaryWriters": ["client_directory", "ghl_contacts", "manual coach/admin correction"],
+      "syncMayOverwrite": "only when Firestore phone is empty; conflicting phones require validation",
+      "protectedFields": ["phoneNormalized when manually confirmed", "ghlContactId when exact phone match exists"],
+      "freshnessEvidence": ["sourceImportRuns", "clients.phoneSource", "clients.phoneUpdatedAt"],
+      "conflictDestination": "A valider / client phone conflict"
+    },
+    {
+      "domainId": "todo",
+      "primaryWriter": "Firestore tasks from explicit dashboard or source events",
+      "allowedSecondaryWriters": ["coach quick note", "questionnaire triage", "rebooking", "trusted TASKS_Current transition"],
+      "syncMayOverwrite": "may add open tasks but cannot reopen closed, ignored, archived or sourceStale tasks",
+      "protectedFields": ["status", "completedAt", "ignoredAt", "archivedAt", "createdByCoach"],
+      "freshnessEvidence": ["tasks.sourceType", "tasks.sourceEventId", "actionLogs", "coachSyncStatus"],
+      "conflictDestination": "diagnostic source task noise; do not show as coach action until trusted"
+    },
+    {
+      "domainId": "questionnaire_responses",
+      "primaryWriter": "Questionnaire endpoint or questionnaire_responses import",
+      "allowedSecondaryWriters": ["coach read/archive status", "mission creation from response"],
+      "syncMayOverwrite": "content is immutable; only read/follow-up status can change",
+      "protectedFields": ["answers", "submittedAt", "phoneNormalized", "triageStatus"],
+      "freshnessEvidence": ["questionnaireResponses.receivedAt", "sourceImportRuns", "questionnaireSends"],
+      "conflictDestination": "A valider when phone or coach does not match"
+    },
+    {
+      "domainId": "questionnaire_send",
+      "primaryWriter": "sendQuestionnaire Cloud Function",
+      "allowedSecondaryWriters": ["GHL tag result callback or server-side status update"],
+      "syncMayOverwrite": "no; each send attempt is append/journal style",
+      "protectedFields": ["requestedPhone", "coachId", "requestedAt", "ghlWorkflowTag"],
+      "freshnessEvidence": ["questionnaireSends", "actionLogs", "GHL error/status fields"],
+      "conflictDestination": "visible questionnaire send error"
+    },
+    {
+      "domainId": "rebooking",
+      "primaryWriter": "Firestore rebookings after legacy parity is proven",
+      "allowedSecondaryWriters": ["AUTO-003 read-only import during parity", "coach status action"],
+      "syncMayOverwrite": "open imports cannot reopen managed, rebooked or coach_absence items",
+      "protectedFields": ["status", "history", "managedAt", "rebookedAt", "absenceReason"],
+      "freshnessEvidence": ["rebookings.sourceEventId", "sourceImportRuns", "legacy parity count"],
+      "conflictDestination": "rebooking conflict/history review"
+    },
+    {
+      "domainId": "checkups",
+      "primaryWriter": "CSM checkup import",
+      "allowedSecondaryWriters": ["read-only performance aggregation"],
+      "syncMayOverwrite": "only same checkup source event; never client manual fields",
+      "protectedFields": ["client manual fields", "coach notes", "riskLevel manual"],
+      "freshnessEvidence": ["checkups.submittedAt", "sourceImportRuns", "coachSyncStatus"],
+      "conflictDestination": "checkup source diagnostic"
+    },
+    {
+      "domainId": "performance_impacts",
+      "primaryWriter": "Dashboard impact workflow in Firestore",
+      "allowedSecondaryWriters": ["admin historical import with explicit source"],
+      "syncMayOverwrite": "no; changes must be journaled as impact state changes",
+      "protectedFields": ["status", "amount", "clientId", "createdBy", "confirmedAt", "cancelledAt"],
+      "freshnessEvidence": ["impacts.updatedAt", "actionLogs"],
+      "conflictDestination": "impact audit trail"
+    },
+    {
+      "domainId": "alumni",
+      "primaryWriter": "Dashboard alumni workflow in Firestore",
+      "allowedSecondaryWriters": ["admin import of alumni list"],
+      "syncMayOverwrite": "imports cannot overwrite do_not_contact, reactivated or archived decisions",
+      "protectedFields": ["status", "doNotContactAt", "reactivatedAt", "archivedAt", "notes"],
+      "freshnessEvidence": ["alumni.updatedAt", "actionLogs"],
+      "conflictDestination": "alumni review; keep separate from Performance"
+    }
+  ],
+  "ingestionContracts": [
+    {
+      "id": "coachrx_clients_direct",
+      "sourceType": "coachrx_clients",
+      "sourceSystem": "CoachRx extension or Apps Script bridge",
+      "sourceAutomation": "CoachRx visible extraction",
+      "targetCollections": [
+        "clients"
+      ],
+      "requiredCoachFields": [
+        "coachRxId",
+        "coachName"
+      ],
+      "requiredRecordFields": [
+        "client name"
+      ],
+      "recommendedRecordFields": [
+        "phone",
+        "email",
+        "active package",
+        "source client id",
+        "program context"
+      ],
+      "matchingPriority": [
+        "phoneNormalized",
+        "sourceClientId",
+        "normalizedName"
+      ],
+      "pathPolicy": {
+        "preferredPath": "direct_to_firestore",
+        "sheetRole": "backup_audit_only",
+        "firstPilot": "Marc-Andre or Iheb with 1 to 3 visible CoachRx clients",
+        "activationGate": "Authenticated import transport configured, DASHBOARD_IMPORT_TOKEN available, and Apps Script/extension preview passes",
+        "doNotDo": "Do not create a new mandatory Google Sheet just to move CoachRx data."
+      },
+      "mergeRule": "Snapshot complet autorise a marquer stale seulement les anciens imports CoachRx de la meme famille. Les champs manuels restent proteges.",
+      "writePath": "Apps Script/Bob or extension -> ingestDashboardSource -> clients",
+      "activationState": "backend_ready_waiting_for_auth_transport_and_source_bridge",
+      "rollback": "Garder l'import Google Sheets CoachRx historique et ignorer les nouveaux documents direct_coachrx_extension si anomalie."
+    },
+    {
+      "id": "client_directory_direct",
+      "sourceType": "client_directory",
+      "sourceSystem": "CSM/Kilo/admin client directory",
+      "sourceAutomation": "AUTO-002 or admin import",
+      "targetCollections": [
+        "clients"
+      ],
+      "requiredCoachFields": [
+        "coachRxId or coachName"
+      ],
+      "requiredRecordFields": [
+        "client name"
+      ],
+      "recommendedRecordFields": [
+        "phone",
+        "email",
+        "membership",
+        "membership end source note"
+      ],
+      "matchingPriority": [
+        "phoneNormalized",
+        "sourceClientId",
+        "normalizedName"
+      ],
+      "pathPolicy": {
+        "preferredPath": "direct_to_firestore_when_script_has_source",
+        "sheetRole": "source_when_sheet_is_the_current_admin_directory",
+        "firstPilot": "One coach with known missing phone such as Caroline Gaudreault before bulk import",
+        "activationGate": "Confirm exact source tab and prove that blank values cannot overwrite useful Firestore values",
+        "doNotDo": "Do not duplicate client directory rows into another intermediate Sheet."
+      },
+      "mergeRule": "Enrichit les fiches clients et peut marquer stale seulement les anciens imports client_directory. Une valeur vide n'ecrase jamais une valeur utile.",
+      "writePath": "Apps Script/Bob -> ingestDashboardSource -> clients",
+      "activationState": "backend_ready_waiting_for_source_confirmation",
+      "rollback": "Conserver CORE_Clients et CORE_Clients_Manual comme backup/audit."
+    },
+    {
+      "id": "ghl_contacts_phone_enrichment",
+      "sourceType": "ghl_contacts",
+      "sourceSystem": "GoHighLevel",
+      "sourceAutomation": "Firebase Function server-side lookup or private Apps Script",
+      "targetCollections": [
+        "clients"
+      ],
+      "requiredCoachFields": [
+        "coachRxId or coachName"
+      ],
+      "requiredRecordFields": [
+        "phone"
+      ],
+      "recommendedRecordFields": [
+        "email",
+        "contact id",
+        "client name"
+      ],
+      "matchingPriority": [
+        "phoneNormalized",
+        "contactId",
+        "normalizedName"
+      ],
+      "pathPolicy": {
+        "preferredPath": "server_side_lookup_to_firestore",
+        "sheetRole": "none_for_private_ghl_payloads",
+        "firstPilot": "Single exact phone lookup for Michael Grondin 8192771825, then one real coach client",
+        "activationGate": "GHL token available only in Firebase Secret Manager or private Apps Script properties",
+        "doNotDo": "Do not call GHL from GitHub Pages or store GHL contact payloads in public files."
+      },
+      "mergeRule": "GHL est un enrichissement partiel. Il peut confirmer ou ajouter telephone/contactId, mais ne peut jamais supprimer, archiver ou perimer un client.",
+      "writePath": "Firebase Function or private Apps Script -> ingestDashboardSource -> clients",
+      "activationState": "needs_secure_server_bridge",
+      "rollback": "Desactiver le pont GHL; les clients gardent les telephones deja presents dans Firestore/CSM."
+    },
+    {
+      "id": "questionnaire_responses_direct",
+      "sourceType": "questionnaire_responses",
+      "sourceSystem": "Questionnaire client-coach",
+      "sourceAutomation": "AUTO-009",
+      "targetCollections": [
+        "questionnaireResponses"
+      ],
+      "requiredCoachFields": [
+        "coachName or coachRxId"
+      ],
+      "requiredRecordFields": [
+        "client_phone_normalized or phone"
+      ],
+      "recommendedRecordFields": [
+        "response_id",
+        "submitted_at",
+        "triage_status",
+        "coach_action_type",
+        "open_note"
+      ],
+      "matchingPriority": [
+        "phoneNormalized",
+        "responseId",
+        "normalizedName"
+      ],
+      "pathPolicy": {
+        "preferredPath": "direct_to_firestore_after_questionnaire_endpoint_ready",
+        "sheetRole": "temporary_backup_and_reconciliation",
+        "firstPilot": "Submit one Test_Responses row and one Responses row for the same normalized phone",
+        "activationGate": "Response parser reads fields by key and non-matched responses go to validation queue",
+        "doNotDo": "Do not create fake To-do from non-sent or unread questionnaire rows."
+      },
+      "mergeRule": "Une reponse non matchee va dans la file a valider. Le contenu reponse n'est pas ecrase par une action coach; seul le statut de lecture peut changer.",
+      "writePath": "Questionnaire endpoint or Apps Script -> ingestDashboardSource -> questionnaireResponses",
+      "activationState": "backend_ready_sheet_bridge_still_available",
+      "rollback": "Lire Responses/Test_Responses depuis le Sheet questionnaire tant que le direct n'est pas valide."
+    },
+    {
+      "id": "rebooking_direct",
+      "sourceType": "rebooking",
+      "sourceSystem": "Rebooking Apps Script legacy",
+      "sourceAutomation": "AUTO-003",
+      "targetCollections": [
+        "rebookings"
+      ],
+      "requiredCoachFields": [
+        "coachName or coachRxId"
+      ],
+      "requiredRecordFields": [
+        "client name",
+        "appointment date"
+      ],
+      "recommendedRecordFields": [
+        "phone",
+        "event id",
+        "status",
+        "service",
+        "sessions to rebook"
+      ],
+      "matchingPriority": [
+        "phoneNormalized",
+        "eventId",
+        "normalizedName"
+      ],
+      "pathPolicy": {
+        "preferredPath": "legacy_parallel_then_firestore_parity",
+        "sheetRole": "legacy_source_until_parity_is_proven",
+        "firstPilot": "Compare Marc-Andre legacy app open count and Firestore open count before writeback",
+        "activationGate": "Legacy source audit confirms open, managed, rebooked, absence and history semantics",
+        "doNotDo": "Do not replace or write back to the current rebooking app until parity is proven."
+      },
+      "mergeRule": "Ne pas casser l'app legacy. Un statut traite dans Firestore gagne sur une reimportation ouverte; les conflits restent visibles.",
+      "writePath": "AUTO-003 Apps Script -> ingestDashboardSource -> rebookings",
+      "activationState": "backend_ready_waiting_for_apps_script_authorization_needs_legacy_source_audit",
+      "rollback": "Continuer a utiliser l'app rebooking actuelle; ne jamais publier les URLs tokenisees dans les assets publics."
+    },
+    {
+      "id": "csm_checkups_direct",
+      "sourceType": "checkups",
+      "sourceSystem": "CSM checkup sheets/forms",
+      "sourceAutomation": "AUTO-002",
+      "targetCollections": [
+        "checkups"
+      ],
+      "requiredCoachFields": [
+        "coachName or coachRxId"
+      ],
+      "requiredRecordFields": [
+        "client name or phone",
+        "checkup date"
+      ],
+      "recommendedRecordFields": [
+        "phone",
+        "coach",
+        "notes",
+        "risk signal",
+        "attendance"
+      ],
+      "matchingPriority": [
+        "phoneNormalized",
+        "normalizedName"
+      ],
+      "pathPolicy": {
+        "preferredPath": "direct_to_firestore_or_sheet_source_when_form_lives_in_sheet",
+        "sheetRole": "source_if_google_form_response_sheet_is_current_system",
+        "firstPilot": "One check-up row matched by phone and coach name for Performance",
+        "activationGate": "Coach name and phone normalization verified; no client manual field updates",
+        "doNotDo": "Do not use check-up imports to rewrite membership end, risk manual or coach notes."
+      },
+      "mergeRule": "Import lecture pour Performance et historique. Ne modifie pas les champs manuels client.",
+      "writePath": "AUTO-002 Apps Script/Bob -> ingestDashboardSource -> checkups",
+      "activationState": "backend_ready_waiting_for_source_bridge",
+      "rollback": "Continuer la lecture du Sheet CSM externe et garder Formulaire Checkup comme registre admin."
+    }
+  ],
+  "openGaps": [
+    {
+      "id": "ghl_phone_import",
+      "status": "needs_secure_server_bridge",
+      "detail": "GHL semble etre la meilleure source telephone, mais doit rester cote serveur via Firebase Function ou Apps Script prive."
+    },
+    {
+      "id": "rebooking_live_source_confirmation",
+      "status": "needs_legacy_script_audit",
+      "detail": "Confirmer si SRC_Rebookings_SemiPrive est le miroir vivant de AUTO-003 ou brancher AUTO-003 directement."
+    },
+    {
+      "id": "task_generation_source",
+      "status": "needs_rules_hardening",
+      "detail": "TASKS_Current est une couche generee temporaire. Les To-do doivent venir d'evenements explicites ou de regles Firebase."
+    },
+    {
+      "id": "coachrx_direct_import",
+      "status": "ready_for_apps_script_bridge_when_token_available",
+      "detail": "La Function accepte coachrx_clients; il reste a configurer DASHBOARD_IMPORT_TOKEN dans Firebase et Apps Script."
+    }
+  ]
+}

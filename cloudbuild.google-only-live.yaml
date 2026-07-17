@@ -1,0 +1,43 @@
+steps:
+  - name: node:22
+    id: source-contract
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        node --check firebase-dashboard/public/app.js
+        node --check functions/index.js
+        node tools/verify-google-only-readiness.cjs
+
+  - name: node:22
+    id: functions-contract
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        npm --prefix functions ci --ignore-scripts
+        npm --prefix functions run lint
+
+  - name: node:22
+    id: hosting-live
+    entrypoint: bash
+    env:
+      - CI=true
+    args:
+      - -ceu
+      - |
+        npx --yes firebase-tools@15.19.1 deploy \
+          --only hosting \
+          --project cfsb-dashboard-coach-aa9a4 \
+          --message "${_RELEASE_MESSAGE}" \
+          --non-interactive
+
+serviceAccount: projects/cfsb-dashboard-coach-aa9a4/serviceAccounts/dashboard-deployer@cfsb-dashboard-coach-aa9a4.iam.gserviceaccount.com
+
+substitutions:
+  _RELEASE_MESSAGE: Google-only controlled Hosting deploy
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 1200s

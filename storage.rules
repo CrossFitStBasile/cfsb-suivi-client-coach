@@ -1,0 +1,46 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function profile() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid));
+    }
+
+    function activeUser() {
+      return signedIn()
+        && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
+        && profile().data.active == true;
+    }
+
+    function isAdmin() {
+      return activeUser() && profile().data.role == 'admin';
+    }
+
+    function isPilotCoachId(coachField) {
+      return coachField == '15935'
+        || coachField == '15928'
+        || coachField == '17242'
+        || coachField == '15902'
+        || coachField == '15893'
+        || coachField == '15937'
+        || coachField == '15936';
+    }
+
+    function isPilotTeamUser() {
+      return activeUser() && (isAdmin() || isPilotCoachId(profile().data.coachId));
+    }
+
+    match /taskVoiceNotes/{coachId}/{taskId}/{fileName} {
+      allow read: if isPilotTeamUser() && isPilotCoachId(coachId);
+      allow create, update: if isPilotTeamUser()
+        && isPilotCoachId(coachId)
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches('audio/.*');
+      allow delete: if isPilotTeamUser() && isPilotCoachId(coachId);
+    }
+  }
+}

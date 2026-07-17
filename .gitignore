@@ -1,6 +1,4 @@
 .venv/
-node_modules/
-firebase-roadmap/pnpm-lock.yaml
 __pycache__/
 *.pyc
 test-results/
@@ -8,3 +6,15 @@ playwright-report/
 .firebase/
 .tools/
 firebase-debug.log
+firebase-debug*.txt
+firebase-deploy*.log
+firebase-deploy*.txt
+firebase-hosting*.log
+ff-*.txt
+functions/functions.yaml
+work/
+.google-source/
+google-source-snapshots/
+firebase-login-*.cmd
+*.source-snapshot.tar.gz
+*.source-snapshot.zip

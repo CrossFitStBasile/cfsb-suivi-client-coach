@@ -1,0 +1,431 @@
+{
+  "generatedAt": "2026-06-10T23:35:57.590Z",
+  "backupPath": "C:\\Users\\micha\\Documents\\Codex\\Bob Operator\\bob-operator\\generated\\dashboard-source-appscript-backup-2026-06-09T20-19-48-847Z.json",
+  "sources": [
+    {
+      "key": "coach_dashboard_legacy",
+      "label": "Ancien dashboard coach / sync historique",
+      "scriptId": "1SeGMN1w7iqn_7ETcmg5qwY6wIys4GZy5GbJHWasg6bToThcxrucYfOLk",
+      "functionCount": 290,
+      "focus": {
+        "coachrx": {
+          "hitCount": 234,
+          "matchingFunctions": [
+            "onOpen",
+            "showCoachRxUpdateInstructions",
+            "resetPilotTestActionsForActiveCoach",
+            "showCoachRxImportDialog",
+            "doGet",
+            "buildCoachAppContactLookup_",
+            "pickClientNameFromContactRow_",
+            "getCoachAppCoaches_",
+            "setCoachAppActiveCoach",
+            "summarizeClientInfoForApp_",
+            "readCoachAppClientsFromCore_",
+            "updateCoachAppValidation",
+            "doPost",
+            "createCoachRxSyncSecret",
+            "showCoachRxSyncStatus",
+            "validateCoachRxSyncSecret_",
+            "getCoachRxSyncConfig_",
+            "importCoachRxBrowserSync_",
+            "importCoachRxAdvancedScan_",
+            "upsertCoachRxClientContextFromScan_",
+            "rebuildCoachDashboardFromCurrentSheets_",
+            "filterCoachRxCsvRowsForCoach_",
+            "buildPseudoCoachRxCsvFromBrowser_",
+            "isValidCoachRxClientName_",
+            "browserRowsForCoach_",
+            "buildAutoClients_",
+            "readCoachAppManualClients_",
+            "mergeManualClientsIntoAuto_",
+            "pickClientPhoneAuto_",
+            "pickClientEmailAuto_"
+          ]
+        },
+        "clients": {
+          "hitCount": 125,
+          "matchingFunctions": [
+            "buildCoachAppData_",
+            "buildCoachAppContactLookup_",
+            "readCoachAppTasksFromCore_",
+            "mapCoreRowsByKey_",
+            "readCoachAppClientsFromCore_",
+            "buildCoachAppV3Data_",
+            "saveCoachAppManualClient",
+            "ensureManualClientsSheet_",
+            "syncClientCoachResponsesSource_",
+            "normalizeQuestionnaireResponseForDashboard_",
+            "normalizePhoneDashboard_",
+            "rebuildCoachDashboardFromCurrentSheets_",
+            "readCoachAppManualClients_",
+            "mergeManualClientsIntoAuto_",
+            "writeCoreDataSheets_",
+            "buildCoreClientsRows_",
+            "buildCoreClientContextRows_",
+            "buildV3DerivedRows_",
+            "ensureV3PilotSheets_",
+            "ensureCoachCoreDataForActiveCoach_",
+            "importProgramFormResponse_",
+            "findProgramFormResponseRow_",
+            "findGhlContact_",
+            "buildGhlPhoneSearchVariants_",
+            "cleanPhone_",
+            "setStatus",
+            "renderGoals",
+            "clientCard",
+            "taskCard",
+            "renderCoreInfo"
+          ]
+        },
+        "tasks": {
+          "hitCount": 7,
+          "matchingFunctions": [
+            "rebuildCoachDashboardFromCurrentSheets_",
+            "buildAutoTodoRows_",
+            "writeCoreDataSheets_",
+            "applyStoredGeneratedTaskStatuses_",
+            "buildTasksCurrentRows_"
+          ]
+        },
+        "questionnaire": {
+          "hitCount": 20,
+          "matchingFunctions": [
+            "buildCoachAppData_",
+            "handleCoachAppPublicApi_",
+            "syncClientCoachResponsesSource_",
+            "syncQuestionnaireSheetNotesToGhl_",
+            "buildQuestionnaireGhlNoteBody_",
+            "clientCoachResponsesForCoach_",
+            "buildQuestionnaireInbox_",
+            "normalizeQuestionnaireResponseForDashboard_",
+            "updateClientCoachQuestionnaireStatus",
+            "updateQuestionnaireStatusInSheet_"
+          ]
+        },
+        "ghl": {
+          "hitCount": 9,
+          "matchingFunctions": [
+            "installDashboardFormEditTrigger",
+            "syncQuestionnaireSheetNotesToGhl_",
+            "buildQuestionnaireInbox_",
+            "dashboardCoachRolloutConfigByName_",
+            "processProgramFormRow_",
+            "addGhlTagToContact_",
+            "createGhlContactNote_",
+            "showPrototypeStatus"
+          ]
+        },
+        "rebooking": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "checkups": {
+          "hitCount": 26,
+          "matchingFunctions": [
+            "buildCoachAppData_",
+            "readCsmCheckupsForCoach_",
+            "coachNameMatchesCheckup_",
+            "summarizeClientInfoForApp_",
+            "readCoachAppClientsFromCore_",
+            "buildAutoClients_",
+            "readCoachAppManualClients_",
+            "buildAutoDashboardRows_",
+            "buildCoreClientsRows_"
+          ]
+        },
+        "firestoreQueue": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        }
+      },
+      "recommendedActivation": "Utiliser comme source de transition CoachRx/clients/tasks, mais isoler la logique de lecture avant de pousser Firestore pour eviter de copier les anciennes taches bruitees.",
+      "safeFirstWriteCandidate": false
+    },
+    {
+      "key": "csm_main",
+      "label": "CSM et metriques - script principal",
+      "scriptId": "1pQ9ecmaVvulUauVMqNKNqQMDX0CDhOaQuolCIm4U_7n87hrMuuklxyLB",
+      "functionCount": 41,
+      "focus": {
+        "coachrx": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "clients": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "tasks": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "questionnaire": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "ghl": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "rebooking": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "checkups": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "firestoreQueue": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        }
+      },
+      "recommendedActivation": "Review manuelle avant activation.",
+      "safeFirstWriteCandidate": false
+    },
+    {
+      "key": "csm_bound_menu",
+      "label": "CSM et metriques - menu lie au Sheet",
+      "scriptId": "1upjaGrsWIxwsVz_Ht--CjNNeo3zC4uSlAfdRgMCdevwog1FV7Q-_MbIL",
+      "functionCount": 101,
+      "focus": {
+        "coachrx": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "clients": {
+          "hitCount": 16,
+          "matchingFunctions": [
+            "classifyDuplicateGroup_",
+            "completenessScore_",
+            "processPriorityCheckupManualAction_",
+            "findGhlContactByPhone_",
+            "cleanPhone_"
+          ]
+        },
+        "tasks": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "questionnaire": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "ghl": {
+          "hitCount": 2,
+          "matchingFunctions": [
+            "processPriorityCheckupManualAction_",
+            "findGhlContactByPhone_"
+          ]
+        },
+        "rebooking": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "checkups": {
+          "hitCount": 129,
+          "matchingFunctions": [
+            "runMiseAJour2",
+            "repairNewMembersDynamicFormulas",
+            "repairNewMembersDynamicFormulas_",
+            "newMemberLastCheckupFormula_",
+            "newMemberLatestNoteFormula_",
+            "cleanupTeamMembersFromFollowupTabs_",
+            "repairCourseGroupCheckupDynamicFormulas",
+            "previewCourseGroupCheckupDynamicFormulas",
+            "repairCourseGroupCheckupDynamicFormulas_",
+            "courseGroupLastCheckupFormula_",
+            "courseGroupLatestCheckupNoteFormula_",
+            "courseGroupLatestCheckupCoachFormula_",
+            "repairPriorityCheckupDynamicFormula",
+            "previewPriorityCheckupDynamicFormula",
+            "repairPriorityCheckupDynamicFormula_",
+            "setupPriorityCheckupGhlActions",
+            "installPriorityCheckupEditTrigger",
+            "priorityCheckupOnEdit",
+            "handlePriorityCheckupEdit_",
+            "processPriorityCheckupManualAction_",
+            "ensurePriorityCheckupGhlColumns_",
+            "ensureGhlCallColumnsOnly_",
+            "getPriorityCheckupColumnMap_"
+          ]
+        },
+        "firestoreQueue": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        }
+      },
+      "recommendedActivation": "Activer d'abord comme enrichissement telephone/check-ups/GHL si les fonctions de recherche GHL et check-up sont confirmees.",
+      "safeFirstWriteCandidate": true
+    },
+    {
+      "key": "questionnaire_endpoint",
+      "label": "Questionnaire client-coach V2",
+      "scriptId": "1RzTyLvUdw6NdVI2vsDoi7a2bjWGAZDXml94QYG4TCs9wF5KJdKm3HFBa",
+      "functionCount": 41,
+      "focus": {
+        "coachrx": {
+          "hitCount": 19,
+          "matchingFunctions": [
+            "json_",
+            "queueQuestionnaireResponseToDashboard_",
+            "resolveQuestionnaireDashboardCoach_"
+          ]
+        },
+        "clients": {
+          "hitCount": 6,
+          "matchingFunctions": [
+            "normalizeSubmission_"
+          ]
+        },
+        "tasks": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "questionnaire": {
+          "hitCount": 42,
+          "matchingFunctions": [
+            "doPost",
+            "saveRoadmapSubmission_",
+            "createTestSubmissionToken",
+            "validatePayload_",
+            "normalizeSubmission_",
+            "appendResponse_",
+            "mirrorResponseToDashboardSafely_",
+            "mirrorResponseToDashboard_",
+            "backfillDashboardQuestionnaireResponses",
+            "markTokenUsed_",
+            "log_",
+            "queueQuestionnaireResponseToDashboardSafely_",
+            "queueQuestionnaireResponseToDashboard_"
+          ]
+        },
+        "ghl": {
+          "hitCount": 2,
+          "matchingFunctions": [
+            "queueQuestionnaireResponseToDashboard_",
+            "resolveQuestionnaireDashboardCoach_"
+          ]
+        },
+        "rebooking": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "checkups": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "firestoreQueue": {
+          "hitCount": 4,
+          "matchingFunctions": [
+            "json_",
+            "queueQuestionnaireResponseToDashboard_",
+            "questionnaireFirestorePatchDocument_",
+            "makeQuestionnaireDashboardRequestId_"
+          ]
+        }
+      },
+      "recommendedActivation": "Ajouter le queue adapter directement apres appendResponse_/mirrorResponseToDashboard_: chaque nouvelle reponse peut alimenter Firestore sans attendre une sync Sheet.",
+      "safeFirstWriteCandidate": true
+    },
+    {
+      "key": "rebooking_legacy",
+      "label": "App rebooking semi-prives",
+      "scriptId": "1OsXzGrmJacMYHMIEcTM3dTK-UvaA01bDf0F90HkFNt29XYgK2iHkyBlE",
+      "functionCount": 119,
+      "focus": {
+        "coachrx": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "clients": {
+          "hitCount": 1,
+          "matchingFunctions": [
+            "processStaleCancellationReminders_"
+          ]
+        },
+        "tasks": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "questionnaire": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "ghl": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "rebooking": {
+          "hitCount": 9,
+          "matchingFunctions": [
+            "doGet",
+            "handleCoachCloseAction_",
+            "handleCoachCloseClientAction_",
+            "handleCoachReopenAction_",
+            "handleCoachConfirmAbsenceAction_",
+            "processPendingNotifications_",
+            "processCancellationForRebookQueue_",
+            "applyAbsenceToOpenCancellations_",
+            "markCancellationManaged_"
+          ]
+        },
+        "checkups": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "firestoreQueue": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        }
+      },
+      "recommendedActivation": "Garder legacy comme reference; ajouter un miroir Firestore apres les actions gerer/reouvrir/absence, puis comparer les compteurs.",
+      "safeFirstWriteCandidate": false
+    },
+    {
+      "key": "kilo_metrics",
+      "label": "Kilo metrics",
+      "scriptId": "1GlRrhkGoMkgRfsybh0WUILva6ARfHKMfmmHSehEvmwH5rg3jtgn26lAO",
+      "functionCount": 113,
+      "focus": {
+        "coachrx": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "clients": {
+          "hitCount": 2,
+          "matchingFunctions": [
+            "buildKiloScanConfig_"
+          ]
+        },
+        "tasks": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "questionnaire": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "ghl": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "rebooking": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "checkups": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        },
+        "firestoreQueue": {
+          "hitCount": 0,
+          "matchingFunctions": []
+        }
+      },
+      "recommendedActivation": "Reporter sauf besoin performance; utile pour metrics/churn plus tard.",
+      "safeFirstWriteCandidate": false
+    }
+  ]
+}

@@ -20,22 +20,209 @@ service cloud.firestore {
       return activeUser() && profile().data.role == 'admin';
     }
 
+    function isAssistantAdminPilot() {
+      return isAdmin()
+        && request.auth.token.email == 'info@crossfitstbasilelegrand.com';
+    }
+
     function coachId() {
       return profile().data.coachId;
     }
 
-    function ownsCoach(coachField) {
-      return activeUser() && coachField == coachId();
+    function isPilotCoachId(coachField) {
+      return coachField == '15935'
+        || coachField == '15928'
+        || coachField == '17242'
+        || coachField == '15902'
+        || coachField == '15893'
+        || coachField == '15937'
+        || coachField == '15936';
     }
 
-    match /users/{userId} {
-      allow read: if signedIn() && request.auth.uid == userId;
-      allow create: if signedIn()
+    function isPilotTeamUser() {
+      return activeUser() && (isAdmin() || isPilotCoachId(coachId()));
+    }
+
+    function canReadPilotCoachDoc(coachField) {
+      return isAdmin() || (isPilotTeamUser() && isPilotCoachId(coachField));
+    }
+
+    function canCreatePilotCoachDoc(coachField) {
+      return isAdmin() || (isPilotTeamUser() && isPilotCoachId(coachField));
+    }
+
+    function keepsPilotCoach() {
+      return isPilotTeamUser()
+        && isPilotCoachId(resource.data.coachId)
+        && request.resource.data.coachId == resource.data.coachId;
+    }
+
+    function transfersOwnDocumentToPilotCoach() {
+      return isPilotTeamUser()
+        && isPilotCoachId(resource.data.coachId)
+        && isPilotCoachId(request.resource.data.coachId)
+        && request.resource.data.coachId != resource.data.coachId
+        && request.resource.data.previousCoachId == resource.data.coachId;
+    }
+
+    function transfersRelatedDocumentToPilotCoach() {
+      return transfersOwnDocumentToPilotCoach()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'coachId',
+          'coachRxId',
+          'coachName',
+          'previousCoachId',
+          'transferredAt',
+          'updatedAt'
+        ]);
+    }
+
+    function transfersRebookingDocumentToPilotCoach() {
+      return transfersOwnDocumentToPilotCoach()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'coachId',
+          'coachRxId',
+          'coachName',
+          'previousCoachId',
+          'transferredAt',
+          'history',
+          'updatedAt'
+        ]);
+    }
+
+    function coachReadsQuestionnaireResponse() {
+      return isPilotTeamUser()
+        && isPilotCoachId(resource.data.coachId)
+        && request.resource.data.coachId == resource.data.coachId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'processingStatus',
+          'readAt',
+          'readByUid',
+          'readByEmail',
+          'updatedAt'
+        ])
+        && request.resource.data.processingStatus == 'read';
+    }
+
+    function coachLinksQuestionnaireResponseToClient() {
+      return isPilotTeamUser()
+        && isPilotCoachId(resource.data.coachId)
+        && request.resource.data.coachId == resource.data.coachId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'clientId',
+          'clientName',
+          'clientPhoneNormalized',
+          'processingStatus',
+          'matchedManuallyAt',
+          'matchedManuallyByUid',
+          'matchedManuallyByEmail',
+          'manualMatchNote',
+          'updatedAt'
+        ])
+        && request.resource.data.clientId is string
+        && request.resource.data.clientId != ''
+        && request.resource.data.clientName is string
+        && request.resource.data.processingStatus == 'to_read';
+    }
+
+    function isAdminBootstrapProfile(userId) {
+      return signedIn()
         && request.auth.uid == userId
         && request.auth.token.email == 'info@crossfitstbasilelegrand.com'
         && request.resource.data.active == true
         && request.resource.data.role == 'admin'
         && request.resource.data.coachId == 'admin';
+    }
+
+    function isPilotCoachEmailForCoach(coachField) {
+      return (request.auth.token.email == 'marcandremenard89@gmail.com' && coachField == '15935')
+        || (request.auth.token.email == 'ihebya73@gmail.com' && coachField == '15928')
+        || (request.auth.token.email == 'camproulxx@gmail.com' && coachField == '17242')
+        || (request.auth.token.email == 'davidolivier1997@gmail.com' && coachField == '15902')
+        || (request.auth.token.email == 'hugolelievre34@gmail.com' && coachField == '15937')
+        || (request.auth.token.email == 'raphael.samson@usherbrooke.ca' && coachField == '15936');
+    }
+
+    function isPilotCoachSelfProvisionProfile(userId) {
+      return signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.active == true
+        && request.resource.data.role == 'coach'
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.coachRxId == request.resource.data.coachId
+        && request.resource.data.source == 'firebase_self_provision_pilot'
+        && request.resource.data.keys().hasOnly([
+          'active',
+          'role',
+          'coachId',
+          'coachRxId',
+          'displayName',
+          'email',
+          'createdAt',
+          'updatedAt',
+          'source'
+        ])
+        && isPilotCoachEmailForCoach(request.resource.data.coachId);
+    }
+
+    function validPilotAcceptancePayload() {
+      return request.resource.data.userId == request.auth.uid
+        && request.resource.data.userEmail == request.auth.token.email
+        && request.resource.data.coachId == coachId()
+        && isPilotCoachId(request.resource.data.coachId)
+        && request.resource.data.coachName is string
+        && request.resource.data.coachName.size() >= 1
+        && request.resource.data.coachName.size() <= 100
+        && request.resource.data.status in ['ready', 'ready_with_reservation', 'blocked']
+        && request.resource.data.note is string
+        && request.resource.data.note.size() <= 300
+        && request.resource.data.checkNavigation is bool
+        && request.resource.data.checkMission is bool
+        && request.resource.data.checkClientFollowup is bool
+        && request.resource.data.checkCrossCoach is bool
+        && request.resource.data.checkCoachRx is bool
+        && request.resource.data.checkVoicePlayback is bool
+        && request.resource.data.checkManualClient is bool
+        && request.resource.data.checkQuestionnaireDelivery is bool
+        && request.resource.data.checkHighVolumeRebooking is bool
+        && request.resource.data.deviceType in ['mobile', 'tablet', 'desktop']
+        && request.resource.data.platform in ['ios', 'android', 'windows', 'macos', 'other']
+        && request.resource.data.browser in ['chrome', 'safari', 'edge', 'firefox', 'other']
+        && request.resource.data.authMethod in ['google', 'password', 'linked', 'other']
+        && request.resource.data.appVersion is string
+        && request.resource.data.appVersion.size() >= 1
+        && request.resource.data.appVersion.size() <= 80
+        && request.resource.data.validatedAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.keys().hasOnly([
+          'userId',
+          'userEmail',
+          'coachId',
+          'coachName',
+          'status',
+          'note',
+          'checkNavigation',
+          'checkMission',
+          'checkClientFollowup',
+          'checkCrossCoach',
+          'checkCoachRx',
+          'checkVoicePlayback',
+          'checkManualClient',
+          'checkQuestionnaireDelivery',
+          'checkHighVolumeRebooking',
+          'deviceType',
+          'platform',
+          'browser',
+          'authMethod',
+          'appVersion',
+          'validatedAt',
+          'updatedAt'
+        ]);
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow create: if isAdminBootstrapProfile(userId) || isPilotCoachSelfProvisionProfile(userId);
       allow create, update, delete: if isAdmin();
     }
 
@@ -45,56 +232,486 @@ service cloud.firestore {
     }
 
     match /clients/{clientId} {
-      allow read: if isAdmin() || ownsCoach(resource.data.coachId);
-      allow create: if isAdmin() || ownsCoach(request.resource.data.coachId);
-      allow update: if isAdmin() || ownsCoach(resource.data.coachId);
-      allow delete: if isAdmin();
+      allow read: if canReadPilotCoachDoc(resource.data.coachId);
+      allow create: if canCreatePilotCoachDoc(request.resource.data.coachId);
+      allow update: if isAdmin() || keepsPilotCoach() || transfersOwnDocumentToPilotCoach();
+      allow delete: if isAdmin() || (isPilotTeamUser() && isPilotCoachId(resource.data.coachId));
     }
 
     match /tasks/{taskId} {
-      allow read: if isAdmin() || ownsCoach(resource.data.coachId);
-      allow create: if isAdmin() || ownsCoach(request.resource.data.coachId);
-      allow update: if isAdmin() || ownsCoach(resource.data.coachId);
-      allow delete: if isAdmin();
+      allow read: if canReadPilotCoachDoc(resource.data.coachId);
+      allow create: if canCreatePilotCoachDoc(request.resource.data.coachId);
+      allow update: if isAdmin() || keepsPilotCoach() || transfersRelatedDocumentToPilotCoach();
+      allow delete: if isAdmin() || (isPilotTeamUser() && isPilotCoachId(resource.data.coachId));
     }
 
     match /questionnaireResponses/{responseId} {
-      allow read: if isAdmin() || ownsCoach(resource.data.coachId);
+      allow read: if canReadPilotCoachDoc(resource.data.coachId);
       allow create, update, delete: if isAdmin();
+      allow update: if coachReadsQuestionnaireResponse();
+      allow update: if coachLinksQuestionnaireResponseToClient();
+      allow update: if transfersRelatedDocumentToPilotCoach();
     }
 
     match /questionnaireSends/{sendId} {
-      allow read: if isAdmin() || ownsCoach(resource.data.coachId);
-      allow create: if isAdmin() || ownsCoach(request.resource.data.coachId);
-      allow update: if isAdmin() || ownsCoach(resource.data.coachId);
+      allow read: if canReadPilotCoachDoc(resource.data.coachId);
+      allow create: if canCreatePilotCoachDoc(request.resource.data.coachId);
+      allow update: if isAdmin() || keepsPilotCoach() || transfersRelatedDocumentToPilotCoach();
+      allow delete: if isAdmin();
+    }
+
+    match /questionnaireSchedules/{scheduleId} {
+      allow read: if canReadPilotCoachDoc(resource.data.coachId);
+      allow create: if canCreatePilotCoachDoc(request.resource.data.coachId);
+      allow update: if isAdmin() || keepsPilotCoach() || transfersRelatedDocumentToPilotCoach();
       allow delete: if isAdmin();
     }
 
     match /rebookings/{rebookingId} {
-      allow read: if isAdmin() || ownsCoach(resource.data.coachId);
-      allow create: if isAdmin() || ownsCoach(request.resource.data.coachId);
-      allow update: if isAdmin() || ownsCoach(resource.data.coachId);
-      allow delete: if isAdmin();
+      allow read: if canReadPilotCoachDoc(resource.data.coachId);
+      allow create: if canCreatePilotCoachDoc(request.resource.data.coachId);
+      allow update: if isAdmin() || keepsPilotCoach() || transfersRelatedDocumentToPilotCoach() || transfersRebookingDocumentToPilotCoach();
+      allow delete: if isAdmin() || (isPilotTeamUser() && isPilotCoachId(resource.data.coachId));
+    }
+
+    match /checkups/{checkupId} {
+      allow read: if canReadPilotCoachDoc(resource.data.coachId);
+      allow create, update, delete: if isAdmin();
+      allow update: if transfersRelatedDocumentToPilotCoach();
     }
 
     match /alumni/{alumniId} {
-      allow read: if isAdmin() || ownsCoach(resource.data.coachId);
-      allow create: if isAdmin() || ownsCoach(request.resource.data.coachId);
-      allow update: if isAdmin() || ownsCoach(resource.data.coachId);
+      allow read: if canReadPilotCoachDoc(resource.data.coachId);
+      allow create: if canCreatePilotCoachDoc(request.resource.data.coachId);
+      allow update: if isAdmin() || keepsPilotCoach() || transfersOwnDocumentToPilotCoach();
       allow delete: if isAdmin();
     }
 
     match /impacts/{impactId} {
-      allow read: if isAdmin() || ownsCoach(resource.data.coachId);
-      allow create: if isAdmin() || ownsCoach(request.resource.data.coachId);
-      allow update: if isAdmin() || ownsCoach(resource.data.coachId);
+      allow read: if canReadPilotCoachDoc(resource.data.coachId);
+      allow create: if canCreatePilotCoachDoc(request.resource.data.coachId);
+      allow update: if isAdmin() || keepsPilotCoach() || transfersRelatedDocumentToPilotCoach();
+      allow delete: if isAdmin();
+    }
+
+    match /performanceSettings/{coachDocId} {
+      allow read: if isAdmin() || (isPilotTeamUser() && isPilotCoachId(coachDocId));
+      allow create: if canCreatePilotCoachDoc(request.resource.data.coachId)
+        && request.resource.data.coachId == coachDocId;
+      allow update: if isAdmin()
+        || (
+          isPilotTeamUser()
+          && isPilotCoachId(coachDocId)
+          && request.resource.data.coachId == resource.data.coachId
+          && resource.data.coachId == coachDocId
+        )
+        || (
+          isPilotTeamUser()
+          && isPilotCoachId(coachDocId)
+          && request.resource.data.coachId == coachDocId
+        );
       allow delete: if isAdmin();
     }
 
     match /actionLogs/{logId} {
-      allow read: if isAdmin() || ownsCoach(resource.data.coachId);
-      allow create: if activeUser();
+      allow read: if canReadPilotCoachDoc(resource.data.coachId);
+      allow create: if canCreatePilotCoachDoc(request.resource.data.coachId);
       allow update, delete: if false;
+    }
+
+    match /usageEvents/{eventId} {
+      allow read: if isAdmin() || canReadPilotCoachDoc(resource.data.coachId);
+      allow create: if canCreatePilotCoachDoc(request.resource.data.coachId)
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.eventType is string
+        && request.resource.data.coachId is string
+        && request.resource.data.keys().hasOnly([
+          'eventType',
+          'coachId',
+          'actorCoachId',
+          'selectedCoachId',
+          'userId',
+          'userEmail',
+          'userRole',
+          'tab',
+          'sessionId',
+          'appVersion',
+          'deviceType',
+          'path',
+          'details',
+          'createdAt'
+        ]);
+      allow update, delete: if false;
+    }
+
+    match /announcements/{announcementId} {
+      allow read: if activeUser();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /announcementAcknowledgements/{acknowledgementId} {
+      allow read: if isAdmin()
+        || (activeUser() && resource.data.userId == request.auth.uid);
+      allow create: if activeUser()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.userEmail == request.auth.token.email
+        && request.resource.data.announcementId is string
+        && request.resource.data.announcementId != ''
+        && request.resource.data.appVersion is string
+        && request.resource.data.keys().hasOnly([
+          'announcementId',
+          'userId',
+          'userEmail',
+          'appVersion',
+          'acknowledgedAt'
+        ]);
+      allow update: if activeUser()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.announcementId == resource.data.announcementId
+        && request.resource.data.userEmail == resource.data.userEmail
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'appVersion',
+          'acknowledgedAt'
+        ]);
+      allow delete: if false;
+    }
+
+    match /pilotAcceptances/{acceptanceId} {
+      allow read: if isAdmin()
+        || (activeUser() && resource.data.userId == request.auth.uid);
+      allow create: if activeUser()
+        && !isAdmin()
+        && validPilotAcceptancePayload();
+      allow update: if activeUser()
+        && !isAdmin()
+        && resource.data.userId == request.auth.uid
+        && resource.data.coachId == coachId()
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.coachId == resource.data.coachId
+        && validPilotAcceptancePayload();
+      allow delete: if false;
+    }
+
+    // Journal prive ecrit uniquement par la Function saveVoiceMission.
+    match /voiceMissionAttempts/{attemptId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /voiceMissionRequests/{requestId} {
+      allow read: if isAdmin()
+        || (isPilotTeamUser() && resource.data.userId == request.auth.uid);
+      allow create: if canCreatePilotCoachDoc(request.resource.data.coachId)
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.userEmail == request.auth.token.email
+        && request.resource.data.status == 'queued'
+        && request.resource.data.taskId is string
+        && request.resource.data.mission is map
+        && request.resource.data.mission.coachId == request.resource.data.coachId
+        && request.resource.data.mission.taskId == request.resource.data.taskId
+        && request.resource.data.chunkCount is int
+        && request.resource.data.chunkCount > 0
+        && request.resource.data.chunkCount <= 40
+        && request.resource.data.keys().hasOnly([
+          'coachId',
+          'taskId',
+          'userId',
+          'userEmail',
+          'status',
+          'chunkCount',
+          'audioBase64Length',
+          'mission',
+          'createdAt',
+          'updatedAt'
+        ]);
+      allow update, delete: if false;
+    }
+
+    match /voiceMissionChunks/{chunkId} {
+      allow read: if isAdmin();
+      allow create: if canCreatePilotCoachDoc(request.resource.data.coachId)
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.requestId is string
+        && request.resource.data.index is int
+        && request.resource.data.index >= 0
+        && request.resource.data.total is int
+        && request.resource.data.total > 0
+        && request.resource.data.total <= 40
+        && request.resource.data.data is string
+        && request.resource.data.data.size() > 0
+        && request.resource.data.data.size() <= 600000
+        && request.resource.data.keys().hasOnly([
+          'requestId',
+          'coachId',
+          'userId',
+          'index',
+          'total',
+          'data',
+          'createdAt'
+        ]);
+      allow update: if false;
+      allow delete: if isPilotTeamUser() && resource.data.userId == request.auth.uid;
+    }
+
+    match /accessIssues/{issueId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /syncRuns/{syncRunId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /weeklyProductReports/{reportId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /productReportRequests/{requestId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.requestedByUid == request.auth.uid
+        && request.resource.data.status == 'queued'
+        && request.resource.data.keys().hasOnly([
+          'status',
+          'requestedByUid',
+          'requestedByEmail',
+          'source',
+          'createdAt'
+        ]);
+      allow update, delete: if false;
+    }
+
+    match /assistantVoiceRequests/{requestId} {
+      allow read: if isAssistantAdminPilot()
+        && resource.data.userId == request.auth.uid;
+      allow create: if isAssistantAdminPilot()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.userEmail == request.auth.token.email
+        && request.resource.data.actorCoachId == 'admin'
+        && isPilotCoachId(request.resource.data.targetCoachId)
+        && request.resource.data.requestKind == 'task_create'
+        && request.resource.data.contextType in ['global', 'client']
+        && (
+          (request.resource.data.contextType == 'global'
+            && request.resource.data.contextEntityId == '')
+          || (request.resource.data.contextType == 'client'
+            && request.resource.data.contextEntityId is string
+            && request.resource.data.contextEntityId.size() >= 1
+            && request.resource.data.contextEntityId.size() <= 180)
+        )
+        && request.resource.data.status == 'queued'
+        && request.resource.data.chunkCount is int
+        && request.resource.data.chunkCount > 0
+        && request.resource.data.chunkCount <= 40
+        && request.resource.data.audioBase64Length is int
+        && request.resource.data.audioBase64Length > 0
+        && request.resource.data.audioBase64Length <= 11184820
+        && request.resource.data.mimeType is string
+        && request.resource.data.mimeType.matches('^audio/(aac|mp4|mpeg|webm)(;.*)?$')
+        && request.resource.data.durationSeconds is int
+        && request.resource.data.durationSeconds > 0
+        && request.resource.data.durationSeconds <= 120
+        && request.resource.data.source == 'assistant_admin_voice_pilot'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.keys().hasOnly([
+          'userId',
+          'userEmail',
+          'actorCoachId',
+          'targetCoachId',
+          'requestKind',
+          'contextType',
+          'contextEntityId',
+          'status',
+          'chunkCount',
+          'audioBase64Length',
+          'mimeType',
+          'durationSeconds',
+          'source',
+          'createdAt',
+          'updatedAt'
+        ]);
+      allow update, delete: if false;
+    }
+
+    match /assistantVoiceChunks/{chunkId} {
+      allow read: if false;
+      allow create: if isAssistantAdminPilot()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.requestId is string
+        && request.resource.data.requestId.size() >= 8
+        && request.resource.data.requestId.size() <= 180
+        && isPilotCoachId(request.resource.data.targetCoachId)
+        && request.resource.data.index is int
+        && request.resource.data.index >= 0
+        && request.resource.data.total is int
+        && request.resource.data.total > 0
+        && request.resource.data.total <= 40
+        && request.resource.data.index < request.resource.data.total
+        && request.resource.data.data is string
+        && request.resource.data.data.size() > 0
+        && request.resource.data.data.size() <= 600000
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.keys().hasOnly([
+          'requestId',
+          'targetCoachId',
+          'userId',
+          'index',
+          'total',
+          'data',
+          'createdAt'
+        ]);
+      allow update, delete: if false;
+    }
+
+    match /assistantRequests/{requestId} {
+      allow read: if isAssistantAdminPilot()
+        && resource.data.userId == request.auth.uid;
+      allow create: if isAssistantAdminPilot()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.userEmail == request.auth.token.email
+        && request.resource.data.actorCoachId == 'admin'
+        && isPilotCoachId(request.resource.data.targetCoachId)
+        && request.resource.data.requestKind in ['general', 'task_create']
+        && request.resource.data.contextType in ['global', 'client']
+        && (
+          (request.resource.data.contextType == 'global'
+            && request.resource.data.contextEntityId == '')
+          || (request.resource.data.contextType == 'client'
+            && request.resource.data.contextEntityId is string
+            && request.resource.data.contextEntityId.size() >= 1
+            && request.resource.data.contextEntityId.size() <= 180)
+        )
+        && (
+          request.resource.data.requestKind == 'task_create'
+          || request.resource.data.contextType == 'global'
+        )
+        && request.resource.data.inputMode == 'text'
+        && request.resource.data.inputText is string
+        && request.resource.data.inputText.size() >= 3
+        && request.resource.data.inputText.size() <= 1200
+        && request.resource.data.status == 'queued'
+        && request.resource.data.source == 'assistant_admin_private_pilot'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.keys().hasOnly([
+          'userId',
+          'userEmail',
+          'actorCoachId',
+          'targetCoachId',
+          'requestKind',
+          'contextType',
+          'contextEntityId',
+          'inputMode',
+          'inputText',
+          'status',
+          'source',
+          'createdAt',
+          'updatedAt'
+        ]);
+      allow update, delete: if false;
+    }
+
+    match /assistantProposals/{proposalId} {
+      allow read: if isAssistantAdminPilot()
+        && resource.data.userId == request.auth.uid;
+      allow create, update, delete: if false;
+    }
+
+    match /assistantActionRequests/{actionRequestId} {
+      allow read: if isAssistantAdminPilot()
+        && resource.data.userId == request.auth.uid;
+      allow create: if isAssistantAdminPilot()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.userEmail == request.auth.token.email
+        && request.resource.data.proposalId is string
+        && request.resource.data.proposalId.size() >= 1
+        && request.resource.data.proposalId.size() <= 180
+        && isPilotCoachId(request.resource.data.targetCoachId)
+        && request.resource.data.actionType == 'task.create'
+        && request.resource.data.confirmedParameters is map
+        && request.resource.data.confirmedParameters.keys().hasOnly([
+          'clientId',
+          'title',
+          'description',
+          'priority',
+          'dueAt',
+          'starred'
+        ])
+        && request.resource.data.confirmedParameters.keys().hasAll([
+          'clientId',
+          'title',
+          'description',
+          'priority',
+          'dueAt',
+          'starred'
+        ])
+        && request.resource.data.confirmedParameters.clientId is string
+        && request.resource.data.confirmedParameters.clientId.size() <= 180
+        && request.resource.data.confirmedParameters.title is string
+        && request.resource.data.confirmedParameters.title.size() >= 1
+        && request.resource.data.confirmedParameters.title.size() <= 180
+        && request.resource.data.confirmedParameters.description is string
+        && request.resource.data.confirmedParameters.description.size() <= 1200
+        && request.resource.data.confirmedParameters.priority in ['P1', 'P2', 'P3']
+        && request.resource.data.confirmedParameters.dueAt is string
+        && request.resource.data.confirmedParameters.dueAt.size() == 10
+        && request.resource.data.confirmedParameters.starred is bool
+        && request.resource.data.status == 'queued'
+        && request.resource.data.source == 'assistant_admin_task_confirmation_pilot'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.keys().hasOnly([
+          'userId',
+          'userEmail',
+          'proposalId',
+          'targetCoachId',
+          'actionType',
+          'confirmedParameters',
+          'status',
+          'source',
+          'createdAt',
+          'updatedAt'
+        ])
+        && exists(/databases/$(database)/documents/assistantProposals/$(request.resource.data.proposalId))
+        && get(/databases/$(database)/documents/assistantProposals/$(request.resource.data.proposalId)).data.userId == request.auth.uid
+        && get(/databases/$(database)/documents/assistantProposals/$(request.resource.data.proposalId)).data.targetCoachId == request.resource.data.targetCoachId
+        && get(/databases/$(database)/documents/assistantProposals/$(request.resource.data.proposalId)).data.actionType == 'task.create'
+        && get(/databases/$(database)/documents/assistantProposals/$(request.resource.data.proposalId)).data.confirmationRequired == true
+        && get(/databases/$(database)/documents/assistantProposals/$(request.resource.data.proposalId)).data.status == 'proposed'
+        && get(/databases/$(database)/documents/assistantProposals/$(request.resource.data.proposalId)).data.expiresAt > request.time;
+      allow update, delete: if false;
+    }
+
+    match /sourceImportRuns/{sourceImportRunId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /syncRequests/{syncRequestId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.requestedByUid == request.auth.uid
+        && request.resource.data.status == 'queued'
+        && request.resource.data.keys().hasOnly([
+          'coachId',
+          'scope',
+          'status',
+          'requestedByUid',
+          'requestedByEmail',
+          'createdAt',
+          'updatedAt',
+          'source'
+        ]);
+      allow update, delete: if false;
+    }
+
+    match /coachSyncStatus/{coachDocId} {
+      allow read: if isAdmin() || (isPilotTeamUser() && isPilotCoachId(coachDocId));
+      allow create, update, delete: if isAdmin();
     }
 
     match /system/{docId} {

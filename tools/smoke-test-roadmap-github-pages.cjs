@@ -1,13 +1,12 @@
 const { chromium } = require("playwright");
 
-const baseUrl = process.env.ROADMAP_BASE_URL || "https://crossfitstbasile.github.io/cfsb-suivi-client-coach/roadmap/web/";
+const baseUrl = "https://crossfitstbasile.github.io/cfsb-suivi-client-coach/roadmap/";
 const endpointUrl = "https://script.google.com/macros/s/AKfycbxnhlehsj_NQU73k3csMQPj0NAm3QSQrpjk0Ar6VYOjXYZO-m9_GSxtmEqYw9y_9DSQEA/exec";
-const isLocalBaseUrl = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])/i.test(baseUrl);
+
 async function run() {
   const browser = await chromium.launch({ channel: "msedge", headless: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1360, height: 920 } });
-    page.on("dialog", (dialog) => dialog.accept());
 
     await page.goto(baseUrl, { waitUntil: "networkidle" });
     await page.getByText("Charte organisationnelle 2026").waitFor({ timeout: 15000 });
@@ -28,12 +27,6 @@ async function run() {
     await page.getByText("Dans 1 an, qu'aimerais-tu avoir construit").waitFor({ timeout: 15000 });
     await page.getByText("tu evalues le soutien que CFSB").waitFor({ timeout: 15000 });
     await page.locator('[data-question-id="gwc_gets_it"]').waitFor({ state: "visible", timeout: 15000 });
-    await page.locator('[data-question-id="employee_name"]').fill("Smoke Test Brouillon");
-    await page.getByText(/Brouillon sauvegarde a/i).waitFor({ timeout: 5000 });
-    const storedDraft = await page.evaluate(() => JSON.parse(localStorage.getItem("cfsb-roadmap-draft") || "{}"));
-    if (storedDraft.answers?.employee_name !== "Smoke Test Brouillon" || !storedDraft.clientSubmissionId) {
-      throw new Error("Autosaved draft is missing expected employee name or clientSubmissionId.");
-    }
     await page.getByRole("button", { name: /Coach Developpement/i }).click();
     await page.getByRole("link", { name: /Relire le suivi Fondations/i }).waitFor({ timeout: 15000 });
     await page.getByText("Valeurs CFSB - comportements Coach Developpement").waitFor({ timeout: 15000 });
@@ -67,7 +60,7 @@ async function run() {
 
     await page.getByRole("button", { name: /Parametres/i }).click();
     const endpointValue = await page.locator("#endpointInput").inputValue();
-    if (!isLocalBaseUrl && endpointValue !== endpointUrl) {
+    if (endpointValue !== endpointUrl) {
       throw new Error(`Unexpected endpoint value: ${endpointValue}`);
     }
 
@@ -76,32 +69,9 @@ async function run() {
     await page.locator("#ownerPinInput").fill("CFSB2026!");
     await page.getByRole("button", { name: /Ouvrir le dashboard/i }).click();
     await page.getByRole("button", { name: /Importer JSON/i }).waitFor({ timeout: 15000 });
-    await page.getByRole("button", { name: /Synchroniser/i }).waitFor({ timeout: 15000 });
-    await page.getByRole("button", { name: /^Actifs$/i }).waitFor({ timeout: 15000 });
-    await page.locator("#archiveViewButton").waitFor({ timeout: 15000 });
-    await page.locator("#teamAdminViewButton").waitFor({ timeout: 15000 });
-    if (isLocalBaseUrl) {
-      await page.getByRole("button", { name: /Parametres/i }).click();
-      await page.locator("#endpointInput").fill(endpointUrl);
-      await page.locator("#saveSettingsButton").click();
-      await page.getByRole("button", { name: /Synchroniser/i }).click();
-    }
-    await page.getByText(/soumission\(s\) visible\(s\) depuis Google Sheets/i).waitFor({ timeout: 70000 });
-    await page.locator("#submissionSelect").waitFor({ timeout: 15000 });
-    const marcAndreOption = await page.locator("#submissionSelect option").evaluateAll((options) => {
-      return options.find((option) => /Marc-Andr[eé]/i.test(option.textContent || ""))?.value || "";
-    });
-    if (!marcAndreOption) throw new Error("Marc-Andre submission option not found.");
-    await page.locator("#submissionSelect").selectOption(marcAndreOption);
-    await page.getByText("Resume de rencontre").waitFor({ timeout: 15000 });
-    await page.getByText("Note de rencontre").waitFor({ timeout: 15000 });
-    await page.getByRole("heading", { name: "Reponses employe" }).waitFor({ timeout: 15000 });
-    await page.getByRole("button", { name: /Lien reprise/i }).waitFor({ timeout: 15000 });
-    await page.getByRole("button", { name: /Message relance/i }).waitFor({ timeout: 15000 });
-    await page.getByRole("button", { name: /^Archiver$/i }).waitFor({ timeout: 15000 });
     await page.getByRole("button", { name: /Parametres/i }).click();
     const ownerEndpointValue = await page.locator("#endpointInput").inputValue();
-    if (!isLocalBaseUrl && ownerEndpointValue !== endpointUrl) {
+    if (ownerEndpointValue !== endpointUrl) {
       throw new Error(`Unexpected owners endpoint value: ${ownerEndpointValue}`);
     }
 

@@ -1,0 +1,496 @@
+{
+  "version": "2026-06-08-source-payload-contracts",
+  "updatedAt": "2026-06-08",
+  "principle": "Each live source must emit a small, validated payload before Firestore writes. Preview first, write second.",
+  "preflightFunction": "previewDashboardImportPayload_",
+  "writeFunction": "pushDashboardSourceToFirebase_",
+  "commonEnvelope": {
+    "requiredOneOfCoachFields": [
+      "coachId",
+      "coachRxId",
+      "teamId",
+      "coachName"
+    ],
+    "acceptedRecordArrayFields": [
+      "records",
+      "rows",
+      "data"
+    ],
+    "requiredEnvelopeFields": [
+      "sourceType",
+      "records"
+    ],
+    "recommendedEnvelopeFields": [
+      "requestedBy",
+      "sourceRunId",
+      "sourceGeneratedAt"
+    ]
+  },
+  "contracts": [
+    {
+      "sourceType": "coachrx_clients",
+      "domain": "client_identity",
+      "priority": 1,
+      "targetCollections": [
+        "clients"
+      ],
+      "minimumRecordFields": [
+        "client name"
+      ],
+      "recommendedRecordFields": [
+        "phone",
+        "email",
+        "active package",
+        "source client id",
+        "program context",
+        "exercise due",
+        "lifestyle due",
+        "compliance"
+      ],
+      "fieldAliases": {
+        "clientName": [
+          "Client",
+          "Name",
+          "client_name",
+          "athlete",
+          "member"
+        ],
+        "phone": [
+          "Phone",
+          "Telephone",
+          "client_phone_normalized",
+          "phone_normalized",
+          "Mobile"
+        ],
+        "email": [
+          "Email",
+          "Courriel",
+          "client_email"
+        ],
+        "sourceClientId": [
+          "Client ID",
+          "Athlete ID",
+          "source_client_id",
+          "source id"
+        ],
+        "activePackage": [
+          "Active package",
+          "Membership",
+          "Package",
+          "Abonnement"
+        ],
+        "programContext": [
+          "Program",
+          "Program context",
+          "Programme",
+          "coachrx_program"
+        ],
+        "exerciseDue": [
+          "Exercise due",
+          "Exercise Due",
+          "coachrx_exercise_due"
+        ],
+        "exerciseSignal": [
+          "Exercise alert",
+          "Exercise color",
+          "Exercise status",
+          "Exercise chip class",
+          "Program alert",
+          "Program color"
+        ],
+        "lifestyleDue": [
+          "Lifestyle due",
+          "Lifestyle Due",
+          "coachrx_lifestyle_due"
+        ],
+        "lifestyleSignal": [
+          "Lifestyle alert",
+          "Lifestyle color",
+          "Lifestyle status",
+          "Lifestyle chip class"
+        ],
+        "compliance": [
+          "Compliance",
+          "Compliance %",
+          "compliance_percent"
+        ]
+      },
+      "mergeExpectation": "Snapshot complet. Peut marquer stale seulement les anciens imports CoachRx de meme famille. Ne jamais ecraser les champs manuels.",
+      "preflightChecks": [
+        "sourceType reconnu",
+        "coach reconnu",
+        "au moins une ligne client",
+        "cles detectees dans sampleKeys"
+      ],
+      "activationEvidence": [
+        "previewDashboardImportPayload_ retourne le bon coachRxId",
+        "sourceImportRuns contient recordsReceived",
+        "coachSyncStatus met a jour le coach",
+        "Clients affiche les noms attendus"
+      ]
+    },
+    {
+      "sourceType": "client_directory",
+      "domain": "client_phone",
+      "priority": 2,
+      "targetCollections": [
+        "clients"
+      ],
+      "minimumRecordFields": [
+        "client name"
+      ],
+      "recommendedRecordFields": [
+        "phone",
+        "email",
+        "membership",
+        "membership source note",
+        "attendance last 30 days",
+        "Level Method overall"
+      ],
+      "fieldAliases": {
+        "clientName": [
+          "Client",
+          "Name",
+          "Nom",
+          "Membre"
+        ],
+        "phone": [
+          "Phone",
+          "Telephone",
+          "client_phone_normalized",
+          "phone_normalized",
+          "Mobile"
+        ],
+        "email": [
+          "Email",
+          "Courriel"
+        ],
+        "membership": [
+          "Membership",
+          "Active package",
+          "Abonnement"
+        ],
+        "membershipEndSourceNote": [
+          "membership end source note",
+          "source note",
+          "note source"
+        ],
+        "attendance30Days": [
+          "attendance30Days",
+          "Total Attendance",
+          "attendance last 30 days"
+        ],
+        "levelMethodOverall": [
+          "levelMethodOverall",
+          "OVERALL LEVEL",
+          "Level Method"
+        ]
+      },
+      "mergeExpectation": "Enrichissement client. Une valeur vide ne remplace jamais une valeur utile. Les instantanes assiduite et Level Method peuvent etre actualises par CSM; la cible hebdomadaire, la fin membership et la recurrence Kilo restent manuelles.",
+      "preflightChecks": [
+        "sourceType reconnu",
+        "coach reconnu si le lot est coach-specific",
+        "telephone present quand disponible",
+        "aucun champ manuel calcule automatiquement"
+      ],
+      "activationEvidence": [
+        "clients sans telephone diminuent",
+        "champs manuels conserves apres import",
+        "sourceImportRuns journalise le lot"
+      ]
+    },
+    {
+      "sourceType": "ghl_contacts",
+      "domain": "client_phone",
+      "priority": 3,
+      "targetCollections": [
+        "clients"
+      ],
+      "minimumRecordFields": [
+        "phone"
+      ],
+      "recommendedRecordFields": [
+        "contact id",
+        "email",
+        "client name"
+      ],
+      "fieldAliases": {
+        "phone": [
+          "Phone",
+          "phone",
+          "phoneNumber",
+          "Mobile",
+          "contact_phone"
+        ],
+        "contactId": [
+          "Contact ID",
+          "contactId",
+          "id",
+          "GHL Contact ID"
+        ],
+        "clientName": [
+          "Name",
+          "Client",
+          "fullName",
+          "contactName"
+        ],
+        "email": [
+          "Email",
+          "email"
+        ]
+      },
+      "mergeExpectation": "Enrichissement partiel seulement. GHL ne peut jamais supprimer, archiver, perimer ou transferer un client.",
+      "writeBehavior": "GHL enrichit uniquement une fiche client existante matchee par telephone, sourceClientId/contactId ou nom existant. Un contact GHL sans client existant est ignore et journalise; il ne cree pas un client actif.",
+      "preflightChecks": [
+        "sourceType reconnu",
+        "telephone normalisable",
+        "aucun appel GHL cote navigateur",
+        "aucune creation de client orphelin",
+        "aucune suppression ou stale GHL",
+        "source principale du client preservee"
+      ],
+      "activationEvidence": [
+        "un contact exact par telephone enrichit un client",
+        "un client existant sans telephone peut etre enrichi par contact GHL matche",
+        "aucun directGhlStaleDocIds",
+        "contacts GHL sans client existant visibles dans diagnostics.ghlContacts.skippedNoExistingClientMatch",
+        "erreurs GHL visibles dans le journal"
+      ]
+    },
+    {
+      "sourceType": "questionnaire_responses",
+      "domain": "questionnaire_responses",
+      "priority": 4,
+      "targetCollections": [
+        "questionnaireResponses"
+      ],
+      "minimumRecordFields": [
+        "client_phone_normalized or phone"
+      ],
+      "recommendedRecordFields": [
+        "response_id",
+        "submitted_at",
+        "coach_name",
+        "triage_status",
+        "coach_action_type",
+        "open_note"
+      ],
+      "fieldAliases": {
+        "responseId": [
+          "response_id",
+          "Response ID",
+          "id"
+        ],
+        "submittedAt": [
+          "submitted_at",
+          "received_at",
+          "Timestamp",
+          "Horodateur"
+        ],
+        "phone": [
+          "client_phone_normalized",
+          "phone",
+          "Phone",
+          "Telephone"
+        ],
+        "coachName": [
+          "coach_name",
+          "coach",
+          "Coach principal"
+        ],
+        "triageStatus": [
+          "triage_status",
+          "status",
+          "Statut"
+        ],
+        "coachActionType": [
+          "coach_action_type",
+          "Action coach",
+          "action"
+        ],
+        "openNote": [
+          "open_note",
+          "note",
+          "commentaire"
+        ]
+      },
+      "mergeExpectation": "Reponse immutable pour le contenu. Le coach peut seulement marquer lu/archive et creer une mission liee.",
+      "preflightChecks": [
+        "telephone client present",
+        "coach reconnu ou file a valider",
+        "champs inconnus toleres dans autres reponses",
+        "aucune fausse To-do pour questionnaire non envoye"
+      ],
+      "activationEvidence": [
+        "reponse apparait dans Reponses a lire",
+        "non matche va dans A valider",
+        "rouge/orange/jaune/vert sont signaux visuels, pas doublons de filtres"
+      ]
+    },
+    {
+      "sourceType": "checkups",
+      "domain": "checkups",
+      "priority": 5,
+      "targetCollections": [
+        "checkups"
+      ],
+      "minimumRecordFields": [
+        "client name or phone",
+        "checkup date"
+      ],
+      "recommendedRecordFields": [
+        "phone",
+        "coach",
+        "notes",
+        "risk signal",
+        "attendance"
+      ],
+      "fieldAliases": {
+        "clientName": [
+          "Client",
+          "Name",
+          "Nom"
+        ],
+        "phone": [
+          "Phone",
+          "Telephone",
+          "client_phone_normalized"
+        ],
+        "checkupDate": [
+          "checkup date",
+          "Dernier check-up",
+          "submitted_at",
+          "Timestamp"
+        ],
+        "coachName": [
+          "Coach",
+          "coach_name",
+          "Responsable"
+        ],
+        "notes": [
+          "Notes",
+          "note",
+          "Derniere note formulaire"
+        ],
+        "riskSignal": [
+          "risk signal",
+          "Risque",
+          "triage_status"
+        ],
+        "attendance": [
+          "attendance",
+          "attendance 30 jours",
+          "Assiduite"
+        ]
+      },
+      "mergeExpectation": "Lecture pour Performance et historique. Ne modifie pas les champs manuels client.",
+      "preflightChecks": [
+        "date de check-up detectee",
+        "coach reconnu ou source globale documentee",
+        "notes preservees"
+      ],
+      "activationEvidence": [
+        "Performance compte les check-ups par periode",
+        "fiche client affiche l'historique pertinent"
+      ]
+    },
+    {
+      "sourceType": "rebooking",
+      "domain": "rebooking",
+      "priority": 6,
+      "targetCollections": [
+        "rebookings"
+      ],
+      "minimumRecordFields": [
+        "client name",
+        "appointment date"
+      ],
+      "recommendedRecordFields": [
+        "phone",
+        "event id",
+        "status",
+        "service",
+        "sessions to rebook"
+      ],
+      "fieldAliases": {
+        "eventId": [
+          "Event ID",
+          "Cancellation ID",
+          "event_id",
+          "cancellation_id",
+          "appointment_id",
+          "id"
+        ],
+        "clientName": [
+          "Client",
+          "Name",
+          "Nom"
+        ],
+        "phone": [
+          "Phone",
+          "Telephone",
+          "client_phone_normalized"
+        ],
+        "appointmentAt": [
+          "Debut RDV",
+          "Debut annule",
+          "appointment date",
+          "Appointment At",
+          "start time"
+        ],
+        "service": [
+          "Service",
+          "Service / classe",
+          "Package",
+          "Type"
+        ],
+        "status": [
+          "Statut",
+          "Status",
+          "state"
+        ],
+        "sessionsToRebook": [
+          "sessions to rebook",
+          "Sessions a remettre",
+          "Nombre seances",
+          "annulations"
+        ],
+        "sourceRebookEventId": [
+          "Rebook event ID",
+          "rebook event id"
+        ],
+        "sourceNewAppointmentAt": [
+          "Nouveau RDV",
+          "new appointment"
+        ],
+        "sourceClosedAt": [
+          "Ferme a",
+          "closed at"
+        ],
+        "sourceClosedBy": [
+          "Ferme par",
+          "closed by"
+        ],
+        "sourceClosureReason": [
+          "Raison fermeture",
+          "closure reason"
+        ],
+        "sourceClosureNote": [
+          "Note fermeture",
+          "closure note"
+        ]
+      },
+      "mergeExpectation": "Migration prudente. L'app legacy reste le filet. Un statut gere/rebooke/absence coach ne revient pas ouvert par reimport.",
+      "preflightChecks": [
+        "comparaison avec app legacy avant write direct",
+        "statuts ouverts/gere/rebooke/absence coach conserves",
+        "aucune URL tokenisee dans les assets publics"
+      ],
+      "activationEvidence": [
+        "Firebase et app legacy comptent les memes dossiers ouverts",
+        "historique et Reouvrir fonctionnent",
+        "absence coach garde la raison et la plage"
+      ]
+    }
+  ]
+}
