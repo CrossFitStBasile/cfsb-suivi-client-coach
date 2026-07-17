@@ -29,6 +29,31 @@ echo 3/32 Tests helpers import Firestore...
 if errorlevel 1 goto fail
 
 echo.
+echo 3b Integrite ownership et selecteurs clients...
+"%NODE_EXE%" "tools\verify-client-selection-integrity.cjs"
+if errorlevel 1 goto fail
+
+echo.
+echo 3c Integrite responsive Mission et modal...
+"%NODE_EXE%" "tools\verify-responsive-integrity.cjs"
+if errorlevel 1 goto fail
+
+echo.
+echo 3d Garde ownership de l extension CoachRx...
+"%NODE_EXE%" "tools\verify-coachrx-ownership-guard.cjs"
+if errorlevel 1 goto fail
+
+echo.
+echo 3e Contrat atomique de reparation ownership...
+"%NODE_EXE%" "tools\verify-client-ownership-contract.cjs"
+if errorlevel 1 goto fail
+
+echo.
+echo 3f Construction privee de la reference ownership...
+"%NODE_EXE%" "tools\verify-client-ownership-reference-builder.cjs"
+if errorlevel 1 goto fail
+
+echo.
 echo 4/32 Tests logique relance questionnaire...
 "%NODE_EXE%" "tools\verify-questionnaire-followup-logic.cjs"
 if errorlevel 1 goto fail

@@ -98,6 +98,13 @@ const sandbox = {
     confirm: () => true
   },
   serverTimestamp: () => "__serverTimestamp__",
+  requireSelectableClientForCoach: (clientId) => {
+    const client = sandbox.state.data.clients.find((item) => String(item.id) === String(clientId));
+    if (!client) throw new Error("Ce client n'est pas un membre confirme du portefeuille actuel.");
+    return client;
+  },
+  portfolioCheckups: () => sandbox.state.data.checkups || [],
+  portfolioRebookings: () => sandbox.state.data.rebookings || [],
   collection: (db, collectionName) => ({ db, collectionName }),
   doc: (db, collectionName, id) => ({ db, collectionName, id }),
   where: (field, operator, value) => ({ field, operator, value }),

@@ -25,7 +25,12 @@
     "redirects": [
       {
         "source": "/downloads/coachrx-sync-extension-0.6.2-dashboard-signals.zip",
-        "destination": "/downloads/coachrx-sync-extension-0.6.3-dashboard-signals.zip",
+        "destination": "/downloads/coachrx-sync-extension-0.6.4-dashboard-signals.zip",
+        "type": 302
+      },
+      {
+        "source": "/downloads/coachrx-sync-extension-0.6.3-dashboard-signals.zip",
+        "destination": "/downloads/coachrx-sync-extension-0.6.4-dashboard-signals.zip",
         "type": 302
       }
     ],

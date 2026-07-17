@@ -51,7 +51,7 @@ const db = getFirestore(firebaseApp);
 const storage = getStorage(firebaseApp);
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: "select_account" });
-const APP_VERSION = "20260715-firebase-questionnaire-suite";
+const APP_VERSION = "20260717-client-ownership-integrity";
 window.__CFSB_DASHBOARD_VERSION = APP_VERSION;
 const RELEASE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 const USAGE_SESSION_ID = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -62,9 +62,9 @@ const VOICE_QUEUE_CHUNK_CHARS = 600000;
 const VOICE_QUEUE_BATCH_SIZE = 8;
 const VOICE_QUEUE_TIMEOUT_MS = 90000;
 const ADMIN_EMAIL = "info@crossfitstbasilelegrand.com";
-const COACHRX_EXTENSION_VERSION = "0.6.3";
+const COACHRX_EXTENSION_VERSION = "0.6.4";
 const REBOOKING_VOLUME_REVIEW_THRESHOLD = 10;
-const COACHRX_EXTENSION_PUBLIC_DOWNLOAD = "./downloads/coachrx-sync-extension-0.6.3-dashboard-signals.zip";
+const COACHRX_EXTENSION_PUBLIC_DOWNLOAD = "./downloads/coachrx-sync-extension-0.6.4-dashboard-signals.zip";
 const TEAM_ONBOARDING_GUIDE_PUBLIC_DOWNLOAD = "./downloads/dashboard-coach-guide-equipe.html";
 const PERFORMANCE_RENDEMENT_SHEET_URL = "https://docs.google.com/spreadsheets/u/3/d/1ZbhqgbvDnT_-qK3JS1FPRqcZ40vHsXks8hs5fJ5J064/edit?gid=1203687517#gid=1203687517";
 const CSM_PRIORITY_SHEET_URL = "https://docs.google.com/spreadsheets/d/1a2j7IFiDmD6svB4p12IIXwcGQRoLrJ_lejhn0dXUtIw/edit?gid=2049466161#gid=2049466161";
@@ -305,6 +305,7 @@ const state = {
   data: {
     tasks: [],
     clients: [],
+    rejectedClients: [],
     questionnaireResponses: [],
     questionnaireSends: [],
     questionnaireSchedules: [],
@@ -785,15 +786,25 @@ function subscribeCoachData() {
 
   subscribeCollection("tasks", coachId, (items) => {
     state.data.tasks = items
-      .filter(isOpenTask)
+      .filter(isOpenTaskLifecycle)
       .sort(sortTasks)
-      .slice(0, 100);
+      .slice(0, 300);
     primeTaskVoicePlaybackUrls(state.data.tasks);
   });
 
   subscribeCollection("clients", coachId, (items) => {
-    state.data.clients = dedupeClients(items)
+    const ownedItems = items.filter((item) => firestoreItemBelongsToCoach(item, coachId));
+    state.data.clients = dedupeClients(ownedItems)
       .sort((a, b) => String(a.lastNameSort || a.name || "").localeCompare(String(b.lastNameSort || b.name || "")));
+    primeTaskVoicePlaybackUrls(state.data.tasks);
+  }, {
+    rejectedSetter: isInfoAdmin()
+      ? (items) => {
+        state.data.rejectedClients = items
+          .map((item) => ({ ...item, _ownershipReviewReason: "coach_conflict" }))
+          .sort((a, b) => String(a.lastNameSort || a.name || "").localeCompare(String(b.lastNameSort || b.name || "")));
+      }
+      : null
   });
 
   subscribeCollection("questionnaireResponses", coachId, (items) => {
@@ -843,6 +854,7 @@ function resetCoachData() {
   state.voicePlayback = {};
   state.data.tasks = [];
   state.data.clients = [];
+  state.data.rejectedClients = [];
   state.data.questionnaireResponses = [];
   state.data.questionnaireSends = [];
   state.data.questionnaireSchedules = [];
@@ -1073,16 +1085,24 @@ function subscribeCoachSyncStatus(coachId) {
   ));
 }
 
-function subscribeCollection(collectionName, coachId, setter) {
+function subscribeCollection(collectionName, coachId, setter, { rejectedSetter = null } = {}) {
   const criteria = coachSubscriptionCriteria(coachId);
   const snapshots = new Map();
   const initialized = new Set();
   const apply = () => {
     const merged = new Map();
+    const rejected = new Map();
     snapshots.forEach((items) => {
-      items.forEach((item) => merged.set(item.id, item));
+      items.forEach((item) => {
+        if (!firestoreItemBelongsToCoach(item, coachId)) {
+          if (rejectedSetter) rejected.set(item.id, item);
+          return;
+        }
+        merged.set(item.id, item);
+      });
     });
     setter([...merged.values()]);
+    if (rejectedSetter) rejectedSetter([...rejected.values()]);
     state.data.loaded[collectionName] = initialized.size >= criteria.length;
     scheduleRender();
   };
@@ -1103,6 +1123,56 @@ function subscribeCollection(collectionName, coachId, setter) {
       }
     ));
   });
+}
+
+function canonicalCoachId(coach = {}) {
+  return String(coach.id || coach.coachRxId || "").trim();
+}
+
+function coachIdFromFirestoreIdSignal(value) {
+  const signal = String(value || "").trim();
+  if (!signal) return "";
+  const matches = mergedCoachOptions()
+    .filter((coach) => uniqueClean([coach.id, coach.coachRxId]).some((id) => String(id) === signal))
+    .map(canonicalCoachId)
+    .filter(Boolean);
+  const uniqueMatches = uniqueClean(matches);
+  return uniqueMatches.length === 1 ? uniqueMatches[0] : "";
+}
+
+function coachIdFromFirestoreNameSignal(value) {
+  const signal = normalizeComparable(value);
+  if (!signal) return "";
+  const matches = mergedCoachOptions()
+    .filter((coach) => coachNameValues(coach).some((name) => normalizeComparable(name) === signal))
+    .map(canonicalCoachId)
+    .filter(Boolean);
+  const uniqueMatches = uniqueClean(matches);
+  return uniqueMatches.length === 1 ? uniqueMatches[0] : "";
+}
+
+function resolveFirestoreItemCoachId(item = {}) {
+  const idSignals = uniqueClean([item.coachId, item.coachRxId, item.assignedCoachId]);
+  if (idSignals.length) {
+    const resolvedIds = idSignals.map(coachIdFromFirestoreIdSignal);
+    if (resolvedIds.some((id) => !id)) return "";
+    const uniqueIds = uniqueClean(resolvedIds);
+    return uniqueIds.length === 1 ? uniqueIds[0] : "";
+  }
+
+  const nameSignals = uniqueClean([item.coachName, item.assignedCoachName]);
+  if (!nameSignals.length) return "";
+  const resolvedNames = nameSignals.map(coachIdFromFirestoreNameSignal);
+  if (resolvedNames.some((id) => !id)) return "";
+  const uniqueNames = uniqueClean(resolvedNames);
+  return uniqueNames.length === 1 ? uniqueNames[0] : "";
+}
+
+function firestoreItemBelongsToCoach(item = {}, coachId) {
+  const coach = coachRecordById(coachId);
+  const targetCoachId = canonicalCoachId(coach || {});
+  if (!targetCoachId) return false;
+  return resolveFirestoreItemCoachId(item) === targetCoachId;
 }
 
 function coachSubscriptionCriteria(coachId) {
@@ -1190,6 +1260,7 @@ function render() {
   } catch (error) {
     recoverDashboardRender(error);
   } finally {
+    document.body?.classList.toggle("modal-open", Boolean(state.modal));
     state.rendering = false;
   }
 }
@@ -1327,18 +1398,18 @@ function renderDashboardStats({ openTasks, rebookingSessions, weeklyImpacts, wee
 }
 
 function openRebookingSessionCount() {
-  return groupRebookingsForCoachView(state.data.rebookings)
+  return groupRebookingsForCoachView(portfolioRebookings())
     .filter((item) => rebookingStatus(item) === "open")
     .reduce((sum, item) => sum + Math.max(1, Number(item.sessionsToRebook || 1)), 0);
 }
 
 function currentWeekImpacts() {
-  return currentWeekFiltered(state.data.impacts, "impactDate")
+  return currentWeekFiltered(portfolioImpacts(), "impactDate")
     .filter((impact) => !["deleted"].includes(impact.status || "draft"));
 }
 
 function currentWeekCheckups() {
-  return currentWeekFiltered(state.data.checkups, "checkupDate", { fallbackCreatedAt: false });
+  return currentWeekFiltered(portfolioCheckups(), "checkupDate", { fallbackCreatedAt: false });
 }
 
 function mobilePrimaryTabs() {
@@ -1956,15 +2027,18 @@ function renderClients() {
 }
 
 function renderQuestionnaires() {
-  const responses = state.data.questionnaireResponses;
+  const responses = portfolioQuestionnaireResponses();
   const rawReadable = questionnaireResponsesToRead();
-  const rawUnmatched = responses.filter((item) => (item.processingStatus || "") === "unmatched");
+  const rawUnmatched = uniqueById([
+    ...responses.filter((item) => (item.processingStatus || "") === "unmatched"),
+    ...questionnaireResponsesForAdminReview()
+  ]);
   const sentWaiting = questionnaireSendsWaitingForResponse();
-  const schedules = state.data.questionnaireSchedules || [];
+  const schedules = portfolioQuestionnaireSchedules();
   const activeSchedules = schedules.filter((schedule) => (schedule.status || "active") === "active");
   const rawArchived = responses.filter((item) => ["read", "archived", "validated"].includes(item.processingStatus));
   const recentSends = recentQuestionnaireSends();
-  const sendClients = activeClients().sort(sortQuestionnaireSendClients);
+  const sendClients = selectableClientsForCoach().sort(sortQuestionnaireSendClients);
   const active = state.filter.questionnaire;
   const triageFilter = "all";
   const triageApplies = false;
@@ -2049,7 +2123,7 @@ function rebookingVolumeNeedsReview(value) {
 }
 
 function renderRebooking() {
-  const rawItems = state.data.rebookings;
+  const rawItems = portfolioRebookings();
   const items = groupRebookingsForCoachView(rawItems);
   const openItems = items.filter((item) => item.status === "open");
   const views = {
@@ -2349,12 +2423,12 @@ function renderRebookingSourceBreakdown({ bySource = {}, byMatchMethod = {}, sam
 
 function renderPerformance() {
   const settings = state.data.performanceSettings || {};
-  const impacts = periodFiltered(state.data.impacts, "impactDate")
+  const impacts = periodFiltered(portfolioImpacts(), "impactDate")
     .filter((impact) => impact.status !== "deleted");
   const confirmedImpacts = impacts.filter((impact) => impact.status === "confirmed");
   const draftImpacts = impacts.filter((impact) => !impact.status || impact.status === "draft");
   const cancelledImpacts = impacts.filter((impact) => impact.status === "cancelled");
-  const checkups = periodFiltered(state.data.checkups, "checkupDate", { fallbackCreatedAt: false });
+  const checkups = periodFiltered(portfolioCheckups(), "checkupDate", { fallbackCreatedAt: false });
   const newClients = performanceNewClientItems();
   const lostClients = periodFiltered(state.data.clients.filter((client) => clientStatus(client) === "removed"), "updatedAt");
   const impactFilter = state.filter.performanceImpact || "all";
@@ -2395,9 +2469,9 @@ function renderPerformance() {
 }
 
 function renderPilotageWeeklyScorecard({ periodLabel, lostClients, newClients, checkups, confirmedImpacts, draftImpacts }) {
-  const openRebookings = state.data.rebookings.filter((item) => isOpenRebooking(item));
+  const openRebookings = portfolioRebookings().filter((item) => isOpenRebooking(item));
   const programTasks = state.data.tasks.filter((task) => isOpenTask(task) && isProgramTask(task));
-  const questionnaireResponses = state.data.questionnaireResponses.filter((item) => item.status === "to_read");
+  const questionnaireResponses = portfolioQuestionnaireResponses().filter((item) => item.status === "to_read" || item.processingStatus === "to_read");
   return `
     <section class="pilotage-section pilotage-weekly">
       <div class="pilotage-section-head">
@@ -3165,10 +3239,19 @@ function renderAdmin() {
   if (!isInfoAdmin()) return renderGuide();
   const activeCoach = activeCoachRecord();
   const openTasks = state.data.tasks.filter(isOpenTask);
-  const questionnaireToRead = state.data.questionnaireResponses.filter((response) => response.processingStatus === "to_read");
-  const questionnaireToValidate = state.data.questionnaireResponses.filter((response) => !response.clientId || response.processingStatus === "unmatched");
-  const openRebookings = state.data.rebookings.filter((item) => rebookingStatus(item) === "open");
+  const questionnaireResponses = portfolioQuestionnaireResponses();
+  const questionnaireToRead = questionnaireResponses.filter((response) => response.processingStatus === "to_read");
+  const questionnaireToValidate = questionnaireResponses.filter((response) => !response.clientId || response.processingStatus === "unmatched");
+  const openRebookings = portfolioRebookings().filter((item) => rebookingStatus(item) === "open");
   const missingPhones = activeClients().filter((client) => !clientPhone(client));
+  const blockedRelations = blockedOperationalRecordsByCollection();
+  const ownershipReviewClients = uniqueById([
+    ...state.data.clients.filter((client) =>
+      isActiveClient(client)
+      && (clientEntityType(client) !== "member" || clientOwnershipStatus(client) !== "confirmed")
+    ),
+    ...(state.data.rejectedClients || [])
+  ]).sort((a, b) => String(a.lastNameSort || a.name || "").localeCompare(String(b.lastNameSort || b.name || "")));
   return panel("Admin equipe", "Supervision des coachs pilotes, sources et points a corriger.", `
     <div class="toolbar">
       <button class="primary" data-action="syncSheets">Synchroniser ce coach</button>
@@ -3185,8 +3268,8 @@ function renderAdmin() {
     ${renderAdminWeeklyProductReport()}
     ${renderAdminAnnouncements()}
     ${renderAdminCommandCenter()}
-    ${renderAdminSelectedCoachSummary({ activeCoach, openTasks, questionnaireToRead, openRebookings, missingPhones })}
-    ${renderAdminCleanupQueue({ missingPhones, openRebookings, questionnaireToRead, questionnaireToValidate })}
+    ${renderAdminSelectedCoachSummary({ activeCoach, openTasks, questionnaireToRead, openRebookings, missingPhones, ownershipReviewClients, blockedRelations })}
+    ${renderAdminCleanupQueue({ missingPhones, openRebookings, questionnaireToRead, questionnaireToValidate, ownershipReviewClients, blockedRelations })}
     ${renderCoachActionPlan()}
     ${renderAdminDeepDiagnostics()}
   `);
@@ -3432,7 +3515,7 @@ function renderAdminPilotStrip() {
   const syncedRecently = state.data.syncStatus?.syncedAt && daysSince(state.data.syncStatus.syncedAt) < 2;
   const openTasks = state.data.tasks.filter(isOpenTask);
   const missingPhones = activeClients().filter((client) => !clientPhone(client));
-  const openRebookings = state.data.rebookings.filter((item) => rebookingStatus(item) === "open");
+  const openRebookings = portfolioRebookings().filter((item) => rebookingStatus(item) === "open");
   return `
     <section class="admin-pilot-strip">
       <div class="admin-pilot-copy">
@@ -3496,8 +3579,9 @@ function renderAdminCommandCenter() {
   `;
 }
 
-function renderAdminSelectedCoachSummary({ activeCoach, openTasks, questionnaireToRead, openRebookings, missingPhones }) {
+function renderAdminSelectedCoachSummary({ activeCoach, openTasks, questionnaireToRead, openRebookings, missingPhones, ownershipReviewClients = [], blockedRelations = [] }) {
   const urgentTasks = openTasks.filter((task) => task.priority === "P1").length;
+  const blockedRelationCount = blockedRelations.reduce((sum, item) => sum + Number(item.count || 0), 0);
   return `
     <section class="admin-selected-summary">
       <div class="admin-command-header">
@@ -3511,16 +3595,19 @@ function renderAdminSelectedCoachSummary({ activeCoach, openTasks, questionnaire
         ${adminCommandMetric("To-do ouvertes", openTasks.length, `${urgentTasks} urgentes`)}
         ${adminCommandMetric("Questionnaires", questionnaireToRead.length, "a lire")}
         ${adminCommandMetric("Rebookings", openRebookings.length, "ouverts")}
+        ${adminCommandMetric("Identites", ownershipReviewClients.length, "staff ou a valider")}
+        ${adminCommandMetric("Relations bloquees", blockedRelationCount, "retirees des workflows coach")}
         ${adminCommandMetric("Derniere sync", formatDateTime(state.data.syncStatus?.syncedAt) || "Aucune", state.data.syncStatus?.status || "source")}
       </div>
     </section>
   `;
 }
 
-function renderAdminCleanupQueue({ missingPhones = [], openRebookings = [], questionnaireToRead = [], questionnaireToValidate = [] }) {
+function renderAdminCleanupQueue({ missingPhones = [], openRebookings = [], questionnaireToRead = [], questionnaireToValidate = [], ownershipReviewClients = [], blockedRelations = [] }) {
   const rebookingsToLink = openRebookings.filter(rebookingHasWeakClientLink);
   const questionnaireItems = uniqueById([...questionnaireToValidate, ...questionnaireToRead]).slice(0, 6);
-  const hasWork = missingPhones.length || rebookingsToLink.length || questionnaireItems.length;
+  const blockedRelationCount = blockedRelations.reduce((sum, item) => sum + Number(item.count || 0), 0);
+  const hasWork = missingPhones.length || rebookingsToLink.length || questionnaireItems.length || ownershipReviewClients.length || blockedRelationCount;
   return `
     <section class="admin-cleanup-queue ${hasWork ? "" : "quiet"}">
       <div class="admin-command-header">
@@ -3566,8 +3653,36 @@ function renderAdminCleanupQueue({ missingPhones = [], openRebookings = [], ques
             clientId: response.clientId || "",
             title: response.clientName || response.name || "Reponse non reliee",
             detail: `${questionnairePrioritySummary(response).label} · ${formatDate(response.submittedAt || response.createdAt) || "date inconnue"}`,
-            action: response.clientId ? "openClient" : "openQuestionnaireLinkClient",
-            actionLabel: response.clientId ? "Client" : "Relier"
+            action: selectableClientForCoach(response.clientId) ? "openClient" : "openQuestionnaireLinkClient",
+            actionLabel: selectableClientForCoach(response.clientId) ? "Client" : "Relier"
+          }))
+        })}
+        ${renderAdminCleanupColumn({
+          title: "Identites et appartenance",
+          count: ownershipReviewClients.length,
+          empty: "Aucune fiche staff, inconnue ou en conflit pour ce coach.",
+          items: ownershipReviewClients.slice(0, 6).map((client) => ({
+            id: client.id,
+            title: client.name || "Fiche sans nom",
+            detail: client._ownershipReviewReason === "coach_conflict"
+              ? "Signaux de coach en conflit · exclu des actions coach"
+              : clientEntityType(client) === "staff"
+                ? "Membre du staff · exclu des actions coach"
+                : `Type ${clientEntityType(client)} · appartenance ${clientOwnershipStatus(client)}`,
+            action: "ownershipReview",
+            actionLabel: "A valider"
+          }))
+        })}
+        ${renderAdminCleanupColumn({
+          title: "Relations bloquees",
+          count: blockedRelationCount,
+          empty: "Aucune relation explicite vers une fiche non confirmee.",
+          items: blockedRelations.map((item) => ({
+            id: `blocked-${item.collectionName}`,
+            title: sourceLabel(item.collectionName),
+            detail: `${Number(item.count || 0)} element(s) retires des workflows coach; reconciliation admin requise`,
+            action: "ownershipReview",
+            actionLabel: "Protege"
           }))
         })}
       </div>
@@ -4624,10 +4739,12 @@ function renderPilotValidation() {
   const urgentTasks = openTasks.filter((task) => task.priority === "P1");
   const responsesToRead = questionnaireResponsesToRead();
   const questionnaireFollowups = questionnaireSendsWaitingForResponse();
-  const unmatchedResponses = state.data.questionnaireResponses.filter((item) => (item.processingStatus || "") === "unmatched");
-  const openRebookings = state.data.rebookings.filter((item) => (item.status || "open") === "open");
-  const managedRebookings = state.data.rebookings.filter((item) => ["managed", "rebooked", "coach_absence"].includes(item.status));
-  const impacts = state.data.impacts.filter((item) => item.status !== "deleted");
+  const questionnaireResponses = portfolioQuestionnaireResponses();
+  const rebookings = portfolioRebookings();
+  const unmatchedResponses = questionnaireResponses.filter((item) => (item.processingStatus || "") === "unmatched");
+  const openRebookings = rebookings.filter((item) => (item.status || "open") === "open");
+  const managedRebookings = rebookings.filter((item) => ["managed", "rebooked", "coach_absence"].includes(item.status));
+  const impacts = portfolioImpacts().filter((item) => item.status !== "deleted");
   const syncStatus = state.data.syncStatus;
   const blockers = pilotValidationBlockers({
     coach,
@@ -4689,10 +4806,11 @@ function renderCoachActionPlan() {
   const programTasks = openTasks.filter((task) => task.type === "program");
   const importedProgramTasks = programTasks.filter((task) => task.source === "google_sheets_tasks_current");
   const responsesToRead = sortQuestionnaireResponsesByPriority(questionnaireResponsesToRead());
-  const unmatchedResponses = state.data.questionnaireResponses.filter((item) => (item.processingStatus || "") === "unmatched");
+  const unmatchedResponses = portfolioQuestionnaireResponses().filter((item) => (item.processingStatus || "") === "unmatched");
   const waitingSends = questionnaireSendsWaitingForResponse();
-  const openRebookings = state.data.rebookings.filter((item) => (item.status || "open") === "open");
-  const weakRebookings = state.data.rebookings.filter((item) => !item.clientId || !item.clientPhoneNormalized || item.matchMethod === "name" || item.matchMethod === "unmatched");
+  const rebookings = portfolioRebookings();
+  const openRebookings = rebookings.filter((item) => (item.status || "open") === "open");
+  const weakRebookings = rebookings.filter((item) => !item.clientId || !item.clientPhoneNormalized || item.matchMethod === "name" || item.matchMethod === "unmatched");
   const context = syncContextForCoach();
   const nextSteps = coachActionPlanItems({
     coach,
@@ -4841,7 +4959,7 @@ function pilotValidationBlockers({ coach, clients, missingPhones, syncStatus, re
 }
 
 function questionnaireResponsesToRead() {
-  return state.data.questionnaireResponses.filter((item) => {
+  return portfolioQuestionnaireResponses().filter((item) => {
     const status = item.processingStatus || "to_read";
     return status === "to_read" || status === "assigned";
   });
@@ -4935,14 +5053,14 @@ function sortQuestionnaireSendClients(a, b) {
 }
 
 function questionnaireSendsWaitingForResponse() {
-  const responses = state.data.questionnaireResponses;
-  return state.data.questionnaireSends.filter((item) => {
+  const responses = portfolioQuestionnaireResponses();
+  return portfolioQuestionnaireSends().filter((item) => {
     return item.status === "sent" && !item.answeredAt && !questionnaireSendHasResponse(item, responses);
   });
 }
 
 function recentQuestionnaireSends() {
-  return [...state.data.questionnaireSends]
+  return [...portfolioQuestionnaireSends()]
     .sort((a, b) => dateValue(b.updatedAt || b.sentAt || b.createdAt) - dateValue(a.updatedAt || a.sentAt || a.createdAt))
     .slice(0, 5);
 }
@@ -5038,13 +5156,19 @@ function renderSyncDiagnostics() {
 }
 
 function renderDataQualitySummary({ selected = {}, diagnostics = {}, importedClients = {}, importedRebookings = {}, staleCleanup = {}, syncAge = 0 }) {
-  const responses = state.data.questionnaireResponses || [];
-  const sends = state.data.questionnaireSends || [];
+  const responses = portfolioQuestionnaireResponses();
+  const reviewResponses = questionnaireResponsesForAdminReview();
+  const rebookings = portfolioRebookings();
+  const blockedRelations = blockedOperationalRecordsByCollection();
+  const blockedRelationCount = blockedRelations.reduce((sum, item) => sum + Number(item.count || 0), 0);
   const missingPhone = Number(selected.clientsMissingPhone ?? importedClients.missingPhone ?? 0);
-  const unmatchedResponses = responses.filter((item) => (item.processingStatus || "") === "unmatched").length;
+  const unmatchedResponses = uniqueById([
+    ...responses.filter((item) => (item.processingStatus || "") === "unmatched"),
+    ...reviewResponses
+  ]).length;
   const toReadResponses = questionnaireResponsesToRead().length;
   const waitingSends = questionnaireSendsWaitingForResponse().length;
-  const unmatchedRebookings = Number(importedRebookings.missingClientId || state.data.rebookings.filter((item) => !item.clientId).length || 0);
+  const unmatchedRebookings = Number(importedRebookings.missingClientId || rebookings.filter((item) => !item.clientId).length || 0);
   const staleTasks = Number(staleCleanup.tasksArchivedStale || 0);
   const sourceRows = diagnostics.sourceRowsAvailable || {};
   const matchedRows = diagnostics.matchedRows || {};
@@ -5053,6 +5177,7 @@ function renderDataQualitySummary({ selected = {}, diagnostics = {}, importedCli
     dataQualityCard("Questionnaires", unmatchedResponses ? "warning" : "ok", `${toReadResponses} a lire / ${unmatchedResponses} a valider`, unmatchedResponses ? "Relier les reponses non reconnues par telephone." : "Les reponses reconnues sont pretes a lire."),
     dataQualityCard("Envois", waitingSends ? "neutral" : "ok", `${waitingSends} sans reponse`, waitingSends ? "Relance seulement apres 7 jours d'attente." : "Aucun envoi en attente de relance."),
     dataQualityCard("Rebooking", unmatchedRebookings ? "warning" : "ok", unmatchedRebookings ? `${unmatchedRebookings} non relies` : "OK", unmatchedRebookings ? "Completer telephone/client dans la source rebooking." : "Les liens client sont exploitables."),
+    dataQualityCard("Appartenance", blockedRelationCount ? "warning" : "ok", blockedRelationCount ? `${blockedRelationCount} relation(s) bloquee(s)` : "OK", blockedRelationCount ? "Ces elements sont retires des workflows coach jusqu'a reconciliation admin." : "Aucune relation explicite vers une fiche non confirmee."),
     dataQualityCard("Fraicheur", syncAge >= 2 ? "warning" : "ok", syncAge >= 2 ? "A rafraichir" : "Recent", syncAge >= 2 ? "Relancer Sync tous avant une demo." : "Sync assez recente pour valider."),
     dataQualityCard("Nettoyage", staleTasks ? "neutral" : "ok", `${staleTasks} stale archivee(s)`, staleTasks ? "Anciennes To-do masquees par la sync." : "Aucun vieux bruit detecte.")
   ];
@@ -5713,7 +5838,7 @@ function taskVoicePlaybackButton(task, label = "Ecouter vocal", extraClass = "")
 }
 
 function primeTaskVoicePlaybackUrls(tasks = []) {
-  tasks.filter((task) => Boolean(taskVoiceNote(task))).forEach((task) => {
+  tasks.filter((task) => isOpenTask(task) && Boolean(taskVoiceNote(task))).forEach((task) => {
     void ensureTaskVoicePlaybackUrl(task).catch(() => {});
   });
 }
@@ -5752,14 +5877,14 @@ function ensureTaskVoicePlaybackUrl(task) {
 }
 
 function syncAllTaskVoicePlaybackDom() {
-  state.data.tasks.filter((task) => Boolean(taskVoiceNote(task))).forEach((task) => {
+  state.data.tasks.filter((task) => isOpenTask(task) && Boolean(taskVoiceNote(task))).forEach((task) => {
     syncTaskVoicePlaybackDom(task.id);
   });
 }
 
 function syncTaskVoicePlaybackDom(taskId) {
   if (!taskId) return;
-  const task = state.data.tasks.find((item) => item.id === taskId);
+  const task = operationalTaskById(taskId);
   if (!task) return;
   const url = taskVoicePlaybackUrl(task);
   const status = taskVoicePlaybackState(task);
@@ -6059,7 +6184,7 @@ function renderQuestionnaireGroupCard(group) {
   const statusClass = triageClass(response.triageStatus);
   const highlights = questionnaireHighlights(response);
   const priority = questionnairePrioritySummary(response, highlights);
-  const hasClient = Boolean(group.clientId);
+  const hasClient = Boolean(selectableClientForCoach(group.clientId));
   const latestDate = formatDate(response.submittedAt || response.createdAt) || "date inconnue";
   const typeLabel = group.typeLabels.slice(0, 2).join(" + ");
   const extraTypes = group.typeLabels.length > 2 ? ` +${group.typeLabels.length - 2}` : "";
@@ -6091,7 +6216,9 @@ function renderQuestionnaireGroupCard(group) {
                 </button>
               `;
             }).join("")}
-            <button class="secondary" data-action="createMissionFromQuestionnaireResponse" data-id="${escapeHtml(response.id)}">Creer mission</button>
+            ${hasClient
+              ? `<button class="secondary" data-action="createMissionFromQuestionnaireResponse" data-id="${escapeHtml(response.id)}">Creer mission</button>`
+              : `<button class="secondary" data-action="openQuestionnaireLinkClient" data-id="${escapeHtml(response.id)}">Relier client</button>`}
             <button class="secondary" data-action="markResponseRead" data-id="${escapeHtml(response.id)}">Marquer lu</button>
           </div>
         </details>
@@ -6103,7 +6230,7 @@ function renderQuestionnaireGroupCard(group) {
 function renderQuestionnaireCard(response) {
   const statusClass = triageClass(response.triageStatus);
   const highlights = questionnaireHighlights(response);
-  const hasClient = Boolean(response.clientId);
+  const hasClient = Boolean(selectableClientForCoach(response.clientId));
   const priority = questionnairePrioritySummary(response, highlights);
   const typeLabel = questionnaireTypeLabel(questionnaireResponseType(response));
   const dateLabel = formatDate(response.submittedAt || response.createdAt) || "date inconnue";
@@ -6125,7 +6252,9 @@ function renderQuestionnaireCard(response) {
         <details class="card-action-menu">
           <summary>Plus</summary>
           <div>
-            <button class="secondary" data-action="createMissionFromQuestionnaireResponse" data-id="${escapeHtml(response.id)}">Creer mission</button>
+            ${hasClient
+              ? `<button class="secondary" data-action="createMissionFromQuestionnaireResponse" data-id="${escapeHtml(response.id)}">Creer mission</button>`
+              : `<button class="secondary" data-action="openQuestionnaireLinkClient" data-id="${escapeHtml(response.id)}">Relier client</button>`}
             <button class="secondary" data-action="markResponseRead" data-id="${escapeHtml(response.id)}">Marquer lu</button>
           </div>
         </details>
@@ -6236,7 +6365,8 @@ function renderQuestionnaireSendClientCard(client) {
 }
 
 function renderQuestionnaireScheduleCard(schedule) {
-  const client = state.data.clients.find((item) => item.id === schedule.clientId);
+  const client = selectableClientForCoach(schedule.clientId);
+  const hasClient = Boolean(client);
   const phone = schedule.clientPhoneNormalized || clientPhone(client);
   const active = (schedule.status || "active") === "active";
   const nextSend = schedule.nextSendAt || "";
@@ -6245,7 +6375,7 @@ function renderQuestionnaireScheduleCard(schedule) {
   return `
     <article class="card operational-card questionnaire-schedule-card ${active ? "" : "muted-card"}">
       <div>
-        <button class="link-title" data-action="openClient" data-id="${escapeHtml(schedule.clientId || client?.id || "")}">${escapeHtml(schedule.clientName || client?.name || "Client")}</button>
+        <button class="link-title" data-action="openClient" data-id="${escapeHtml(client?.id || "")}" ${hasClient ? "" : "disabled"}>${escapeHtml(schedule.clientName || client?.name || "Client")}</button>
         <p class="questionnaire-card-focus">${escapeHtml(questionnaireLabel)}</p>
         <div class="questionnaire-schedule-summary">
           <div>
@@ -6264,13 +6394,16 @@ function renderQuestionnaireScheduleCard(schedule) {
         ${schedule.note ? `<p class="meta">${escapeHtml(shortText(schedule.note, 110))}</p>` : ""}
         <div class="pill-row">
           <span class="pill">${escapeHtml(phone ? "telephone OK" : "telephone requis")}</span>
+          ${hasClient ? "" : `<span class="pill amber">Appartenance a valider</span>`}
           ${schedule.lastSentAt ? `<span class="pill">dernier ${escapeHtml(formatDate(schedule.lastSentAt))}</span>` : ""}
           ${schedule.lastError ? `<span class="pill red">Erreur</span>` : ""}
         </div>
       </div>
       <div class="card-actions operational-actions">
-        <button class="secondary" data-action="openQuestionnaireSchedule" data-id="${escapeHtml(schedule.clientId)}" data-questionnaire-type="${escapeAttr(schedule.questionnaireType || DEFAULT_QUESTIONNAIRE_TYPE)}">Modifier</button>
-        <button class="secondary" data-action="toggleQuestionnaireSchedule" data-id="${escapeHtml(schedule.id)}">${active ? "Pause" : "Reprendre"}</button>
+        ${hasClient ? `
+          <button class="secondary" data-action="openQuestionnaireSchedule" data-id="${escapeHtml(client.id)}" data-questionnaire-type="${escapeAttr(schedule.questionnaireType || DEFAULT_QUESTIONNAIRE_TYPE)}">Modifier</button>
+          <button class="secondary" data-action="toggleQuestionnaireSchedule" data-id="${escapeHtml(schedule.id)}">${active ? "Pause" : "Reprendre"}</button>
+        ` : `<button class="secondary" disabled>A valider par un admin</button>`}
       </div>
     </article>
   `;
@@ -6576,19 +6709,25 @@ function rebookingHasWeakClientLink(rebooking) {
 }
 
 function findRebookingForCoachView(id) {
-  const grouped = groupRebookingsForCoachView(state.data.rebookings);
+  const rebookings = portfolioRebookings();
+  const grouped = groupRebookingsForCoachView(rebookings);
   return grouped.find((item) =>
     String(item.id) === String(id) ||
     (Array.isArray(item.relatedRebookingIds) && item.relatedRebookingIds.map(String).includes(String(id)))
-  ) || state.data.rebookings.find((item) => String(item.id) === String(id));
+  ) || rebookings.find((item) => String(item.id) === String(id));
 }
 
 function rebookingActionTargetIds(id, { groupOpen = true } = {}) {
-  if (!groupOpen) return [id].filter(Boolean);
+  const rebookings = portfolioRebookings();
+  const validIds = new Set(rebookings.map((item) => String(item.id || "")));
+  const cleanId = String(id || "").trim();
+  if (!cleanId || !validIds.has(cleanId)) return [];
+  if (!groupOpen) return [cleanId];
   const rebooking = findRebookingForCoachView(id);
-  if (!rebooking || rebookingStatus(rebooking) !== "open") return [id].filter(Boolean);
+  if (!rebooking) return [];
+  if (rebookingStatus(rebooking) !== "open") return validIds.has(String(rebooking.id || "")) ? [String(rebooking.id)] : [];
   const ids = Array.isArray(rebooking.relatedRebookingIds) ? rebooking.relatedRebookingIds : [id];
-  return uniqueStrings(ids);
+  return uniqueStrings(ids).filter((targetId) => validIds.has(String(targetId)));
 }
 
 function renderAlumniCard(alumni) {
@@ -6721,7 +6860,7 @@ function renderAnnouncementFormModal() {
 }
 
 function renderClientModal() {
-  const client = state.data.clients.find((item) => item.id === state.modal.id);
+  const client = selectableClientForCoach(state.modal.id);
   if (!client) return "";
   const phone = clientPhone(client);
   const isAdminView = isInfoAdmin();
@@ -6953,7 +7092,7 @@ function renderClientTrainingRhythm(client) {
 }
 
 function renderClientTrainingModal() {
-  const client = state.data.clients.find((item) => item.id === state.modal.id);
+  const client = selectableClientForCoach(state.modal.id);
   if (!client) return "";
   return modal("Rythme d'entrainement", `
     <div class="modal-form client-training-modal">
@@ -6987,7 +7126,7 @@ function formatClientDecimal(value, maximumFractionDigits = 1) {
 }
 
 function renderClientPhoneFixModal() {
-  const client = state.data.clients.find((item) => item.id === state.modal.id);
+  const client = selectableClientForCoach(state.modal.id);
   if (!client) return "";
   const currentPhone = clientPhone(client);
   const suggestion = clientPhoneSuggestion(client);
@@ -7031,12 +7170,12 @@ function clientWorkSummary(client) {
     .filter((task) => task.clientId === clientId || (phone && normalizePhone(task.clientPhoneNormalized || task.phoneNormalized) === phone))
     .slice()
     .sort(sortTasks);
-  const responses = state.data.questionnaireResponses
+  const responses = portfolioQuestionnaireResponses()
     .filter((response) => response.clientId === clientId || (phone && normalizePhone(response.phoneNormalized || response.clientPhoneNormalized) === phone))
     .slice()
     .sort((a, b) => dateValue(b.submittedAt || b.createdAt) - dateValue(a.submittedAt || a.createdAt));
   const openResponses = responses.filter((response) => (response.processingStatus || "to_read") === "to_read");
-  const openRebookings = state.data.rebookings
+  const openRebookings = portfolioRebookings()
     .filter((item) => rebookingStatus(item) === "open")
     .filter((item) => item.clientId === clientId || (phone && normalizePhone(item.clientPhoneNormalized || item.phoneNormalized) === phone));
   const sessions = openRebookings.reduce((sum, item) => sum + Math.max(1, Number(item.sessionsToRebook || 1)), 0);
@@ -7047,7 +7186,7 @@ function clientPhoneSuggestion(client) {
   if (!client || clientPhone(client)) return null;
   const nameKey = normalizeComparable(client.name || client.clientName || "");
   if (!nameKey) return null;
-  const candidates = state.data.checkups
+  const candidates = portfolioCheckups()
     .filter((checkup) => normalizeComparable(checkup.clientName || checkup.name || "") === nameKey)
     .map((checkup) => normalizePhone(checkup.clientPhoneNormalized || checkup.phoneNormalized || checkup.phone || ""))
     .filter(Boolean);
@@ -7241,9 +7380,9 @@ function renderQuickNoteModal() {
     : null;
   const selectedClientId = state.modal.clientId || rebooking?.clientId || "";
   const client = selectedClientId
-    ? state.data.clients.find((item) => item.id === selectedClientId)
+    ? selectableClientForCoach(selectedClientId)
     : null;
-  const clientOptions = activeClients()
+  const clientOptions = selectableClientsForCoach()
     .slice()
     .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")))
     .map((item) => `<option value="${escapeAttr(item.id)}" ${item.id === selectedClientId ? "selected" : ""}>${escapeHtml(item.name || "Client")}</option>`)
@@ -7403,7 +7542,7 @@ function renderAssistantMissionStep({ voiceRequest = null, request = null, propo
         <label>Client
           <select class="input" name="clientId">
             <option value="" ${proposedClientId ? "" : "selected"}>Aucun client · note coach</option>
-            ${activeClients()
+            ${selectableClientsForCoach()
               .slice()
               .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")))
               .map((item) => `<option value="${escapeAttr(item.id)}" ${item.id === proposedClientId ? "selected" : ""}>${escapeHtml(item.name || "Client")}</option>`)
@@ -7578,7 +7717,7 @@ function renderPilotageNoteModal() {
 }
 
 function renderTaskEditModal() {
-  const task = state.data.tasks.find((item) => item.id === state.modal.id);
+  const task = operationalTaskById(state.modal.id);
   if (!task) return "";
   const starred = isStarredTask(task);
   const description = taskDisplayDescription(task, taskActionGuidance(task)) || "";
@@ -7662,7 +7801,7 @@ function questionnaireUrlForClient(client, type = DEFAULT_QUESTIONNAIRE_TYPE) {
 function renderQuestionnaireSendModal() {
   const selectedClientId = state.modal.clientId || "";
   const selectedQuestionnaireType = state.modal.questionnaireType || DEFAULT_QUESTIONNAIRE_TYPE;
-  const clients = activeClients();
+  const clients = selectableClientsForCoach();
   const clientsWithPhone = clients.filter(clientPhone).length;
   const clientsMissingPhone = clients.length - clientsWithPhone;
   const isAdminView = isInfoAdmin();
@@ -7695,7 +7834,7 @@ function renderQuestionnaireSendModal() {
 }
 
 function renderQuestionnaireScheduleModal() {
-  const client = state.data.clients.find((item) => item.id === state.modal.clientId);
+  const client = selectableClientForCoach(state.modal.clientId);
   if (!client) return "";
   const phone = clientPhone(client);
   const selectedQuestionnaireType = state.modal.questionnaireType || DEFAULT_QUESTIONNAIRE_TYPE;
@@ -7750,14 +7889,14 @@ function renderQuestionnaireScheduleModal() {
 }
 
 function renderQuestionnaireDetailModal() {
-  const response = state.data.questionnaireResponses.find((item) => item.id === state.modal.id);
+  const response = portfolioQuestionnaireResponses().find((item) => item.id === state.modal.id);
   if (!response) return "";
   const statusClass = triageClass(response.triageStatus);
   const phone = questionnaireResponsePhone(response);
   const highlights = questionnaireHighlights(response);
   const priority = questionnairePrioritySummary(response, highlights);
   const digest = questionnaireDigest(response, highlights, priority);
-  const hasClient = Boolean(response.clientId);
+  const hasClient = Boolean(selectableClientForCoach(response.clientId));
   return modal("Lire la reponse questionnaire", `
     <div class="questionnaire-detail-modal">
       <div class="client-modal-intro">
@@ -7835,7 +7974,7 @@ function renderQuestionnaireReadingBrief(response, digest, priority) {
   `;
 }
 
-function questionnaireSendClientOptions(clients = activeClients(), selectedClientId = "") {
+function questionnaireSendClientOptions(clients = selectableClientsForCoach(), selectedClientId = "") {
   return clients.map((client) => {
     const phone = clientPhone(client);
     return `
@@ -7847,11 +7986,11 @@ function questionnaireSendClientOptions(clients = activeClients(), selectedClien
 }
 
 function renderQuestionnaireLinkClientModal() {
-  const response = state.data.questionnaireResponses.find((item) => item.id === state.modal.id);
+  const response = questionnaireResponseForAdminLinking(state.modal.id);
   if (!response) return "";
   const phone = questionnaireResponsePhone(response);
   const suggestedName = normalizeComparable(response.clientName || response.name);
-  const sortedClients = [...activeClients()].sort((a, b) => {
+  const sortedClients = [...selectableClientsForCoach()].sort((a, b) => {
     const aPhoneScore = phone && clientPhone(a) === phone ? -2 : 0;
     const bPhoneScore = phone && clientPhone(b) === phone ? -2 : 0;
     const aNameScore = suggestedName && normalizeComparable(a.name) === suggestedName ? -1 : 0;
@@ -7893,15 +8032,17 @@ function renderQuestionnaireLinkClientModal() {
 
 function renderRebookingFormModal() {
   const selectedClientId = state.modal.clientId || "";
-  const selectedClient = state.data.clients.find((client) => String(client.id) === String(selectedClientId));
-  const selectedCoachId = selectedClient?.coachId || state.selectedCoachId || "";
+  const clients = selectableClientsForCoach();
+  const selectedClient = clients.find((client) => String(client.id) === String(selectedClientId));
+  const selectedCoach = activeCoachRecord();
+  const selectedCoachId = selectedClient?.coachId || selectedCoach?.id || state.selectedCoachId || "";
   return modal("Ajouter une seance a remettre", `
     <form class="modal-form" data-form="rebookingCreate">
       <div class="form-grid">
         <label>Client du portefeuille
           <select class="input" name="clientId">
             <option value="">Non relie pour l'instant</option>
-            ${state.data.clients.map((client) => `<option value="${escapeAttr(client.id)}" ${String(client.id) === String(selectedClientId) ? "selected" : ""}>${escapeHtml(client.name)}</option>`).join("")}
+            ${clients.map((client) => `<option value="${escapeAttr(client.id)}" ${String(client.id) === String(selectedClientId) ? "selected" : ""}>${escapeHtml(client.name)}</option>`).join("")}
           </select>
         </label>
         <label>Seances a remettre<input class="input" type="number" min="1" name="sessionsToRebook" value="1"></label>
@@ -7909,9 +8050,7 @@ function renderRebookingFormModal() {
       <div class="form-grid">
         <label>Coach responsable
           <select class="input" name="coachId">
-            ${mergedCoachOptions().map((coach) => `
-              <option value="${escapeAttr(coach.id)}" ${String(coach.id) === String(selectedCoachId) ? "selected" : ""}>${escapeHtml(coach.name || coach.id)}</option>
-            `).join("")}
+            <option value="${escapeAttr(selectedCoachId)}" selected>${escapeHtml(selectedCoach?.name || selectedCoachId)}</option>
           </select>
         </label>
         <label>Date de la seance annulee ou a remettre<input class="input" type="date" name="appointmentAt"></label>
@@ -7931,9 +8070,9 @@ function renderRebookingFormModal() {
 }
 
 function renderRebookingLinkClientModal() {
-  const rebooking = state.data.rebookings.find((item) => item.id === state.modal.id);
+  const rebooking = portfolioRebookings().find((item) => item.id === state.modal.id);
   if (!rebooking) return "";
-  const clients = activeClients();
+  const clients = selectableClientsForCoach();
   const suggestedName = normalizeComparable(rebooking.clientName);
   const sortedClients = [...clients].sort((a, b) => {
     const aScore = normalizeComparable(a.name) === suggestedName ? -1 : 0;
@@ -8160,7 +8299,7 @@ function performanceDetailData(metric) {
     return performanceDetailPayload("Programmations", `${items.length} mission(s)`, "Programmes CoachRx rouges/jaunes a traiter", items);
   }
   if (metric === "rebooking") {
-    const items = state.data.rebookings
+    const items = portfolioRebookings()
       .filter((item) => isOpenRebooking(item))
       .sort((a, b) => String(a.clientName || "").localeCompare(String(b.clientName || "")))
       .map((rebooking) => {
@@ -8179,7 +8318,7 @@ function performanceDetailData(metric) {
     return performanceDetailPayload("Rebooking", `${items.length} dossier(s)`, "Seances payees a remettre ou a fermer", items);
   }
   if (metric === "questionnaires") {
-    const items = state.data.questionnaireResponses
+    const items = portfolioQuestionnaireResponses()
       .filter((response) => response.processingStatus === "to_read" || response.status === "to_read")
       .sort((a, b) => dateValue(b.submittedAt || b.createdAt) - dateValue(a.submittedAt || a.createdAt))
       .map((response) => {
@@ -8198,7 +8337,7 @@ function performanceDetailData(metric) {
     return performanceDetailPayload("Questionnaires", `${items.length} reponse(s)`, "Reponses a lire avant la rencontre", items);
   }
   if (metric === "checkups") {
-    const items = periodFiltered(state.data.checkups, "checkupDate", { fallbackCreatedAt: false })
+    const items = periodFiltered(portfolioCheckups(), "checkupDate", { fallbackCreatedAt: false })
       .sort((a, b) => dateValue(b.checkupDate) - dateValue(a.checkupDate))
       .map((checkup) => ({
         name: checkup.clientName || checkup.name || checkup.memberName || "Client sans nom",
@@ -8209,7 +8348,7 @@ function performanceDetailData(metric) {
     return performanceDetailPayload("Check-ups CSM", `${items.length} check-up(s)`, `${periodLabel} - noms captes par CSM`, items);
   }
   if (metric === "impacts") {
-    const items = periodFiltered(state.data.impacts, "impactDate")
+    const items = periodFiltered(portfolioImpacts(), "impactDate")
       .filter((impact) => impact.status === "confirmed")
       .sort((a, b) => dateValue(b.impactDate) - dateValue(a.impactDate))
       .map((impact) => ({
@@ -8386,7 +8525,7 @@ function renderPerformanceObjectiveModal() {
 
 function renderImpactFormModal() {
   const impact = state.modal.type === "impactEdit"
-    ? state.data.impacts.find((item) => item.id === state.modal.id)
+    ? portfolioImpacts().find((item) => item.id === state.modal.id)
     : null;
   const isEdit = Boolean(impact);
   return modal(isEdit ? "Modifier l'impact" : "Ajouter un impact", `
@@ -8579,7 +8718,7 @@ document.addEventListener("click", async (event) => {
         };
       }
       setActiveTab(targetTab, "dashboard_stat");
-      if (window.matchMedia("(max-width: 560px)").matches) window.scrollTo({ top: 0, behavior: "smooth" });
+      if (window.matchMedia("(max-width: 680px)").matches) window.scrollTo({ top: 0, behavior: "smooth" });
       render();
     }
     if (action === "openQuickNote") openModal({ type: "quickNote" });
@@ -8655,13 +8794,13 @@ document.addEventListener("click", async (event) => {
     if (action === "deleteClient" && id) await deleteClient(id);
     if (action === "completeTask") await completeTask(id);
     if (action === "completeQuestionnaireTask") await completeQuestionnaireTask(id, actionEl.dataset.responseId || "");
-    if (action === "ignoreTask") await patchEntity("tasks", id, { status: "ignored", ignoredAt: serverTimestamp() }, "Tache masquee");
+    if (action === "ignoreTask") await ignoreOperationalTask(id);
     if (action === "markResponseRead") await markQuestionnaireResponseRead(id);
     if (action === "createMissionFromQuestionnaireResponse") await createMissionFromQuestionnaireResponse(id);
     if (action === "sendQuestionnaire") await journalQuestionnaireSend(id, actionEl.dataset.questionnaireType || DEFAULT_QUESTIONNAIRE_TYPE);
     if (action === "toggleQuestionnaireSchedule") await toggleQuestionnaireSchedule(id);
     if (action === "createQuestionnaireFollowupTask") await createQuestionnaireFollowupTask(id);
-    if (action === "cancelQuestionnaireSend") await patchEntity("questionnaireSends", id, { status: "cancelled" }, "Envoi archive");
+    if (action === "cancelQuestionnaireSend") await cancelQuestionnaireSend(id);
     if (action === "openRebookingDetail" && id) openModal({ type: "rebookingDetail", id });
     if (action === "openPerformanceDetail" && id) openModal({ type: "performanceDetail", metric: id });
     if (action === "excludePerformanceNewClient" && id) await excludePerformanceNewClient(id);
@@ -8804,7 +8943,7 @@ document.addEventListener("click", (event) => {
   if (!tabEl) return;
   setActiveTab(tabEl.dataset.tab, "sidebar");
   state.mobileMenuOpen = "";
-  if (window.matchMedia("(max-width: 560px)").matches) {
+  if (window.matchMedia("(max-width: 680px)").matches) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
   render();
@@ -8975,9 +9114,7 @@ async function createAssistantTaskDraft(data = {}) {
   if (!voiceDraft && inputText.length < 3) throw new Error("Dicte ou ecris la mission a creer.");
   if (inputText.length > 1200) throw new Error("La demande doit contenir au maximum 1200 caracteres.");
   const clientId = cleanString(data.clientId || state.modal.clientId || "");
-  if (clientId && !state.data.clients.some((item) => item.id === clientId)) {
-    throw new Error("Le client selectionne n'est plus dans ce portefeuille.");
-  }
+  if (clientId) requireSelectableClientForCoach(clientId);
   const pendingTextRequest = (state.data.assistantRequests || []).find((request) =>
     request.targetCoachId === state.selectedCoachId
     && ["queued", "processing"].includes(cleanString(request.status))
@@ -9032,6 +9169,7 @@ async function createAssistantTaskDraft(data = {}) {
 async function createAssistantVoiceTaskDraft({ clientId = "" } = {}, draft) {
   if (!draft?.blob) throw new Error("Enregistre un vocal avant de continuer.");
   if (!state.user?.uid) throw new Error("Reconnecte-toi avant d'envoyer un vocal.");
+  if (clientId) requireSelectableClientForCoach(clientId);
   if (draft.blob.size > VOICE_NOTE_MAX_BYTES) {
     throw new Error("Le vocal est trop lourd. Recommence avec un message plus court.");
   }
@@ -9149,9 +9287,7 @@ async function confirmAssistantTaskProposal(proposalId, data = {}) {
     throw new Error("Le coach selectionne a change. Prepare une nouvelle mission.");
   }
   const clientId = cleanString(data.clientId || "");
-  if (clientId && !state.data.clients.some((item) => item.id === clientId)) {
-    throw new Error("Choisis un client du portefeuille actuel.");
-  }
+  if (clientId) requireSelectableClientForCoach(clientId);
   const title = String(data.title || "").replace(/\s+/g, " ").trim();
   const description = String(data.description || "").replace(/\s+/g, " ").trim();
   const priority = ["P1", "P2", "P3"].includes(data.priority) ? data.priority : "P2";
@@ -9199,7 +9335,7 @@ async function confirmAssistantTaskProposal(proposalId, data = {}) {
 }
 
 function openAssistantCreatedTask(taskId) {
-  const task = state.data.tasks.find((item) => item.id === taskId);
+  const task = operationalTaskById(taskId);
   if (task) {
     openModal({ type: "taskEdit", id: task.id });
     return;
@@ -9689,7 +9825,7 @@ async function deleteVoiceQueueChunks(chunkRefs) {
 }
 
 async function playTaskVoice(taskId) {
-  const task = state.data.tasks.find((item) => item.id === taskId);
+  const task = operationalTaskById(taskId);
   const voiceNote = taskVoiceNote(task);
   if (!voiceNote) {
     showToast("Aucun vocal trouve pour cette mission.");
@@ -9733,7 +9869,7 @@ async function playTaskVoice(taskId) {
 }
 
 async function deleteTaskVoice(taskId) {
-  const task = state.data.tasks.find((item) => item.id === taskId);
+  const task = operationalTaskById(taskId);
   const voiceNote = taskVoiceNote(task);
   if (!voiceNote) return;
   const confirmed = window.confirm("Supprimer le vocal de cette mission?\n\nLa mission texte restera en place.");
@@ -9766,9 +9902,9 @@ async function createManualTask(data) {
     ? findRebookingForCoachView(data.rebookingId)
     : null;
   if (data.rebookingId && !rebooking) throw new Error("Dossier rebooking introuvable.");
-  const selectedClientId = data.clientId || rebooking?.clientId || "";
+  const selectedClientId = String(data.clientId || "").trim();
   const client = selectedClientId
-    ? state.data.clients.find((item) => item.id === selectedClientId)
+    ? requireSelectableClientForCoach(selectedClientId)
     : null;
   const coach = activeCoachRecord();
   const title = String(data.title || "").trim();
@@ -9857,7 +9993,7 @@ async function createManualTask(data) {
 async function saveTask(id, data) {
   if (!id) throw new Error("Mission introuvable.");
   const modalInstanceId = state.modal?.instanceId || "";
-  const task = state.data.tasks.find((item) => item.id === id);
+  const task = operationalTaskById(id);
   if (!task) throw new Error("Mission introuvable.");
   const priority = data.priority || task.priority || "P2";
   const title = String(data.title || "").trim();
@@ -9914,7 +10050,7 @@ async function saveTask(id, data) {
 }
 
 async function toggleTaskStar(id) {
-  const task = state.data.tasks.find((item) => item.id === id);
+  const task = operationalTaskById(id);
   if (!task) throw new Error("Mission introuvable.");
   const starred = !isStarredTask(task);
   await patchEntity("tasks", id, {
@@ -9930,7 +10066,7 @@ async function toggleTaskStar(id) {
 
 async function saveClient(id, data) {
   const phoneNormalized = normalizePhone(data.phoneNormalized);
-  const currentClient = state.data.clients.find((client) => client.id === id) || {};
+  const currentClient = requireSelectableClientForCoach(id);
   const requestedCoachId = data.coachId ? String(data.coachId) : String(currentClient.coachId || state.selectedCoachId || "");
   const targetCoach = coachRecordById(requestedCoachId);
   if (!targetCoach?.id) {
@@ -9967,6 +10103,10 @@ async function saveClient(id, data) {
     patch.previousCoachId = previousCoachId;
     patch.transferredAt = serverTimestamp();
     patch.transferSource = isInfoAdmin() ? "firebase_dashboard_admin" : "firebase_dashboard_coach";
+    patch.ownershipStatus = "confirmed";
+    patch.ownershipSource = patch.transferSource;
+    patch.ownershipVerifiedAt = serverTimestamp();
+    patch.ownershipVerifiedBy = state.user?.email || "";
   }
   await updateDoc(doc(db, "clients", id), patch);
   const relatedTransferCounts = transferred
@@ -9985,8 +10125,7 @@ async function saveClient(id, data) {
 }
 
 async function saveClientTrainingTarget(id, data) {
-  const client = state.data.clients.find((item) => item.id === id);
-  if (!client) throw new Error("Client introuvable.");
+  const client = requireSelectableClientForCoach(id);
   const raw = String(data.targetSessionsPerWeek || "").trim().replace(",", ".");
   const target = raw ? Number(raw) : null;
   if (target !== null && (!Number.isFinite(target) || target < 0.5 || target > 14)) {
@@ -10008,8 +10147,7 @@ async function saveClientTrainingTarget(id, data) {
 
 async function saveClientPhoneFix(id, data) {
   if (!id) throw new Error("Client introuvable.");
-  const currentClient = state.data.clients.find((client) => client.id === id);
-  if (!currentClient) throw new Error("Client introuvable.");
+  const currentClient = requireSelectableClientForCoach(id);
   const phoneNormalized = normalizePhone(data.phoneNormalized);
   if (!phoneNormalized || phoneNormalized.length !== 10) {
     throw new Error("Entre un telephone a 10 chiffres, ex.: 8192771825.");
@@ -10067,6 +10205,8 @@ async function transferClientRelatedRecords(clientId, previousCoachId, targetCoa
 
 async function createClient(data) {
   if (!state.selectedCoachId) throw new Error("Selectionne un coach avant d'ajouter un client.");
+  const coach = activeCoachRecord();
+  if (!coach?.id) throw new Error("Coach responsable invalide.");
   const name = String(data.name || "").trim();
   const phoneNormalized = normalizePhone(data.phoneNormalized);
   if (!name && !phoneNormalized) {
@@ -10076,8 +10216,20 @@ async function createClient(data) {
   const ref = doc(db, "clients", id);
   const snapshot = await getDoc(ref);
   const existing = snapshot.exists() ? snapshot.data() : {};
+  if (snapshot.exists()) {
+    const existingRecord = { id, ...existing };
+    const existingIsSelectable = isActiveClient(existingRecord)
+      && clientEntityType(existingRecord) === "member"
+      && clientOwnershipStatus(existingRecord) === "confirmed"
+      && firestoreItemBelongsToCoach(existingRecord, state.selectedCoachId);
+    if (!existingIsSelectable) {
+      throw new Error("Une fiche existe deja avec cette identite et doit etre validee par un admin.");
+    }
+  }
   await setDoc(ref, {
     coachId: state.selectedCoachId,
+    coachRxId: coach.coachRxId || coach.id,
+    coachName: coach.name || "",
     name: name || existing.name || "Client sans nom",
     phoneNormalized: phoneNormalized || clientPhone(existing) || "",
     clientPhoneNormalized: phoneNormalized || clientPhone(existing) || "",
@@ -10094,7 +10246,13 @@ async function createClient(data) {
     lastNameSort: lastNameSort(name || existing.name || ""),
     createdAt: existing.createdAt || serverTimestamp(),
     updatedAt: serverTimestamp(),
-    source: existing.source || "firebase_app_manual"
+    source: existing.source || "firebase_app_manual",
+    entityType: "member",
+    ownershipStatus: "confirmed",
+    clientSelectable: true,
+    ownershipSource: existing.ownershipSource || "dashboard_manual",
+    ownershipVerifiedAt: existing.ownershipVerifiedAt || serverTimestamp(),
+    ownershipVerifiedBy: existing.ownershipVerifiedBy || state.user?.email || ""
   }, { merge: true });
   await logAction(snapshot.exists() ? "client.updated" : "client.created", "clients", id, {
     name: name || existing.name || "Client sans nom",
@@ -10106,7 +10264,8 @@ async function createClient(data) {
 }
 
 async function createRebooking(data) {
-  const client = state.data.clients.find((item) => item.id === data.clientId);
+  const selectedClientId = String(data.clientId || "").trim();
+  const client = selectedClientId ? requireSelectableClientForCoach(selectedClientId) : null;
   const manualName = String(data.clientName || "").trim();
   if (!client && !manualName) throw new Error("Selectionne un client ou entre un nom manuel.");
   const clientName = client?.name || manualName;
@@ -10124,7 +10283,11 @@ async function createRebooking(data) {
       return;
     }
   }
-  const targetCoach = coachRecordById(client?.coachId || data.coachId || state.selectedCoachId) || activeCoachRecord();
+  const targetCoach = activeCoachRecord();
+  if (!targetCoach?.id) throw new Error("Coach responsable invalide.");
+  if (data.coachId && String(data.coachId) !== String(targetCoach.id)) {
+    throw new Error("Le coach responsable doit etre le coach du portefeuille affiche.");
+  }
   const ref = await addDoc(collection(db, "rebookings"), {
     coachId: targetCoach?.id || state.selectedCoachId,
     coachRxId: targetCoach?.coachRxId || targetCoach?.id || state.selectedCoachId,
@@ -10378,8 +10541,7 @@ async function addManualPerformanceNewClient(data) {
 }
 
 async function excludePerformanceNewClient(clientId) {
-  const client = state.data.clients.find((item) => String(item.id) === String(clientId));
-  if (!client) throw new Error("Client introuvable.");
+  const client = requireSelectableClientForCoach(clientId);
   const excluded = [...new Set([...performanceNewClientExcludedIds(), client.id])];
   await savePerformanceSettingsPatch({ newClientExcludedIds: excluded });
   await logAction("performance.new_client_excluded", "clients", client.id, {
@@ -10472,6 +10634,7 @@ async function createImpact(data) {
 
 async function saveImpact(id, data) {
   if (!id) throw new Error("Impact introuvable.");
+  if (!portfolioImpacts().some((item) => item.id === id)) throw new Error("Impact introuvable dans le portefeuille confirme.");
   const patch = {
     clientName: data.clientName || "",
     serviceType: data.serviceType || "",
@@ -10494,6 +10657,7 @@ async function saveImpact(id, data) {
 
 async function updateImpactStatus(id, status, toast) {
   if (!id) return;
+  if (!portfolioImpacts().some((item) => item.id === id)) throw new Error("Impact introuvable dans le portefeuille confirme.");
   await patchEntity("impacts", id, {
     status,
     statusChangedAt: serverTimestamp()
@@ -10503,7 +10667,8 @@ async function updateImpactStatus(id, status, toast) {
 
 async function deleteImpact(id) {
   if (!id) return;
-  const impact = state.data.impacts.find((item) => item.id === id);
+  const impact = portfolioImpacts().find((item) => item.id === id);
+  if (!impact) throw new Error("Impact introuvable dans le portefeuille confirme.");
   const confirmed = window.confirm(`Supprimer l'impact${impact?.clientName ? ` de ${impact.clientName}` : ""}? Il sera retire de Performance, mais l'action restera journalisee.`);
   if (!confirmed) return;
   await patchEntity("impacts", id, {
@@ -10544,8 +10709,7 @@ async function createAlumni(data) {
 
 async function moveClientToAlumni(clientId) {
   if (!clientId) return;
-  const client = state.data.clients.find((item) => item.id === clientId);
-  if (!client) throw new Error("Client introuvable.");
+  const client = requireSelectableClientForCoach(clientId);
   const clientName = client.name || "ce client";
   const confirmed = window.confirm(`Mettre ${clientName} dans Alumni? Le client sortira du portefeuille actif, mais restera disponible dans Alumni.`);
   if (!confirmed) return;
@@ -10556,7 +10720,8 @@ async function moveClientToAlumni(clientId) {
   const existingAlumniData = existingAlumni.exists() ? existingAlumni.data() : {};
   const phone = clientPhone(client);
   const coachId = client.coachId || state.selectedCoachId;
-  await setDoc(alumniRef, {
+  const batch = writeBatch(db);
+  batch.set(alumniRef, {
     coachId,
     coachRxId: client.coachRxId || coachRecordById(coachId)?.coachRxId || coachId,
     coachName: client.coachName || coachRecordById(coachId)?.name || activeCoachRecord()?.name || "",
@@ -10574,12 +10739,14 @@ async function moveClientToAlumni(clientId) {
     updatedAt: serverTimestamp()
   }, { merge: true });
 
-  await updateDoc(doc(db, "clients", client.id), {
+  batch.update(doc(db, "clients", client.id), {
     status: "alumni",
+    clientSelectable: false,
     alumniId,
     movedToAlumniAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   });
+  await batch.commit();
 
   await logAction("client.moved_to_alumni", "clients", client.id, {
     alumniId,
@@ -10592,8 +10759,7 @@ async function moveClientToAlumni(clientId) {
 
 async function deleteClient(clientId) {
   if (!clientId) return;
-  const client = state.data.clients.find((item) => item.id === clientId);
-  if (!client) throw new Error("Client introuvable.");
+  const client = requireSelectableClientForCoach(clientId);
   const clientName = client.name || "ce client";
   const firstConfirmed = window.confirm(
     `Supprimer la fiche client de ${clientName}?\n\n` +
@@ -10702,6 +10868,15 @@ async function reactivateAlumniAsClient(alumniId) {
     existingClient = await getDoc(clientRef);
   }
   const existing = existingClient.exists() ? existingClient.data() : {};
+  if (existingClient.exists()) {
+    const existingRecord = { id: clientId, ...existing };
+    const safeExistingClient = clientEntityType(existingRecord) === "member"
+      && clientOwnershipStatus(existingRecord) === "confirmed"
+      && firestoreItemBelongsToCoach(existingRecord, targetCoach.id);
+    if (!safeExistingClient) {
+      throw new Error("La fiche client liee a cet alumni doit etre validee par un admin.");
+    }
+  }
   await setDoc(clientRef, {
     coachId: targetCoach.id,
     coachRxId: targetCoach.coachRxId || targetCoach.id,
@@ -10722,7 +10897,13 @@ async function reactivateAlumniAsClient(alumniId) {
     reactivatedFromAlumniAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     createdAt: existing.createdAt || serverTimestamp(),
-    source: existing.source || "firebase_alumni_reactivated"
+    source: existing.source || "firebase_alumni_reactivated",
+    entityType: "member",
+    ownershipStatus: "confirmed",
+    clientSelectable: true,
+    ownershipSource: "dashboard_alumni_reactivation",
+    ownershipVerifiedAt: serverTimestamp(),
+    ownershipVerifiedBy: state.user?.email || ""
   }, { merge: true });
 
   await patchEntity("alumni", alumniId, {
@@ -10740,8 +10921,7 @@ async function reactivateAlumniAsClient(alumniId) {
 }
 
 async function journalQuestionnaireSend(clientId, questionnaireType = DEFAULT_QUESTIONNAIRE_TYPE) {
-  const client = state.data.clients.find((item) => item.id === clientId);
-  if (!client) throw new Error("Client introuvable.");
+  const client = requireSelectableClientForCoach(clientId);
   const phone = clientPhone(client);
   if (!phone) throw new Error("Telephone manquant. Le matching et l'envoi se font par telephone.");
   const questionnaire = questionnaireTypeConfig(questionnaireType);
@@ -10785,13 +10965,12 @@ async function journalQuestionnaireSend(clientId, questionnaireType = DEFAULT_QU
 }
 
 async function saveQuestionnaireSchedule(clientId, data) {
-  const client = state.data.clients.find((item) => item.id === clientId);
-  if (!client) throw new Error("Client introuvable.");
+  const client = requireSelectableClientForCoach(clientId);
   const phone = clientPhone(client);
   if (!phone) throw new Error("Telephone manquant. La planification depend du telephone.");
   const questionnaire = questionnaireTypeConfig(data.questionnaireType);
   const scheduleId = questionnaireScheduleId(client.coachId || state.selectedCoachId, client.id, questionnaire.type);
-  const existing = state.data.questionnaireSchedules.find((item) => item.id === scheduleId) || {};
+  const existing = portfolioQuestionnaireSchedules().find((item) => item.id === scheduleId) || {};
   const payload = {
     coachId: client.coachId || state.selectedCoachId,
     coachRxId: client.coachRxId || coachRecordById(client.coachId || state.selectedCoachId)?.coachRxId || "",
@@ -10827,13 +11006,21 @@ async function saveQuestionnaireSchedule(clientId, data) {
 }
 
 async function toggleQuestionnaireSchedule(scheduleId) {
-  const schedule = state.data.questionnaireSchedules.find((item) => item.id === scheduleId);
+  const schedule = portfolioQuestionnaireSchedules().find((item) => item.id === scheduleId);
   if (!schedule) return;
+  requireSelectableClientForCoach(schedule.clientId);
   const nextStatus = (schedule.status || "active") === "active" ? "paused" : "active";
   await patchEntity("questionnaireSchedules", scheduleId, {
     status: nextStatus,
     statusChangedAt: serverTimestamp()
   }, nextStatus === "active" ? "Automatisation reprise." : "Automatisation mise en pause.");
+}
+
+async function cancelQuestionnaireSend(sendId) {
+  const send = portfolioQuestionnaireSends().find((item) => item.id === sendId);
+  if (!send) throw new Error("Envoi questionnaire introuvable.");
+  requireSelectableClientForCoach(send.clientId);
+  await patchEntity("questionnaireSends", sendId, { status: "cancelled" }, "Envoi archive");
 }
 
 function callableErrorMessage(error) {
@@ -10843,7 +11030,7 @@ function callableErrorMessage(error) {
 }
 
 async function createQuestionnaireFollowupTask(sendId) {
-  const send = state.data.questionnaireSends.find((item) => item.id === sendId);
+  const send = portfolioQuestionnaireSends().find((item) => item.id === sendId);
   if (!send) return;
   if (send.status !== "sent" || send.answeredAt || questionnaireSendHasResponse(send)) {
     showToast("Relance non creee: ce questionnaire n'est pas en attente de reponse.");
@@ -10858,10 +11045,11 @@ async function createQuestionnaireFollowupTask(sendId) {
     showToast("Une relance existe deja pour cet envoi.");
     return;
   }
+  const client = requireSelectableClientForCoach(send.clientId);
   const ref = await addDoc(collection(db, "tasks"), {
     coachId: state.selectedCoachId,
-    clientId: send.clientId,
-    clientName: send.clientName || "",
+    clientId: client.id,
+    clientName: client.name || send.clientName || "",
     type: "questionnaire_followup",
     title: "Relancer questionnaire client",
     description: "Questionnaire envoye il y a 7 jours ou plus sans reponse.",
@@ -10875,21 +11063,22 @@ async function createQuestionnaireFollowupTask(sendId) {
   });
   await logAction("task.created", "tasks", ref.id, {
     source: "questionnaire_followup",
-    clientId: send.clientId,
+    clientId: client.id,
     questionnaireSendId: sendId
   });
   await patchEntity("questionnaireSends", sendId, { followupTaskCreatedAt: serverTimestamp() }, "Relance creee");
 }
 
 async function createMissionFromQuestionnaireResponse(responseId) {
-  const response = state.data.questionnaireResponses.find((item) => item.id === responseId);
+  const response = portfolioQuestionnaireResponses().find((item) => item.id === responseId);
   if (!response) return;
   if (!response.clientId) {
     showToast("Mission non creee: rattache d'abord la reponse a une fiche client.");
     return;
   }
+  const client = requireSelectableClientForCoach(response.clientId);
   await markQuestionnaireResponseRead(responseId, { silent: true });
-  const responseCoachId = response.coachId || state.selectedCoachId;
+  const responseCoachId = state.selectedCoachId;
   const triageStatus = String(response.triageStatus || "").toLowerCase();
   const title = "Lire le questionnaire";
   const submittedAt = response.submittedAt || response.createdAt || todayIso();
@@ -10898,8 +11087,8 @@ async function createMissionFromQuestionnaireResponse(responseId) {
     : "Reponse recue. Lis le questionnaire, puis ferme la mission.";
   const ref = await addDoc(collection(db, "tasks"), {
     coachId: responseCoachId,
-    clientId: response.clientId || "",
-    clientName: response.clientName || "Client a valider",
+    clientId: client.id,
+    clientName: client.name || response.clientName || "Client a valider",
     type: "questionnaire_followup",
     title,
     description,
@@ -10916,17 +11105,17 @@ async function createMissionFromQuestionnaireResponse(responseId) {
   });
   await logAction("task.created_from_questionnaire_response", "tasks", ref.id, {
     questionnaireResponseId: responseId,
-    clientId: response.clientId || "",
+    clientId: client.id,
     triageStatus: response.triageStatus || ""
   });
   showToast("Mission creee et reponse archivee.");
 }
 
 async function linkQuestionnaireResponseToClient(responseId, data) {
-  const response = state.data.questionnaireResponses.find((item) => item.id === responseId);
+  requireAdmin();
+  const response = questionnaireResponseForAdminLinking(responseId);
   if (!response) throw new Error("Reponse questionnaire introuvable.");
-  const client = state.data.clients.find((item) => item.id === data.clientId);
-  if (!client) throw new Error("Client introuvable.");
+  const client = requireSelectableClientForCoach(data.clientId);
   const note = String(data.note || "").trim();
   await patchEntity("questionnaireResponses", responseId, {
     clientId: client.id,
@@ -10949,7 +11138,8 @@ async function linkQuestionnaireResponseToClient(responseId, data) {
 }
 
 async function markQuestionnaireResponseRead(responseId, options = {}) {
-  const response = state.data.questionnaireResponses.find((item) => item.id === responseId);
+  const response = portfolioQuestionnaireResponses().find((item) => item.id === responseId);
+  if (!response) throw new Error("Reponse questionnaire introuvable dans le portefeuille confirme.");
   const responseCoachId = response?.coachId || state.selectedCoachId;
   await patchEntity("questionnaireResponses", responseId, {
     processingStatus: "read",
@@ -10964,7 +11154,7 @@ async function markQuestionnaireResponseRead(responseId, options = {}) {
     where("sourceResponseId", "==", responseId)
   ));
 
-  const coachTasks = relatedTasks.docs;
+  const coachTasks = relatedTasks.docs.filter((taskDoc) => operationalRecordHasSafeClientLink({ id: taskDoc.id, ...taskDoc.data() }));
 
   await Promise.all(coachTasks.map((taskDoc) => updateDoc(taskDoc.ref, {
     status: "done",
@@ -10983,7 +11173,8 @@ async function markQuestionnaireResponseRead(responseId, options = {}) {
 
 async function completeQuestionnaireTask(taskId, responseId = "") {
   if (!taskId) return;
-  const task = state.data.tasks.find((item) => item.id === taskId);
+  const task = operationalTaskById(taskId);
+  if (!task) throw new Error("Mission introuvable dans le portefeuille confirme.");
   const linkedResponseId = responseId || taskQuestionnaireResponseId(task);
   if (linkedResponseId) {
     await markQuestionnaireResponseRead(linkedResponseId, { silent: true });
@@ -11035,7 +11226,8 @@ async function updateAlumniStatus(id, status, toast) {
 
 async function completeTask(id, options = {}) {
   if (!id) return;
-  const task = state.data.tasks.find((item) => item.id === id);
+  const task = operationalTaskById(id);
+  if (!task) throw new Error("Mission introuvable dans le portefeuille confirme.");
   if (task?.source === "performance_rendement_reminder" && task.recurring === "weekly") {
     const nextDueAt = nextWeekdayIso(task.reminderWeekday || "monday");
     await patchEntity("tasks", id, {
@@ -11066,14 +11258,20 @@ async function completeTask(id, options = {}) {
   } catch (error) {
     if (optimisticTask && !state.data.tasks.some((item) => item.id === id)) {
       state.data.tasks = [...state.data.tasks, optimisticTask]
-        .filter(isOpenTask)
+        .filter(isOpenTaskLifecycle)
         .sort(sortTasks)
-        .slice(0, 100);
+        .slice(0, 300);
       primeTaskVoicePlaybackUrls(state.data.tasks);
       render();
     }
     throw error;
   }
+}
+
+async function ignoreOperationalTask(id) {
+  const task = operationalTaskById(id);
+  if (!task) throw new Error("Mission introuvable dans le portefeuille confirme.");
+  await patchEntity("tasks", task.id, { status: "ignored", ignoredAt: serverTimestamp() }, "Tache masquee");
 }
 
 async function archiveAlumni(id) {
@@ -11101,7 +11299,8 @@ async function patchEntity(collectionName, id, patch, toast) {
 }
 
 async function markRebookingCoachAbsence(id) {
-  const rebooking = findRebookingForCoachView(id) || {};
+  const rebooking = findRebookingForCoachView(id);
+  if (!rebooking) throw new Error("Rebooking introuvable dans le portefeuille confirme.");
   const note = window.prompt(
     `Pourquoi classer ${rebooking.clientName || "ce rebooking"} en absence coach?\n\n` +
     "Exemples: vacances du 10 au 17 juin, absence coach, fermeture exceptionnelle."
@@ -11114,7 +11313,8 @@ async function markRebookingCoachAbsence(id) {
 }
 
 async function completeRebookingWithNote(id, status) {
-  const rebooking = findRebookingForCoachView(id) || {};
+  const rebooking = findRebookingForCoachView(id);
+  if (!rebooking) throw new Error("Rebooking introuvable dans le portefeuille confirme.");
   const label = status === "rebooked" ? "seance rebookee" : "suivi fait";
   const promptText = status === "rebooked"
     ? `Note optionnelle pour ${rebooking.clientName || "ce client"}.\n\nEx.: rebooke mardi 18h, confirme par SMS.`
@@ -11154,6 +11354,7 @@ async function adjustRebookingSessions(id) {
   const note = window.prompt("Note optionnelle pour expliquer l'ajustement.", "");
   if (note === null) return;
   const targetIds = rebookingActionTargetIds(id);
+  if (!targetIds.length) throw new Error("Rebooking introuvable dans le portefeuille confirme.");
   const [primaryId, ...duplicateIds] = targetIds;
   await patchEntity("rebookings", primaryId, {
     sessionsToRebook: nextSessions,
@@ -11203,6 +11404,7 @@ async function transferRebookingCoach(id) {
   const confirmed = window.confirm(`Transferer ce rebooking vers ${targetCoach.name || targetCoach.id}?`);
   if (!confirmed) return;
   const targetIds = rebookingActionTargetIds(id);
+  if (!targetIds.length) throw new Error("Rebooking introuvable dans le portefeuille confirme.");
   await Promise.all(targetIds.map((targetId) => patchEntity("rebookings", targetId, {
     coachId: targetCoach.id,
     coachRxId: targetCoach.coachRxId || targetCoach.id,
@@ -11231,11 +11433,11 @@ async function transferRebookingCoach(id) {
 async function linkRebookingToClient(id, data) {
   const rebooking = findRebookingForCoachView(id);
   if (!rebooking) throw new Error("Rebooking introuvable.");
-  const client = state.data.clients.find((item) => item.id === data.clientId);
-  if (!client) throw new Error("Choisis un client du portefeuille.");
+  const client = requireSelectableClientForCoach(data.clientId);
   const phone = clientPhone(client);
   const note = String(data.note || "").trim();
   const targetIds = rebookingActionTargetIds(id);
+  if (!targetIds.length) throw new Error("Rebooking introuvable dans le portefeuille confirme.");
   await Promise.all(targetIds.map((targetId) => patchEntity("rebookings", targetId, {
     clientId: client.id,
     clientName: client.name || rebooking.clientName || "",
@@ -11301,7 +11503,7 @@ async function markRebookingAbsenceRange(data) {
   endOfDay.setHours(23, 59, 59, 999);
   const reason = String(data.reason || "").trim();
   if (!reason) throw new Error("Raison requise.");
-  const targets = state.data.rebookings
+  const targets = portfolioRebookings()
     .filter((item) => (item.status || "open") === "open")
     .filter((item) => {
       const eventTime = rebookingEventDate(item);
@@ -11333,6 +11535,7 @@ async function patchRebooking(id, status, toast, details = {}, options = {}) {
   const targetIds = rebookingActionTargetIds(id, {
     groupOpen: options.groupOpen !== false && status !== "open"
   });
+  if (!targetIds.length) throw new Error("Rebooking introuvable dans le portefeuille confirme.");
   const patch = {
     status,
     [`${status}At`]: serverTimestamp(),
@@ -11886,11 +12089,146 @@ function clientStatus(client) {
 }
 
 function isActiveClient(client) {
-  return !["removed", "archived", "alumni", "do_not_contact", "import_stale"].includes(clientStatus(client));
+  return ![
+    "removed",
+    "archived",
+    "alumni",
+    "do_not_contact",
+    "import_stale",
+    "ownership_quarantine",
+    "deleted"
+  ].includes(clientStatus(client));
+}
+
+function clientEntityType(client = {}) {
+  const value = String(client.entityType || "").trim().toLowerCase();
+  return ["member", "staff", "unknown"].includes(value) ? value : "unknown";
+}
+
+function clientOwnershipStatus(client = {}) {
+  const value = String(client.ownershipStatus || "").trim().toLowerCase();
+  return ["confirmed", "needs_review", "quarantined"].includes(value) ? value : "needs_review";
+}
+
+function clientIsSelectableForCoach(client = {}, coachId = state.selectedCoachId) {
+  return client.clientSelectable === true
+    && isActiveClient(client)
+    && clientEntityType(client) === "member"
+    && clientOwnershipStatus(client) === "confirmed"
+    && firestoreItemBelongsToCoach(client, coachId);
+}
+
+function selectableClientsForCoach(coachId = state.selectedCoachId, clients = state.data.clients) {
+  const ownedMembers = clients.filter((client) => clientIsSelectableForCoach(client, coachId));
+  return dedupeClients(ownedMembers)
+    .sort((a, b) => String(a.lastNameSort || a.name || "").localeCompare(String(b.lastNameSort || b.name || "")));
+}
+
+function selectableClientForCoach(clientId, coachId = state.selectedCoachId) {
+  const cleanClientId = String(clientId || "").trim();
+  if (!cleanClientId) return null;
+  return selectableClientsForCoach(coachId)
+    .find((client) => String(client.id || "") === cleanClientId)
+    || null;
+}
+
+function requireSelectableClientForCoach(clientId, coachId = state.selectedCoachId) {
+  const client = selectableClientForCoach(clientId, coachId);
+  if (!client) {
+    throw new Error("Ce client n'est pas un membre confirme du portefeuille actuel.");
+  }
+  return client;
 }
 
 function activeClients() {
-  return state.data.clients.filter(isActiveClient);
+  return selectableClientsForCoach();
+}
+
+function operationalRecordClientLinkStatus(record = {}, coachId = state.selectedCoachId) {
+  const clientId = String(record.clientId || "").trim();
+  if (clientId) {
+    return selectableClientForCoach(clientId, coachId) ? "confirmed" : "blocked";
+  }
+  return "unlinked";
+}
+
+function operationalRecordHasSafeClientLink(record = {}, coachId = state.selectedCoachId) {
+  return operationalRecordClientLinkStatus(record, coachId) !== "blocked";
+}
+
+function portfolioOperationalRecords(items = [], coachId = state.selectedCoachId, { allowUnlinked = true } = {}) {
+  return items.filter((item) => {
+    const linkStatus = operationalRecordClientLinkStatus(item, coachId);
+    return linkStatus === "confirmed" || (allowUnlinked && linkStatus === "unlinked");
+  });
+}
+
+function operationalTaskById(taskId) {
+  const cleanTaskId = String(taskId || "").trim();
+  if (!cleanTaskId) return null;
+  return state.data.tasks.find((item) => String(item.id || "") === cleanTaskId && operationalRecordHasSafeClientLink(item)) || null;
+}
+
+function portfolioQuestionnaireResponses() {
+  return portfolioOperationalRecords(state.data.questionnaireResponses || [], state.selectedCoachId, { allowUnlinked: false });
+}
+
+function questionnaireResponsesForAdminReview() {
+  if (!isInfoAdmin()) return [];
+  return (state.data.questionnaireResponses || [])
+    .filter((item) => operationalRecordClientLinkStatus(item) === "unlinked");
+}
+
+function questionnaireResponseForAdminLinking(responseId) {
+  if (!isInfoAdmin()) return null;
+  const cleanResponseId = String(responseId || "").trim();
+  if (!cleanResponseId) return null;
+  return uniqueById([
+    ...questionnaireResponsesForAdminReview(),
+    ...portfolioQuestionnaireResponses().filter((item) => (item.processingStatus || "") === "unmatched")
+  ]).find((item) => String(item.id || "") === cleanResponseId) || null;
+}
+
+function portfolioQuestionnaireSends() {
+  return portfolioOperationalRecords(state.data.questionnaireSends || [], state.selectedCoachId, { allowUnlinked: false });
+}
+
+function portfolioQuestionnaireSchedules() {
+  return portfolioOperationalRecords(state.data.questionnaireSchedules || [], state.selectedCoachId, { allowUnlinked: false });
+}
+
+function portfolioRebookings() {
+  return portfolioOperationalRecords(state.data.rebookings || []);
+}
+
+function portfolioCheckups() {
+  return portfolioOperationalRecords(state.data.checkups || []);
+}
+
+function portfolioImpacts() {
+  return portfolioOperationalRecords(state.data.impacts || []);
+}
+
+function blockedOperationalRecordsByCollection() {
+  const collections = {
+    tasks: state.data.tasks || [],
+    questionnaireResponses: state.data.questionnaireResponses || [],
+    questionnaireSends: state.data.questionnaireSends || [],
+    questionnaireSchedules: state.data.questionnaireSchedules || [],
+    rebookings: state.data.rebookings || [],
+    checkups: state.data.checkups || [],
+    impacts: state.data.impacts || []
+  };
+  return Object.entries(collections)
+    .map(([collectionName, items]) => ({
+      collectionName,
+      count: items.filter((item) => {
+        const linkStatus = operationalRecordClientLinkStatus(item);
+        const requiresConfirmedLink = ["questionnaireResponses", "questionnaireSends", "questionnaireSchedules"].includes(collectionName);
+        return linkStatus === "blocked" || (requiresConfirmedLink && linkStatus === "unlinked");
+      }).length
+    }))
+    .filter((item) => item.count > 0);
 }
 
 function clientPhone(client) {
@@ -11932,12 +12270,13 @@ function questionnaireSendDate(send) {
   return dateValue(send?.sentAt || send?.preparedAt || send?.createdAt);
 }
 
-function questionnaireSendHasResponse(send, responses = state.data.questionnaireResponses) {
-  const phone = questionnaireSendPhone(send);
-  if (!phone) return false;
+function questionnaireSendHasResponse(send, responses = portfolioQuestionnaireResponses()) {
+  const sendClientId = String(send?.clientId || "").trim();
+  if (!sendClientId) return false;
   const sentAt = questionnaireSendDate(send);
-  return responses.some((response) => {
-    if (questionnaireResponsePhone(response) !== phone) return false;
+  return portfolioOperationalRecords(responses, state.selectedCoachId, { allowUnlinked: false }).some((response) => {
+    const responseClientId = String(response?.clientId || "").trim();
+    if (!responseClientId || responseClientId !== sendClientId) return false;
     const submittedAt = dateValue(response.submittedAt || response.receivedAt || response.createdAt);
     if (!sentAt || !submittedAt) return true;
     return submittedAt >= sentAt;
@@ -12142,13 +12481,13 @@ function activeCoachRecord() {
 }
 
 function latestSendForClient(clientId) {
-  return state.data.questionnaireSends
+  return portfolioQuestionnaireSends()
     .filter((send) => send.clientId === clientId)
     .sort((a, b) => questionnaireSendDate(b) - questionnaireSendDate(a))[0];
 }
 
 function schedulesForClient(clientId) {
-  return state.data.questionnaireSchedules
+  return portfolioQuestionnaireSchedules()
     .filter((schedule) => schedule.clientId === clientId)
     .sort((a, b) => questionnaireTypeLabel(a.questionnaireType).localeCompare(questionnaireTypeLabel(b.questionnaireType)));
 }
@@ -12853,6 +13192,10 @@ function alumniStatusOptions(current) {
 }
 
 function isOpenTask(task) {
+  return isOpenTaskLifecycle(task) && operationalRecordHasSafeClientLink(task);
+}
+
+function isOpenTaskLifecycle(task) {
   if (!task || task.sourceStale === true) return false;
   if (isNonActionableLegacyTask(task)) return false;
   if (task.archivedAt || task.completedAt || task.ignoredAt) return false;

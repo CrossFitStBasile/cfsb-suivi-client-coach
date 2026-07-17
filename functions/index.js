@@ -113,6 +113,44 @@ const PILOT_COACHES = [
   { id: "15936", coachRxId: "15936", name: "Raphael Samson", email: "raphael.samson@usherbrooke.ca", aliases: ["Raphael Samson", "Raphaël Samson"] }
 ];
 
+// Client ownership is a security boundary: an imported roster must never be
+// assigned to a coach from a weak name guess or an unverified browser payload.
+const CLIENT_OWNERSHIP_LOCK_PATH = "systemLocks/clientOwnershipSync";
+const CLIENT_IDENTITY_IMPORT_SOURCES = new Set([
+  "coachrx_clients",
+  "client_directory",
+  "client_enrichment",
+  "ghl_contacts"
+]);
+const STRICT_COACH_NAME_ALIASES = [
+  "coach",
+  "coach name",
+  "coach_name",
+  "coach email",
+  "coach_email",
+  "nom coach",
+  "nom du coach",
+  "entraineur",
+  "trainer",
+  "assigned coach",
+  "coach assigne",
+  "coach assigné",
+  "primary coach",
+  "owner",
+  "coachrx coach"
+];
+const SOURCE_PATH_ALIASES = [
+  "source path",
+  "source_path",
+  "source url",
+  "source_url",
+  "coach url",
+  "coachrx url",
+  "dashboard url",
+  "url",
+  "path"
+];
+
 const PILOT_COACH_ALIAS_PATCHES = {
   "15935": ["Marc-Andr\u00e9 M\u00e9nard", "Marc Andre Menard", "Marc-Andre", "Marc-Andr\u00e9"],
   "15928": ["Iheb"],
@@ -526,6 +564,9 @@ async function handleSaveVoiceMission(request) {
       if (cleanString(client.coachId) !== coachId) {
         throw new HttpsError("failed-precondition", "Le client et la mission ne sont pas dans le meme portefeuille coach.");
       }
+      if (!clientRecordAvailableForMatching(client)) {
+        throw new HttpsError("failed-precondition", "Ce client est en validation d'appartenance et ne peut pas recevoir de mission.");
+      }
     }
 
     if (operation === "create" && taskType === "rebooking") {
@@ -814,6 +855,9 @@ exports.sendQuestionnaire = onCall(
 
     const profile = profileSnap.data();
     const client = clientSnap.data();
+    if (!clientRecordAvailableForMatching(client)) {
+      throw new HttpsError("failed-precondition", "Ce client est en validation d'appartenance et ne peut pas recevoir de questionnaire.");
+    }
     const coachId = cleanString(client.coachId);
     const coachSnap = coachId ? await db.doc(`coaches/${coachId}`).get() : null;
     const pilotCoach = PILOT_COACHES.find((coach) => coach.id === coachId || coach.coachRxId === coachId);
@@ -988,6 +1032,14 @@ async function processQuestionnaireSendFromQueue({ sendRef, send }) {
   }
 
   const client = clientSnap.data() || {};
+  if (!clientRecordAvailableForMatching(client)) {
+    await markSend(sendRef, {
+      status: "error",
+      deliveryStatus: "client_ownership_blocked",
+      errorMessage: "Client en validation d'appartenance; envoi questionnaire bloque."
+    });
+    return;
+  }
   const coachId = cleanString(client.coachId);
   const requestedCoachId = cleanString(send.coachId);
   if (requestedCoachId && requestedCoachId !== coachId) {
@@ -1363,6 +1415,15 @@ exports.processAssistantVoiceRequest = onDocumentCreated(
       ) {
         throw new Error("assistant_voice_context_invalid");
       }
+      if (cleanString(payload.contextType) === "client") {
+        const clientSnap = await db.doc(`clients/${contextEntityId}`).get();
+        const client = clientSnap.exists ? clientSnap.data() || {} : {};
+        if (!clientSnap.exists
+          || cleanString(client.coachId || client.coachRxId) !== targetCoachId
+          || !clientRecordAvailableForMatching(client)) {
+          throw new Error("assistant_voice_context_client_blocked");
+        }
+      }
       const durationSeconds = Math.round(Number(payload.durationSeconds || 0));
       if (durationSeconds < 1 || durationSeconds > VOICE_NOTE_MAX_SECONDS) {
         throw new Error("assistant_voice_duration_invalid");
@@ -1525,10 +1586,11 @@ exports.processAssistantRequest = onDocumentCreated(
         loadExistingRecordsByCoach("rebookings", coach),
         db.collection("performanceSettings").doc(coach.id).get()
       ]);
+      const selectableClients = clients.filter((client) => clientRecordAvailableForMatching(client.data));
       const context = buildReadOnlyAssistantContext({
         coach,
         tasks,
-        clients,
+        clients: selectableClients,
         questionnaireResponses,
         rebookings,
         performanceSettings: performanceSnap.exists ? performanceSnap.data() : {}
@@ -1797,6 +1859,7 @@ exports.processAssistantActionRequest = onDocumentCreated(
         const clients = await loadExistingRecordsByCoach("clients", coach);
         const clientRecord = clients.find((item) => item.id === confirmed.clientId);
         if (!clientRecord) throw new Error("assistant_task_client_not_in_coach");
+        if (!clientRecordAvailableForMatching(clientRecord.data)) throw new Error("assistant_task_client_ownership_blocked");
         clientName = cleanString(clientRecord.data?.name || clientRecord.data?.clientName).slice(0, 180);
       }
 
@@ -2179,7 +2242,8 @@ async function processQueuedSourceImportRequest({ requestId, requestRef, payload
     }
 
     const coaches = await loadCoachDirectory();
-    const coach = resolveCoachForImport(payload, records, coaches);
+    const importContext = await resolveValidatedImportContext({ sourceType, payload, records, coaches });
+    const coach = importContext.coach;
     if (!coach && importSourceRequiresCoach(sourceType)) {
       throw new Error("Coach non reconnu. Fournis coachId, coachRxId, teamId ou coachName.");
     }
@@ -2189,7 +2253,8 @@ async function processQueuedSourceImportRequest({ requestId, requestRef, payload
       records,
       coach,
       runId: runRef.id,
-      requestedBy
+      requestedBy,
+      ownershipContext: importContext.ownershipContext
     });
 
     await runRef.set({
@@ -2306,7 +2371,8 @@ exports.ingestDashboardSource = onRequest(
       }
 
       const coaches = await loadCoachDirectory();
-      const coach = resolveCoachForImport(payload, records, coaches);
+      const importContext = await resolveValidatedImportContext({ sourceType, payload, records, coaches });
+      const coach = importContext.coach;
       if (!coach && importSourceRequiresCoach(sourceType)) {
         throw new Error("Coach non reconnu. Fournis coachId, coachRxId, teamId ou coachName.");
       }
@@ -2316,7 +2382,8 @@ exports.ingestDashboardSource = onRequest(
         records,
         coach,
         runId: runRef.id,
-        requestedBy
+        requestedBy,
+        ownershipContext: importContext.ownershipContext
       });
 
       await runRef.set({
@@ -2360,6 +2427,12 @@ async function runDashboardSheetsSync({
   triggeredByEventId = ""
 } = {}) {
   const startedAt = admin.firestore.Timestamp.now();
+  const ownershipLock = await readClientOwnershipSyncLock();
+  const questionnaireOnlyWhileLocked = ownershipLock.active
+    && source === "firebase_function_questionnaire_response_sync_scheduled";
+  if (ownershipLock.active && !questionnaireOnlyWhileLocked) {
+    throw new HttpsError("failed-precondition", clientOwnershipLockMessage(ownershipLock));
+  }
   const triggeredBy = request?.auth?.uid
     ? "manual_admin"
     : triggeredByEventId
@@ -2440,6 +2513,12 @@ async function runDashboardSheetsSync({
     alumniRows,
     impactRows
   });
+  const ownershipClaims = questionnaireOnlyWhileLocked
+    ? new Map()
+    : mergeClientOwnershipClaims(
+        await loadFirestoreClientOwnershipClaims(),
+        buildSheetRosterOwnershipClaims(browserRows, coaches)
+      );
 
   const results = [];
   for (const coach of selectedCoaches) {
@@ -2454,7 +2533,10 @@ async function runDashboardSheetsSync({
         rebookingRows,
         checkupRows,
         alumniRows,
-        impactRows
+        impactRows,
+        questionnaireOnly: questionnaireOnlyWhileLocked,
+        ownershipClaims,
+        coachDirectory: coaches
       });
       await writeCoachSyncStatus({ result, request, source, triggeredBy });
       results.push(result);
@@ -2515,7 +2597,8 @@ async function runDashboardSheetsSync({
       finishedAt,
       createdAt: startedAt,
       completedAt: finishedAt,
-      source
+      source,
+      clientOwnershipLock: ownershipLock.active ? ownershipLock.summary : null
     });
   } catch (error) {
     const message = cleanString(error?.message || error || "Erreur inconnue pendant l'ecriture syncRuns.");
@@ -2544,6 +2627,7 @@ async function runDashboardSheetsSync({
     warnings,
     triggeredBy,
     source,
+    clientOwnershipLock: ownershipLock.active ? ownershipLock.summary : null,
     message: "Synchronisation Google Sheets vers Firestore terminee."
   };
 }
@@ -2694,6 +2778,164 @@ function importSourceRequiresCoach(sourceType) {
   ].includes(sourceType);
 }
 
+function clientIdentityImportSource(sourceType) {
+  return CLIENT_IDENTITY_IMPORT_SOURCES.has(cleanString(sourceType));
+}
+
+async function readClientOwnershipSyncLock() {
+  const snap = await db.doc(CLIENT_OWNERSHIP_LOCK_PATH).get();
+  if (!snap.exists) return { active: false, summary: null };
+  const data = snap.data() || {};
+  const expiresMillis = typeof data.expiresAt?.toMillis === "function"
+    ? data.expiresAt.toMillis()
+    : Date.parse(cleanString(data.expiresAt));
+  const active = data.active === true && (!Number.isFinite(expiresMillis) || expiresMillis > Date.now());
+  const summary = {
+    repairId: cleanString(data.repairId),
+    reason: cleanString(data.reason).slice(0, 240),
+    expiresAt: Number.isFinite(expiresMillis) ? new Date(expiresMillis).toISOString() : ""
+  };
+  return { active, summary };
+}
+
+function clientOwnershipLockMessage(lock = {}) {
+  const repairId = cleanString(lock.summary?.repairId);
+  return `Synchronisation des identites clients verrouillee pendant la reparation d'appartenance${repairId ? ` (${repairId})` : ""}.`;
+}
+
+async function resolveValidatedImportContext({ sourceType, payload = {}, records = [], coaches = [] }) {
+  if (!clientIdentityImportSource(sourceType)) {
+    return {
+      coach: resolveCoachForImport(payload, records, coaches),
+      ownershipContext: null
+    };
+  }
+
+  const ownershipLock = await readClientOwnershipSyncLock();
+  if (ownershipLock.active) throw new Error(clientOwnershipLockMessage(ownershipLock));
+
+  const explicitIdValues = [payload.coachId, payload.coachRxId, payload.teamId, payload.coachTeamId]
+    .map(cleanString)
+    .filter(Boolean);
+  if (!explicitIdValues.length) {
+    throw new Error("Import client refuse: coachId/coachRxId/teamId explicite requis; aucun choix par nom n'est permis.");
+  }
+  const explicitCoaches = uniqueCoachesFromIdSignals(explicitIdValues, coaches);
+  if (explicitCoaches.unknown.length) {
+    throw new Error("Import client refuse: un identifiant coach explicite n'est pas reconnu.");
+  }
+  if (explicitCoaches.matches.length !== 1) {
+    throw new Error("Import client refuse: les identifiants coach du payload sont contradictoires.");
+  }
+  const coach = explicitCoaches.matches[0];
+
+  const sourcePath = firstUsefulValue(payload, [
+    "sourcePath", "source_path", "sourceUrl", "source_url", "coachUrl", "coachRxUrl", "url", "path"
+  ]);
+  const sourcePathCoachId = parseCoachIdFromSourcePath(sourcePath);
+  if (sourceType === "coachrx_clients" && !sourcePathCoachId) {
+    throw new Error("Import CoachRx refuse: sourcePath doit prouver /team/{coachId}/clients ou /api/v1/coaches/{coachId}/clients.json.");
+  }
+  if (sourcePathCoachId && !valuesMatchCoachId(sourcePathCoachId, coach)) {
+    throw new Error("Import client refuse: sourcePath et coachId du payload ne correspondent pas.");
+  }
+
+  const explicitName = cleanString(payload.coachName || payload.coach || payload.trainer || payload.owner);
+  if (explicitName) {
+    const nameMatches = coachesMatchingExactName(explicitName, coaches);
+    if (nameMatches.length !== 1 || nameMatches[0].id !== coach.id) {
+      throw new Error("Import client refuse: coachName est ambigu ou ne correspond pas au coachId.");
+    }
+  }
+
+  records.forEach((row, index) => validateImportRowCoachEvidence({
+    row,
+    index,
+    coach,
+    coaches,
+    requireEvidence: sourceType === "coachrx_clients"
+  }));
+  return {
+    coach,
+    ownershipContext: {
+      envelopeValidated: true,
+      sourceCoachId: coach.id,
+      sourceCoachPath: sourcePath,
+      sourcePathCoachId: sourcePathCoachId || "",
+      sourceSystem: sourceType === "coachrx_clients"
+        ? "coachrx"
+        : sourceType === "ghl_contacts"
+          ? "ghl"
+          : "client_directory",
+      payloadCoachIdFields: explicitIdValues.length,
+      rowsValidated: records.length
+    }
+  };
+}
+
+function firstUsefulValue(object = {}, aliases = []) {
+  for (const alias of aliases) {
+    const direct = cleanString(object?.[alias]);
+    if (direct) return direct;
+    const normalized = cleanString(object?.[keyOf(alias)]);
+    if (normalized) return normalized;
+  }
+  return "";
+}
+
+function parseCoachIdFromSourcePath(value) {
+  const text = cleanString(value);
+  if (!text) return "";
+  const match = text.match(/\/(?:team|api\/v1\/coaches)\/(\d+)\/(?:clients(?:\.json)?)(?:[/?#]|$)/i);
+  return cleanString(match?.[1]);
+}
+
+function uniqueCoachesFromIdSignals(values = [], coaches = []) {
+  const matches = new Map();
+  const unknown = [];
+  values.forEach((value) => {
+    const pathId = parseCoachIdFromSourcePath(value);
+    const candidate = pathId || cleanString(value);
+    const coach = coaches.find((item) => valuesMatchCoachId(candidate, item));
+    if (coach) matches.set(coach.id, coach);
+    else unknown.push(candidate);
+  });
+  return { matches: [...matches.values()], unknown };
+}
+
+function coachesMatchingExactName(value, coaches = []) {
+  const normalized = normalizeComparable(value);
+  if (!normalized) return [];
+  return coaches.filter((coach) => {
+    const names = [coach.name, coach.email, ...(Array.isArray(coach.aliases) ? coach.aliases : [])];
+    return names.some((name) => normalizeComparable(name) === normalized);
+  });
+}
+
+function rowAliasValues(row = {}, aliases = []) {
+  return aliases.map((alias) => cleanString(row[keyOf(alias)])).filter(Boolean);
+}
+
+function validateImportRowCoachEvidence({ row, index, coach, coaches, requireEvidence = false }) {
+  const idSignals = rowAliasValues(row, COACH_ID_ALIASES);
+  const pathSignals = rowAliasValues(row, SOURCE_PATH_ALIASES);
+  const pathIds = pathSignals.map(parseCoachIdFromSourcePath).filter(Boolean);
+  const idResolution = uniqueCoachesFromIdSignals([...idSignals, ...pathIds], coaches);
+  if (idResolution.unknown.length || idResolution.matches.some((match) => match.id !== coach.id)) {
+    throw new Error(`Import client refuse: ligne ${index + 1}, identifiant/path coach contradictoire.`);
+  }
+
+  const nameSignals = rowAliasValues(row, STRICT_COACH_NAME_ALIASES);
+  const nameMatches = new Map();
+  nameSignals.forEach((value) => coachesMatchingExactName(value, coaches).forEach((match) => nameMatches.set(match.id, match)));
+  if (requireEvidence && idResolution.matches.length === 0 && nameMatches.size === 0) {
+    throw new Error(`Import CoachRx refuse: ligne ${index + 1}, preuve coach explicite requise.`);
+  }
+  if ([...nameMatches.values()].some((match) => match.id !== coach.id)) {
+    throw new Error(`Import client refuse: ligne ${index + 1}, nom de coach contradictoire.`);
+  }
+}
+
 function resolveCoachForImport(payload = {}, records = [], coaches = []) {
   const explicit = cleanString(payload.coachId || payload.coachRxId || payload.teamId || payload.coachTeamId);
   if (explicit) {
@@ -2720,7 +2962,7 @@ function resolveCoachForImport(payload = {}, records = [], coaches = []) {
   return null;
 }
 
-async function processDirectImport({ sourceType, records, coach, runId, requestedBy }) {
+async function processDirectImport({ sourceType, records, coach, runId, requestedBy, ownershipContext = null }) {
   if (sourceType === "coachrx_clients") {
     return processDirectClientImport({
       sourceType,
@@ -2729,7 +2971,8 @@ async function processDirectImport({ sourceType, records, coach, runId, requeste
       coreRows: [],
       browserRows: records,
       runId,
-      requestedBy
+      requestedBy,
+      ownershipContext
     });
   }
   if (sourceType === "client_directory" || sourceType === "ghl_contacts") {
@@ -2740,7 +2983,8 @@ async function processDirectImport({ sourceType, records, coach, runId, requeste
       coreRows: records,
       browserRows: [],
       runId,
-      requestedBy
+      requestedBy,
+      ownershipContext
     });
   }
   if (sourceType === "client_enrichment") {
@@ -2764,8 +3008,11 @@ async function processDirectImport({ sourceType, records, coach, runId, requeste
   };
 }
 
-async function processDirectClientImport({ sourceType, sourceLabel, coach, coreRows, browserRows, runId, requestedBy }) {
-  const existingClients = await loadExistingDocsByCoach("clients", coach);
+async function processDirectClientImport({ sourceType, sourceLabel, coach, coreRows, browserRows, runId, requestedBy, ownershipContext = null }) {
+  const [existingClients, ownershipClaims] = await Promise.all([
+    loadExistingDocsByCoach("clients", coach),
+    loadFirestoreClientOwnershipClaims()
+  ]);
   const isGhlContacts = sourceType === "ghl_contacts";
   const records = isGhlContacts
     ? buildGhlContactEnrichmentRecords({
@@ -2777,7 +3024,9 @@ async function processDirectClientImport({ sourceType, sourceLabel, coach, coreR
         coach,
         coreRows,
         browserRows,
-        existingById: existingClients
+        existingById: existingClients,
+        ownershipContext,
+        ownershipClaims
       });
   const diagnostics = records.__diagnostics || {};
   const written = await writeImportRecords({
@@ -2789,10 +3038,18 @@ async function processDirectClientImport({ sourceType, sourceLabel, coach, coreR
     extraData: {
       directSourceType: sourceType,
       lastDirectEnrichmentSource: isGhlContacts ? "direct_ghl_contacts" : "",
+      sourceCoachId: ownershipContext?.sourceCoachId || coach.id,
+      sourceCoachPath: ownershipContext?.sourceCoachPath || "",
+      ownershipEnvelopeValidated: ownershipContext?.envelopeValidated === true,
       updatedFromDirectImportAt: admin.firestore.FieldValue.serverTimestamp()
     }
   });
-  const staleSourceCandidates = directClientStaleCandidateSources(sourceType);
+  const ownershipQuarantined = Number(diagnostics.ownership?.conflicts || 0)
+    + Number(diagnostics.ownership?.needsReview || 0)
+    + Number(diagnostics.ownership?.staffExcluded || 0);
+  const staleSourceCandidates = ownershipQuarantined
+    ? new Set()
+    : directClientStaleCandidateSources(sourceType);
   const staleClients = staleSourceCandidates.size
     ? collectStaleImportedMapDocs({
         existingById: existingClients,
@@ -2808,7 +3065,7 @@ async function processDirectClientImport({ sourceType, sourceLabel, coach, coreR
   });
   const missingPhone = records.filter((record) => !clientPhone(record.data)).length;
   const result = {
-    status: missingPhone ? "warning" : "done",
+    status: missingPhone || ownershipQuarantined ? "warning" : "done",
     coachId: coach.id,
     coachName: coach.name,
     sourceType,
@@ -2827,10 +3084,14 @@ async function processDirectClientImport({ sourceType, sourceLabel, coach, coreR
         skippedInvalidNameSamples: Array.isArray(diagnostics.skippedInvalidNameSamples)
           ? diagnostics.skippedInvalidNameSamples.slice(0, 8)
           : [],
+        ownership: diagnostics.ownership || null,
         ghlContacts: diagnostics.ghlContacts || null
       }
     },
-    warnings: missingPhone ? [`${missingPhone} client(s) importe(s) sans telephone.`] : []
+    warnings: [
+      ...(missingPhone ? [`${missingPhone} client(s) importe(s) sans telephone.`] : []),
+      ...(ownershipQuarantined ? [`${ownershipQuarantined} fiche(s) placee(s) en quarantaine d'appartenance; nettoyage stale suspendu.`] : [])
+    ]
   };
   if (isGhlContacts) {
     const ghl = diagnostics.ghlContacts || {};
@@ -3126,6 +3387,221 @@ async function loadExistingDocsByCoach(collectionName, coachOrId) {
 async function loadExistingRecordsByCoach(collectionName, coachOrId) {
   return (await queryDocSnapsByCoach(collectionName, coachOrId))
     .map((docSnap) => ({ id: docSnap.id, data: docSnap.data() }));
+}
+
+function clientRecordAvailableForMatching(data = {}) {
+  if (cleanString(data.entityType) !== "member") return false;
+  if (cleanString(data.ownershipStatus) !== "confirmed") return false;
+  if (data.clientSelectable !== true) return false;
+  if ([
+    "removed",
+    "archived",
+    "alumni",
+    "do_not_contact",
+    "import_stale",
+    "ownership_quarantine",
+    "deleted"
+  ].includes(cleanString(data.status))) return false;
+  return true;
+}
+
+function sourceIdentitySystem(data = {}, fallback = "") {
+  const explicit = keyOf(data.sourceIdentitySystem || data.sourceSystem || fallback);
+  if (explicit) return explicit;
+  const source = keyOf(data.directSourceType || data.source || "");
+  if (source.includes("coachrx")) return "coachrx";
+  if (source.includes("ghl") || source.includes("gohighlevel")) return "ghl";
+  if (source.includes("coreclient") || source.includes("clientdirectory")) return "client_directory";
+  return "";
+}
+
+function clientIdentityKeys({ phone = "", sourceClientId = "", sourceSystem = "" } = {}) {
+  const keys = [];
+  const normalizedPhone = normalizePhone(phone);
+  const normalizedSourceId = cleanString(sourceClientId);
+  const normalizedSourceSystem = keyOf(sourceSystem);
+  if (normalizedPhone) keys.push(`phone:${normalizedPhone}`);
+  if (normalizedSourceId && normalizedSourceSystem) keys.push(`source:${normalizedSourceSystem}:${normalizedSourceId}`);
+  return keys;
+}
+
+function addClientOwnershipClaim(claims, coachId, identity = {}) {
+  const cleanCoachId = cleanString(coachId);
+  if (!cleanCoachId) return;
+  clientIdentityKeys(identity).forEach((key) => {
+    if (!claims.has(key)) claims.set(key, new Set());
+    claims.get(key).add(cleanCoachId);
+  });
+}
+
+function mergeClientOwnershipClaims(...claimMaps) {
+  const merged = new Map();
+  claimMaps.forEach((claims) => {
+    (claims || new Map()).forEach((coachIds, key) => {
+      if (!merged.has(key)) merged.set(key, new Set());
+      coachIds.forEach((coachId) => merged.get(key).add(coachId));
+    });
+  });
+  return merged;
+}
+
+async function loadFirestoreClientOwnershipClaims() {
+  const claims = new Map();
+  const snap = await db.collection("clients").get();
+  snap.forEach((docSnap) => {
+    const data = docSnap.data() || {};
+    if (!clientRecordAvailableForMatching(data)) return;
+    addClientOwnershipClaim(claims, data.coachId || data.coachRxId, {
+      name: data.name || data.clientName,
+      phone: clientPhone(data),
+      sourceClientId: data.sourceClientId || data.clientId || data.contactId,
+      sourceSystem: sourceIdentitySystem(data)
+    });
+  });
+  return claims;
+}
+
+function strictRowCoachEvidence(row = {}, coaches = PILOT_COACHES) {
+  const idSignals = rowAliasValues(row, COACH_ID_ALIASES);
+  const pathIds = rowAliasValues(row, SOURCE_PATH_ALIASES).map(parseCoachIdFromSourcePath).filter(Boolean);
+  const idResolution = uniqueCoachesFromIdSignals([...idSignals, ...pathIds], coaches);
+  const nameMatches = new Map();
+  rowAliasValues(row, STRICT_COACH_NAME_ALIASES).forEach((value) => {
+    coachesMatchingExactName(value, coaches).forEach((match) => nameMatches.set(match.id, match));
+  });
+  const resolvedIds = new Set([
+    ...idResolution.matches.map((match) => match.id),
+    ...nameMatches.keys()
+  ]);
+  const conflict = idResolution.unknown.length > 0 || resolvedIds.size > 1;
+  const coachId = idResolution.matches[0]?.id || [...nameMatches.keys()][0] || "";
+  return {
+    coachId,
+    conflict,
+    evidence: [
+      idSignals.length ? "row_coach_id" : "",
+      pathIds.length ? "row_source_path" : "",
+      nameMatches.size ? "row_coach_name_exact" : ""
+    ].filter(Boolean)
+  };
+}
+
+function buildSheetRosterOwnershipClaims(rows = [], coaches = PILOT_COACHES) {
+  const claims = new Map();
+  rows.forEach((row) => {
+    const evidence = strictRowCoachEvidence(row, coaches);
+    if (!evidence.coachId || evidence.conflict) return;
+    addClientOwnershipClaim(claims, evidence.coachId, {
+      name: clientNameFromRow(row),
+      phone: pick(row, PHONE_ALIASES),
+      sourceClientId: pick(row, CLIENT_ID_ALIASES),
+      sourceSystem: "coachrx"
+    });
+  });
+  return claims;
+}
+
+function conflictingClaimCoachIds(claims = new Map(), coachId, identity = {}) {
+  const conflicts = new Set();
+  clientIdentityKeys(identity).forEach((key) => {
+    (claims.get(key) || new Set()).forEach((claimedCoachId) => {
+      if (cleanString(claimedCoachId) !== cleanString(coachId)) conflicts.add(cleanString(claimedCoachId));
+    });
+  });
+  return [...conflicts].sort();
+}
+
+function staffStrongIdentityMatch({ email = "", sourceClientId = "", sourceSystem = "" } = {}) {
+  const normalizedEmail = cleanString(email).toLowerCase();
+  const cleanSourceId = cleanString(sourceClientId);
+  const normalizedSystem = keyOf(sourceSystem);
+  return PILOT_COACHES.find((coach) => {
+    if (normalizedEmail && normalizedEmail === cleanString(coach.email).toLowerCase()) return true;
+    return normalizedSystem === "coachrx" && cleanSourceId && coachIdCandidates(coach).includes(cleanSourceId);
+  }) || null;
+}
+
+function staffNameCandidate(name = "") {
+  const normalizedName = normalizeComparable(name);
+  if (!normalizedName) return null;
+  return PILOT_COACHES.find((coach) => coachAliasValues(coach)
+    .some((alias) => normalizeComparable(alias) === normalizedName)) || null;
+}
+
+function classifyClientOwnership({ row, coach, source, phoneNormalized, sourceClientId, email, ownershipContext, ownershipClaims }) {
+  const name = clientNameFromRow(row);
+  const identitySystem = source === "coachrx"
+    ? "coachrx"
+    : sourceIdentitySystem({}, ownershipContext?.sourceSystem || (source === "core" ? "client_directory" : ""));
+  const staffCoach = staffStrongIdentityMatch({ email, sourceClientId, sourceSystem: identitySystem });
+  const staffCandidate = staffNameCandidate(name);
+  const rowEvidence = strictRowCoachEvidence(row);
+  const conflictCoachIds = conflictingClaimCoachIds(ownershipClaims, coach.id, {
+    name,
+    phone: phoneNormalized,
+    sourceClientId,
+    sourceSystem: identitySystem
+  });
+  if (rowEvidence.coachId && rowEvidence.coachId !== coach.id && !conflictCoachIds.includes(rowEvidence.coachId)) {
+    conflictCoachIds.push(rowEvidence.coachId);
+  }
+
+  if (staffCoach) {
+    return {
+      entityType: "staff",
+      ownershipStatus: "excluded_staff",
+      clientSelectable: false,
+      sourceIdentitySystem: identitySystem,
+      conflictCoachIds: [],
+      evidence: [`staff:${staffCoach.id}`],
+      recommendedAdminAction: "Exclure cette fiche du repertoire clients; elle correspond a un membre du personnel."
+    };
+  }
+  if (staffCandidate) {
+    return {
+      entityType: "unknown",
+      ownershipStatus: "needs_review",
+      clientSelectable: false,
+      sourceIdentitySystem: identitySystem,
+      conflictCoachIds: [],
+      evidence: [`staff_name_candidate:${staffCandidate.id}`],
+      recommendedAdminAction: "Nom identique a un coach: confirmer avec courriel officiel ou ID CoachRx avant classification staff."
+    };
+  }
+  if (rowEvidence.conflict || conflictCoachIds.length) {
+    return {
+      entityType: "unknown",
+      ownershipStatus: "conflict",
+      clientSelectable: false,
+      sourceIdentitySystem: identitySystem,
+      conflictCoachIds: [...new Set(conflictCoachIds)].sort(),
+      evidence: [...rowEvidence.evidence, "cross_coach_identity_collision"],
+      recommendedAdminAction: "Verifier l'appartenance dans CoachRx; aucune attribution automatique n'a ete faite."
+    };
+  }
+
+  const envelopeConfirmed = ownershipContext?.envelopeValidated === true
+    && cleanString(ownershipContext.sourceCoachId) === cleanString(coach.id);
+  const rowConfirmed = rowEvidence.coachId === coach.id && !rowEvidence.conflict;
+  const strongClientIdentity = Boolean(phoneNormalized || (sourceClientId && identitySystem));
+  const confirmed = (envelopeConfirmed || rowConfirmed) && strongClientIdentity;
+  return {
+    entityType: "member",
+    ownershipStatus: confirmed ? "confirmed" : "needs_review",
+    clientSelectable: confirmed,
+    sourceIdentitySystem: identitySystem,
+    conflictCoachIds: [],
+    evidence: [
+      ...(rowEvidence.evidence || []),
+      envelopeConfirmed ? "validated_envelope" : "",
+      phoneNormalized ? "phone" : "",
+      sourceClientId ? "source_client_id" : "",
+      strongClientIdentity ? "strong_client_identity" : ""
+    ].filter(Boolean),
+    recommendedAdminAction: confirmed
+      ? "Appartenance confirmee par des signaux concordants."
+      : "Valider l'identite et l'appartenance avant de rendre ce client selectionnable."
+  };
 }
 
 function coachFirestoreCriteria(coachOrId) {
@@ -3483,10 +3959,14 @@ async function syncCoachFromRows({
   rebookingRows = [],
   checkupRows = [],
   alumniRows = [],
-  impactRows = []
+  impactRows = [],
+  questionnaireOnly = false,
+  ownershipClaims = new Map(),
+  coachDirectory = PILOT_COACHES
 }) {
-  const coachCoreRows = coreRows.filter((row) => rowBelongsToCoach(row, coach));
-  const coachBrowserRows = browserRows.filter((row) => rowBelongsToCoach(row, coach));
+  const strictlyAssignedToCoach = (row) => strictRowCoachEvidence(row, coachDirectory).coachId === coach.id;
+  const coachCoreRows = coreRows.filter(strictlyAssignedToCoach);
+  const coachBrowserRows = browserRows.filter(strictlyAssignedToCoach);
   const coachTaskRows = taskRows.filter((row) => taskRowBelongsToCoach(row, coach));
   const coachRebookingRows = rebookingRows.filter((row) => rowBelongsToCoach(row, coach));
   const coachCheckupRows = checkupRows.filter((row) => rowBelongsToCoach(row, coach));
@@ -3503,15 +3983,24 @@ async function syncCoachFromRows({
   const existingClientSnap = snapLikeFromDocSnaps(existingClientDocs);
   const existingTaskSnap = snapLikeFromDocSnaps(existingTaskDocs);
   const existingClients = docSnapsToMap(existingClientDocs);
-  let clients = buildClientRecords({
-    coach,
-    coreRows: coachCoreRows,
-    browserRows: coachBrowserRows,
-    existingById: existingClients
-  });
+  let clients = questionnaireOnly
+    ? []
+    : buildClientRecords({
+        coach,
+        coreRows: coachCoreRows,
+        browserRows: coachBrowserRows,
+        existingById: existingClients,
+        ownershipClaims
+      });
   const clientImportDiagnostics = clients.__diagnostics || {};
-  const ghlPhoneEnrichment = await enrichClientRecordsWithGhlPhones({ clients });
-  const clientsForMatching = mergeImportRecordLists(mapToImportRecords(existingClients), clients);
+  const ownershipQuarantineCount = Number(clientImportDiagnostics.ownership?.conflicts || 0)
+    + Number(clientImportDiagnostics.ownership?.needsReview || 0)
+    + Number(clientImportDiagnostics.ownership?.staffExcluded || 0);
+  const ghlPhoneEnrichment = questionnaireOnly
+    ? { attempted: 0, enriched: 0, skippedDuringOwnershipLock: true }
+    : await enrichClientRecordsWithGhlPhones({ clients });
+  const clientsForMatching = mergeImportRecordLists(mapToImportRecords(existingClients), clients)
+    .filter((client) => clientRecordAvailableForMatching(client.data));
   const coachQuestionnaireRows = questionnaireRows.filter((row) => questionnaireRowBelongsToCoach(row, coach, clientsForMatching));
   const existingQuestionnaires = docSnapsToMap(existingQuestionnaireDocs);
   const existingRebookings = docSnapsToMap(existingRebookingDocs);
@@ -3524,18 +4013,18 @@ async function syncCoachFromRows({
     existingById: existingQuestionnaires
   });
   const questionnaireTasks = buildQuestionnaireTaskRecords({ coach, responses: questionnaireResponses });
-  const rebookings = buildRebookingRecords({
+  const rebookings = questionnaireOnly ? [] : buildRebookingRecords({
     coach,
     taskRows: coachTaskRows,
     rebookingRows: coachRebookingRows,
     clients: clientsForMatching,
     existingById: existingRebookings
   });
-  const checkups = buildCheckupRecords({ coach, rows: coachCheckupRows, clients: clientsForMatching });
-  const impacts = buildImpactRecords({ coach, rows: coachImpactRows, clients: clientsForMatching, existingById: existingImpacts });
-  const alumni = buildAlumniRecords({ coach, rows: coachAlumniRows, existingById: existingAlumni });
+  const checkups = questionnaireOnly ? [] : buildCheckupRecords({ coach, rows: coachCheckupRows, clients: clientsForMatching });
+  const impacts = questionnaireOnly ? [] : buildImpactRecords({ coach, rows: coachImpactRows, clients: clientsForMatching, existingById: existingImpacts });
+  const alumni = questionnaireOnly ? [] : buildAlumniRecords({ coach, rows: coachAlumniRows, existingById: existingAlumni });
   const existingTasks = docSnapsToMap(existingTaskDocs);
-  const explicitTasks = buildTaskRecords({
+  const explicitTasks = questionnaireOnly ? [] : buildTaskRecords({
     coach,
     taskRows: coachTaskRows,
     clients: clientsForMatching,
@@ -3546,12 +4035,12 @@ async function syncCoachFromRows({
     ...explicitTasks,
     ...questionnaireTasks
   ];
-  const staleClients = collectStaleImportedDocs({
+  const staleClients = questionnaireOnly || ownershipQuarantineCount ? [] : collectStaleImportedDocs({
     snap: existingClientSnap,
     currentIds: new Set(clients.map((client) => client.id)),
     protectedSources: new Set(["firebase_app_manual", "manual"])
   });
-  const staleTasks = collectStaleImportedDocs({
+  const staleTasks = questionnaireOnly || ownershipQuarantineCount ? [] : collectStaleImportedDocs({
     snap: existingTaskSnap,
     currentIds: new Set(tasks.map((task) => task.id)),
     protectedSources: new Set(["firebase_app_manual", "manual", "dashboard_manual"])
@@ -3725,6 +4214,7 @@ async function syncCoachFromRows({
       skippedInvalidNameSamples: Array.isArray(clientImportDiagnostics.skippedInvalidNameSamples)
         ? clientImportDiagnostics.skippedInvalidNameSamples.slice(0, 8)
         : [],
+      ownership: clientImportDiagnostics.ownership || null,
       ghlPhoneEnrichment,
       missingSourceClientId: clients.filter((client) => !cleanString(client.data.sourceClientId)).length,
       missingPhoneSamples: clients
@@ -3788,6 +4278,7 @@ async function enrichClientRecordsWithGhlPhones({ clients }) {
     enriched: 0,
     skippedExistingPhone: 0,
     skippedNoName: 0,
+    skippedNoStrongIdentity: 0,
     skippedNoToken: 0,
     skippedNoUniqueMatch: 0,
     errors: []
@@ -3800,6 +4291,10 @@ async function enrichClientRecordsWithGhlPhones({ clients }) {
 
   const seenNames = new Map();
   for (const client of clients) {
+    if (!clientRecordAvailableForMatching(client.data)) {
+      summary.skippedOwnershipQuarantine = Number(summary.skippedOwnershipQuarantine || 0) + 1;
+      continue;
+    }
     if (clientPhone(client.data)) {
       summary.skippedExistingPhone += 1;
       continue;
@@ -3809,18 +4304,24 @@ async function enrichClientRecordsWithGhlPhones({ clients }) {
       summary.skippedNoName += 1;
       continue;
     }
+    const expectedContactId = cleanString(client.data.ghlContactId);
+    if (!expectedContactId) {
+      summary.skippedNoStrongIdentity += 1;
+      continue;
+    }
     const nameKey = normalizeComparable(name);
-    if (!seenNames.has(nameKey)) seenNames.set(nameKey, []);
-    seenNames.get(nameKey).push(client);
+    const groupKey = `${nameKey}:${expectedContactId}`;
+    if (!seenNames.has(groupKey)) seenNames.set(groupKey, { nameKey, expectedContactId, clients: [] });
+    seenNames.get(groupKey).clients.push(client);
   }
 
-  for (const [nameKey, group] of seenNames.entries()) {
+  for (const { nameKey, expectedContactId, clients: group } of seenNames.values()) {
     const name = cleanString(group[0]?.data?.name || group[0]?.data?.clientName);
     summary.attempted += group.length;
     try {
       const contact = await findGhlContactByNameExact({ token, locationId: GHL_LOCATION_ID, name, nameKey });
       const phone = normalizePhone(contact?.phone || contact?.phoneNumber || contact?.mobile || "");
-      if (!contact?.id || !phone) {
+      if (!contact?.id || cleanString(contact.id) !== expectedContactId || !phone) {
         summary.skippedNoUniqueMatch += group.length;
         continue;
       }
@@ -3829,7 +4330,7 @@ async function enrichClientRecordsWithGhlPhones({ clients }) {
         client.data.clientPhoneNormalized = phone;
         client.data.ghlContactId = contact.id;
         client.data.ghlPhoneEnrichedAt = admin.firestore.FieldValue.serverTimestamp();
-        client.data.phoneSource = "ghl_exact_name_match";
+        client.data.phoneSource = "ghl_contact_id_verified_after_name_lookup";
         if (!client.data.email) setIfUseful(client.data, "email", contact.email);
         summary.enriched += 1;
       }
@@ -3841,12 +4342,25 @@ async function enrichClientRecordsWithGhlPhones({ clients }) {
   return summary;
 }
 
-function buildClientRecords({ coach, coreRows, browserRows, existingById = new Map() }) {
+function buildClientRecords({
+  coach,
+  coreRows,
+  browserRows,
+  existingById = new Map(),
+  ownershipContext = null,
+  ownershipClaims = new Map()
+}) {
   const clients = new Map();
   const matchIndex = createClientMatchIndex(existingById);
   const diagnostics = {
     skippedInvalidNameCount: 0,
     skippedInvalidNameSamples: [],
+    ownership: {
+      confirmed: 0,
+      needsReview: 0,
+      conflicts: 0,
+      staffExcluded: 0
+    },
     coachRxPortfolio: {
       rowsImported: 0,
       withPhone: 0,
@@ -3884,8 +4398,7 @@ function buildClientRecords({ coach, coreRows, browserRows, existingById = new M
       "phone_raw"
     ]);
     const phoneNormalized = normalizePhone(phoneRaw || pick(row, PHONE_ALIASES));
-    const invalidNameReason = invalidClientNameReason(name)
-      || invalidCoachAsClientReason({ name, coach, source, phoneNormalized, sourceClientId });
+    const invalidNameReason = invalidClientNameReason(name);
     if (invalidNameReason) {
       diagnostics.skippedInvalidNameCount += 1;
       if (diagnostics.skippedInvalidNameSamples.length < 12) {
@@ -3899,12 +4412,39 @@ function buildClientRecords({ coach, coreRows, browserRows, existingById = new M
       return;
     }
     const email = pick(row, EMAIL_ALIASES);
+    let ownership = classifyClientOwnership({
+      row,
+      coach,
+      source,
+      phoneNormalized,
+      sourceClientId,
+      email,
+      ownershipContext,
+      ownershipClaims
+    });
     const stable = phoneNormalized || sourceClientId || slugify(name);
     if (!stable || !name) return;
     const fallbackId = `${coach.id}_${slugify(stable)}`;
-    const matched = findClientMatch(matchIndex, { phoneNormalized, sourceClientId, name });
+    const matched = findClientMatch(matchIndex, {
+      phoneNormalized,
+      sourceClientId,
+      sourceSystem: ownership.sourceIdentitySystem
+    });
     const id = matched?.id || fallbackId;
     const existing = clients.get(id)?.data || matched?.data || existingById.get(id) || {};
+    if (ownership.ownershipStatus === "needs_review"
+      && existing.ownershipStatus === "confirmed"
+      && cleanString(existing.coachId || existing.coachRxId) === cleanString(coach.id)
+      && Boolean(phoneNormalized || (sourceClientId && ownership.sourceIdentitySystem))) {
+      ownership = {
+        ...ownership,
+        entityType: existing.entityType || "member",
+        ownershipStatus: "confirmed",
+        clientSelectable: existing.clientSelectable !== false,
+        evidence: [...new Set([...(existing.ownershipEvidence || []), ...ownership.evidence, "preserved_confirmed_ownership"])],
+        recommendedAdminAction: "Appartenance confirmee conservee; la source entrante est moins forte."
+      };
+    }
     const existingPhone = clientPhone(existing);
     const membershipLabel = pick(row, ["membership", "active package", "package", "abonnement", "membership label", "membership type"]);
     const exerciseDue = pick(row, ["exercise due", "programme du", "program due", "programme", "exercise_due"]);
@@ -3939,8 +4479,20 @@ function buildClientRecords({ coach, coreRows, browserRows, existingById = new M
       coachName: coach.name,
       name: name || existing.name || "",
       lastNameSort: lastNameSort(name || existing.name || ""),
-      status: existing.status || "active",
+      status: ownership.clientSelectable
+        ? (["ownership_quarantine", "import_stale"].includes(existing.status) ? "active" : existing.status || "active")
+        : "ownership_quarantine",
       source: source === "core" ? "google_sheets_core_clients" : "google_sheets_coachrx_browser",
+      entityType: ownership.entityType,
+      ownershipStatus: ownership.ownershipStatus,
+      clientSelectable: ownership.clientSelectable,
+      ownershipEvidence: ownership.evidence,
+      ownershipConflictCoachIds: ownership.conflictCoachIds,
+      sourceIdentitySystem: ownership.sourceIdentitySystem,
+      sourceCoachId: ownershipContext?.sourceCoachId || strictRowCoachEvidence(row).coachId || coach.id,
+      sourceCoachPath: ownershipContext?.sourceCoachPath || firstUsefulValue(row, SOURCE_PATH_ALIASES),
+      ownershipValidatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      recommendedAdminAction: ownership.recommendedAdminAction,
       sourceUpdatedAt: admin.firestore.FieldValue.serverTimestamp()
     };
     if (matched?.id && matched.id !== fallbackId) {
@@ -3987,6 +4539,14 @@ function buildClientRecords({ coach, coreRows, browserRows, existingById = new M
       }
       if (coachRxAssessment.programContext.hasProgramContext) diagnostics.coachRxPortfolio.programContextRows += 1;
       if (coachRxAssessment.programContext.exerciseSignal?.actionable) diagnostics.coachRxPortfolio.lateProgramSignals += 1;
+    }
+    if (ownership.ownershipStatus === "confirmed") diagnostics.ownership.confirmed += 1;
+    if (ownership.ownershipStatus === "needs_review") diagnostics.ownership.needsReview += 1;
+    if (ownership.ownershipStatus === "conflict") diagnostics.ownership.conflicts += 1;
+    if (ownership.ownershipStatus === "excluded_staff") diagnostics.ownership.staffExcluded += 1;
+    if (!ownership.clientSelectable) {
+      importedData.clientValidationStatus = ownership.ownershipStatus;
+      importedData.coachRxRequiresValidation = true;
     }
 
     clients.set(id, { id, data: importedData });
@@ -4117,7 +4677,7 @@ function buildGhlContactEnrichmentRecords({ coach, rows, existingById = new Map(
     const matched = findClientMatch(matchIndex, {
       phoneNormalized,
       sourceClientId: contactId,
-      name
+      sourceSystem: "ghl"
     });
 
     if (!matched?.id) {
@@ -4162,29 +4722,31 @@ function buildGhlContactEnrichmentRecords({ coach, rows, existingById = new Map(
 function createClientMatchIndex(existingById = new Map()) {
   const index = {
     byPhone: new Map(),
-    bySource: new Map(),
-    byName: new Map()
+    bySource: new Map()
   };
-  existingById.forEach((data, id) => indexClientMatch(index, id, data));
+  existingById.forEach((data, id) => {
+    if (clientRecordAvailableForMatching(data)) indexClientMatch(index, id, data);
+  });
   return index;
 }
 
 function indexClientMatch(index, id, data = {}) {
+  if (!clientRecordAvailableForMatching(data)) return;
   const phone = clientPhone(data);
   const sourceClientId = cleanString(data.sourceClientId || data.clientId || data.contactId);
-  const name = normalizeComparable(data.name || data.clientName || "");
+  const sourceSystem = sourceIdentitySystem(data);
+  const sourceKey = sourceClientId && sourceSystem ? `${sourceSystem}:${sourceClientId}` : "";
   if (phone && !index.byPhone.has(phone)) index.byPhone.set(phone, { id, data, by: "phone" });
-  if (sourceClientId && !index.bySource.has(sourceClientId)) index.bySource.set(sourceClientId, { id, data, by: "sourceClientId" });
-  if (name && !index.byName.has(name)) index.byName.set(name, { id, data, by: "name" });
+  if (sourceKey && !index.bySource.has(sourceKey)) index.bySource.set(sourceKey, { id, data, by: "sourceClientId" });
 }
 
-function findClientMatch(index, { phoneNormalized, sourceClientId, name }) {
+function findClientMatch(index, { phoneNormalized, sourceClientId, sourceSystem }) {
   const phone = normalizePhone(phoneNormalized);
   const source = cleanString(sourceClientId);
-  const normalizedName = normalizeComparable(name);
+  const normalizedSourceSystem = sourceIdentitySystem({}, sourceSystem);
+  const sourceKey = source && normalizedSourceSystem ? `${normalizedSourceSystem}:${source}` : "";
   return (phone && index.byPhone.get(phone))
-    || (source && index.bySource.get(source))
-    || (normalizedName && index.byName.get(normalizedName))
+    || (sourceKey && index.bySource.get(sourceKey))
     || null;
 }
 
@@ -4227,7 +4789,7 @@ function buildClientEnrichmentRecords({ coach, rows, existingById = new Map() })
     const phoneNormalized = normalizePhone(pick(row, PHONE_ALIASES));
     const sourceClientId = pick(row, CLIENT_ID_ALIASES);
     const name = clientNameFromRow(row);
-    if (!phoneNormalized && !sourceClientId && !name) {
+    if (!phoneNormalized && !sourceClientId) {
       diagnostics.rowsWithoutIdentity += 1;
       addSkippedSample(row, "missing_identity");
       return;
@@ -4236,7 +4798,7 @@ function buildClientEnrichmentRecords({ coach, rows, existingById = new Map() })
     const matched = findClientMatch(matchIndex, {
       phoneNormalized,
       sourceClientId,
-      name
+      sourceSystem: "client_directory"
     });
     if (!matched?.id) {
       diagnostics.skippedNoExistingClientMatch += 1;
@@ -4426,7 +4988,8 @@ function isImportedSheetSource(source) {
 
 function buildTaskRecords({ coach, taskRows, clients, browserRows, existingById = new Map() }) {
   const tasks = new Map();
-  const clientByName = new Map(clients.map((client) => [normalizeComparable(client.data.name), client]));
+  const selectableClients = clients.filter((client) => clientRecordAvailableForMatching(client.data));
+  const clientByName = new Map(selectableClients.map((client) => [normalizeComparable(client.data.name), client]));
   const addTask = ({ key, client, type, title, description, priority, dueAt, source, sourceEventId = "", sourceSignal = {} }) => {
     const id = `${coach.id}_${slugify(key)}`;
     const existing = existingById.get(id) || {};
@@ -4474,7 +5037,7 @@ function buildTaskRecords({ coach, taskRows, clients, browserRows, existingById 
     });
   });
 
-  clients.forEach((client) => {
+  selectableClients.forEach((client) => {
     const context = client.data?.coachRxProgramContext || {};
     addCoachRxProgramTask({
       addTask,
@@ -6126,6 +6689,13 @@ function buildSyncWarnings({ coach, clients, diagnostics }) {
     warnings.push(`${coach.name}: ${missingNameCount} ligne(s) matchent ce coach, mais n'ont pas de nom client lisible. Verifie les entetes Nom/Client/Client Name dans les sources.`);
   }
   const missingPhone = Number(diagnostics.importedClients?.missingPhone || 0);
+  const ownership = diagnostics.importedClients?.ownership || {};
+  const quarantined = Number(ownership.conflicts || 0)
+    + Number(ownership.needsReview || 0)
+    + Number(ownership.staffExcluded || 0);
+  if (quarantined) {
+    warnings.push(`${coach.name}: ${quarantined} fiche(s) non selectionnable(s) placee(s) en quarantaine d'appartenance; aucune attribution ambiguë n'a ete choisie.`);
+  }
   if (clients.length && missingPhone) {
     warnings.push(`${coach.name}: ${missingPhone}/${clients.length} client(s) importes sans telephone normalise. L'envoi questionnaire et le matching GHL seront limites pour ces clients.`);
     const phoneCoverage = diagnostics.sourcePhoneCoverage || {};

@@ -51,6 +51,47 @@ service cloud.firestore {
       return isAdmin() || (isPilotTeamUser() && isPilotCoachId(coachField));
     }
 
+    function ownershipAllowsClientUse(clientData) {
+      return clientData.keys().hasAll(['clientSelectable', 'entityType', 'ownershipStatus'])
+        && clientData.clientSelectable == true
+        && clientData.entityType == 'member'
+        && clientData.ownershipStatus == 'confirmed'
+        && !(clientData.ownershipStatus in ['conflict', 'needs_review', 'excluded_staff'])
+        && (
+          !clientData.keys().hasAny(['status'])
+          || !(clientData.status in ['removed', 'archived', 'alumni', 'do_not_contact', 'import_stale', 'ownership_quarantine', 'deleted'])
+        );
+    }
+
+    function ownershipRepairUnlocked() {
+      return !exists(/databases/$(database)/documents/systemLocks/clientOwnershipSync)
+        || get(/databases/$(database)/documents/systemLocks/clientOwnershipSync).data.active != true
+        || (
+          get(/databases/$(database)/documents/systemLocks/clientOwnershipSync).data.keys().hasAny(['expiresAt'])
+          && get(/databases/$(database)/documents/systemLocks/clientOwnershipSync).data.expiresAt is timestamp
+          && get(/databases/$(database)/documents/systemLocks/clientOwnershipSync).data.expiresAt <= request.time
+        );
+    }
+
+    function relatedClientIsSelectable(documentData) {
+      return !documentData.keys().hasAny(['clientId'])
+        || documentData.clientId == ''
+        || (
+          documentData.clientId is string
+          && exists(/databases/$(database)/documents/clients/$(documentData.clientId))
+          && get(/databases/$(database)/documents/clients/$(documentData.clientId)).data.coachId == documentData.coachId
+          && ownershipAllowsClientUse(get(/databases/$(database)/documents/clients/$(documentData.clientId)).data)
+        );
+    }
+
+    function clientIdIsSelectableForCoach(clientId, coachField) {
+      return clientId is string
+        && clientId != ''
+        && exists(/databases/$(database)/documents/clients/$(clientId))
+        && get(/databases/$(database)/documents/clients/$(clientId)).data.coachId == coachField
+        && ownershipAllowsClientUse(get(/databases/$(database)/documents/clients/$(clientId)).data);
+    }
+
     function keepsPilotCoach() {
       return isPilotTeamUser()
         && isPilotCoachId(resource.data.coachId)
@@ -90,6 +131,24 @@ service cloud.firestore {
         ]);
     }
 
+    function coachMovesClientToAlumni() {
+      return isPilotTeamUser()
+        && isPilotCoachId(resource.data.coachId)
+        && request.resource.data.coachId == resource.data.coachId
+        && ownershipAllowsClientUse(resource.data)
+        && request.resource.data.entityType == 'member'
+        && request.resource.data.ownershipStatus == 'confirmed'
+        && request.resource.data.clientSelectable == false
+        && request.resource.data.status == 'alumni'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'clientSelectable',
+          'alumniId',
+          'movedToAlumniAt',
+          'updatedAt'
+        ]);
+    }
+
     function coachReadsQuestionnaireResponse() {
       return isPilotTeamUser()
         && isPilotCoachId(resource.data.coachId)
@@ -122,6 +181,7 @@ service cloud.firestore {
         && request.resource.data.clientId is string
         && request.resource.data.clientId != ''
         && request.resource.data.clientName is string
+        && relatedClientIsSelectable(request.resource.data)
         && request.resource.data.processingStatus == 'to_read';
     }
 
@@ -233,51 +293,78 @@ service cloud.firestore {
 
     match /clients/{clientId} {
       allow read: if canReadPilotCoachDoc(resource.data.coachId);
-      allow create: if canCreatePilotCoachDoc(request.resource.data.coachId);
-      allow update: if isAdmin() || keepsPilotCoach() || transfersOwnDocumentToPilotCoach();
-      allow delete: if isAdmin() || (isPilotTeamUser() && isPilotCoachId(resource.data.coachId));
+      allow create: if ownershipRepairUnlocked()
+        && canCreatePilotCoachDoc(request.resource.data.coachId)
+        && ownershipAllowsClientUse(request.resource.data);
+      allow update: if ownershipRepairUnlocked()
+        && (
+          isAdmin()
+          || coachMovesClientToAlumni()
+          || ((keepsPilotCoach() || transfersOwnDocumentToPilotCoach())
+            && ownershipAllowsClientUse(request.resource.data))
+        );
+      allow delete: if ownershipRepairUnlocked()
+        && (isAdmin() || (isPilotTeamUser() && isPilotCoachId(resource.data.coachId)));
     }
 
     match /tasks/{taskId} {
       allow read: if canReadPilotCoachDoc(resource.data.coachId);
-      allow create: if canCreatePilotCoachDoc(request.resource.data.coachId);
-      allow update: if isAdmin() || keepsPilotCoach() || transfersRelatedDocumentToPilotCoach();
-      allow delete: if isAdmin() || (isPilotTeamUser() && isPilotCoachId(resource.data.coachId));
+      allow create: if ownershipRepairUnlocked()
+        && canCreatePilotCoachDoc(request.resource.data.coachId)
+        && relatedClientIsSelectable(request.resource.data);
+      allow update: if ownershipRepairUnlocked()
+        && (isAdmin() || keepsPilotCoach() || transfersRelatedDocumentToPilotCoach())
+        && relatedClientIsSelectable(request.resource.data);
+      allow delete: if ownershipRepairUnlocked()
+        && (isAdmin() || (isPilotTeamUser() && isPilotCoachId(resource.data.coachId)));
     }
 
     match /questionnaireResponses/{responseId} {
       allow read: if canReadPilotCoachDoc(resource.data.coachId);
-      allow create, update, delete: if isAdmin();
-      allow update: if coachReadsQuestionnaireResponse();
-      allow update: if coachLinksQuestionnaireResponseToClient();
-      allow update: if transfersRelatedDocumentToPilotCoach();
+      allow create, update, delete: if ownershipRepairUnlocked() && isAdmin();
+      allow update: if ownershipRepairUnlocked() && coachReadsQuestionnaireResponse();
+      allow update: if ownershipRepairUnlocked() && coachLinksQuestionnaireResponseToClient();
+      allow update: if ownershipRepairUnlocked() && transfersRelatedDocumentToPilotCoach();
     }
 
     match /questionnaireSends/{sendId} {
       allow read: if canReadPilotCoachDoc(resource.data.coachId);
-      allow create: if canCreatePilotCoachDoc(request.resource.data.coachId);
-      allow update: if isAdmin() || keepsPilotCoach() || transfersRelatedDocumentToPilotCoach();
-      allow delete: if isAdmin();
+      allow create: if ownershipRepairUnlocked()
+        && canCreatePilotCoachDoc(request.resource.data.coachId)
+        && clientIdIsSelectableForCoach(request.resource.data.clientId, request.resource.data.coachId);
+      allow update: if ownershipRepairUnlocked()
+        && (isAdmin() || keepsPilotCoach() || transfersRelatedDocumentToPilotCoach())
+        && clientIdIsSelectableForCoach(request.resource.data.clientId, request.resource.data.coachId);
+      allow delete: if ownershipRepairUnlocked() && isAdmin();
     }
 
     match /questionnaireSchedules/{scheduleId} {
       allow read: if canReadPilotCoachDoc(resource.data.coachId);
-      allow create: if canCreatePilotCoachDoc(request.resource.data.coachId);
-      allow update: if isAdmin() || keepsPilotCoach() || transfersRelatedDocumentToPilotCoach();
-      allow delete: if isAdmin();
+      allow create: if ownershipRepairUnlocked()
+        && canCreatePilotCoachDoc(request.resource.data.coachId)
+        && clientIdIsSelectableForCoach(request.resource.data.clientId, request.resource.data.coachId);
+      allow update: if ownershipRepairUnlocked()
+        && (isAdmin() || keepsPilotCoach() || transfersRelatedDocumentToPilotCoach())
+        && clientIdIsSelectableForCoach(request.resource.data.clientId, request.resource.data.coachId);
+      allow delete: if ownershipRepairUnlocked() && isAdmin();
     }
 
     match /rebookings/{rebookingId} {
       allow read: if canReadPilotCoachDoc(resource.data.coachId);
-      allow create: if canCreatePilotCoachDoc(request.resource.data.coachId);
-      allow update: if isAdmin() || keepsPilotCoach() || transfersRelatedDocumentToPilotCoach() || transfersRebookingDocumentToPilotCoach();
-      allow delete: if isAdmin() || (isPilotTeamUser() && isPilotCoachId(resource.data.coachId));
+      allow create: if ownershipRepairUnlocked()
+        && canCreatePilotCoachDoc(request.resource.data.coachId)
+        && relatedClientIsSelectable(request.resource.data);
+      allow update: if ownershipRepairUnlocked()
+        && (isAdmin() || keepsPilotCoach() || transfersRelatedDocumentToPilotCoach() || transfersRebookingDocumentToPilotCoach())
+        && relatedClientIsSelectable(request.resource.data);
+      allow delete: if ownershipRepairUnlocked()
+        && (isAdmin() || (isPilotTeamUser() && isPilotCoachId(resource.data.coachId)));
     }
 
     match /checkups/{checkupId} {
       allow read: if canReadPilotCoachDoc(resource.data.coachId);
-      allow create, update, delete: if isAdmin();
-      allow update: if transfersRelatedDocumentToPilotCoach();
+      allow create, update, delete: if ownershipRepairUnlocked() && isAdmin();
+      allow update: if ownershipRepairUnlocked() && transfersRelatedDocumentToPilotCoach();
     }
 
     match /alumni/{alumniId} {
@@ -289,9 +376,13 @@ service cloud.firestore {
 
     match /impacts/{impactId} {
       allow read: if canReadPilotCoachDoc(resource.data.coachId);
-      allow create: if canCreatePilotCoachDoc(request.resource.data.coachId);
-      allow update: if isAdmin() || keepsPilotCoach() || transfersRelatedDocumentToPilotCoach();
-      allow delete: if isAdmin();
+      allow create: if ownershipRepairUnlocked()
+        && canCreatePilotCoachDoc(request.resource.data.coachId)
+        && relatedClientIsSelectable(request.resource.data);
+      allow update: if ownershipRepairUnlocked()
+        && (isAdmin() || keepsPilotCoach() || transfersRelatedDocumentToPilotCoach())
+        && relatedClientIsSelectable(request.resource.data);
+      allow delete: if ownershipRepairUnlocked() && isAdmin();
     }
 
     match /performanceSettings/{coachDocId} {
@@ -410,6 +501,14 @@ service cloud.firestore {
         && request.resource.data.mission is map
         && request.resource.data.mission.coachId == request.resource.data.coachId
         && request.resource.data.mission.taskId == request.resource.data.taskId
+        && (
+          !request.resource.data.mission.keys().hasAny(['clientId'])
+          || request.resource.data.mission.clientId == ''
+          || clientIdIsSelectableForCoach(
+            request.resource.data.mission.clientId,
+            request.resource.data.coachId
+          )
+        )
         && request.resource.data.chunkCount is int
         && request.resource.data.chunkCount > 0
         && request.resource.data.chunkCount <= 40
@@ -464,6 +563,10 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    match /systemLocks/{lockId} {
+      allow read, create, update, delete: if isAdmin();
+    }
+
     match /weeklyProductReports/{reportId} {
       allow read: if isAdmin();
       allow create, update, delete: if false;
@@ -500,7 +603,8 @@ service cloud.firestore {
           || (request.resource.data.contextType == 'client'
             && request.resource.data.contextEntityId is string
             && request.resource.data.contextEntityId.size() >= 1
-            && request.resource.data.contextEntityId.size() <= 180)
+            && request.resource.data.contextEntityId.size() <= 180
+            && clientIdIsSelectableForCoach(request.resource.data.contextEntityId, request.resource.data.targetCoachId))
         )
         && request.resource.data.status == 'queued'
         && request.resource.data.chunkCount is int
@@ -583,7 +687,8 @@ service cloud.firestore {
           || (request.resource.data.contextType == 'client'
             && request.resource.data.contextEntityId is string
             && request.resource.data.contextEntityId.size() >= 1
-            && request.resource.data.contextEntityId.size() <= 180)
+            && request.resource.data.contextEntityId.size() <= 180
+            && clientIdIsSelectableForCoach(request.resource.data.contextEntityId, request.resource.data.targetCoachId))
         )
         && (
           request.resource.data.requestKind == 'task_create'
@@ -651,6 +756,13 @@ service cloud.firestore {
         ])
         && request.resource.data.confirmedParameters.clientId is string
         && request.resource.data.confirmedParameters.clientId.size() <= 180
+        && (
+          request.resource.data.confirmedParameters.clientId == ''
+          || clientIdIsSelectableForCoach(
+            request.resource.data.confirmedParameters.clientId,
+            request.resource.data.targetCoachId
+          )
+        )
         && request.resource.data.confirmedParameters.title is string
         && request.resource.data.confirmedParameters.title.size() >= 1
         && request.resource.data.confirmedParameters.title.size() <= 180

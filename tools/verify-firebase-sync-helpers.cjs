@@ -292,6 +292,10 @@ const existingUsefulClientFields = new Map([
     coachId: "15935",
     name: "Client Sans Effacement",
     sourceClientId: "client-keep-fields",
+    sourceIdentitySystem: "client_directory",
+    entityType: "member",
+    ownershipStatus: "confirmed",
+    clientSelectable: true,
     status: "active",
     phoneNormalized: "5145556060",
     clientPhoneNormalized: "5145556060",
@@ -314,6 +318,9 @@ const existingGhlTargetClients = new Map([
     coachId: "15935",
     name: "Caroline Gaudreault",
     source: "google_sheets_core_clients",
+    entityType: "member",
+    ownershipStatus: "confirmed",
+    clientSelectable: true,
     status: "active",
     manualMembershipEndDate: "2026-09-30",
     targetSessionsPerWeek: 2
@@ -322,6 +329,9 @@ const existingGhlTargetClients = new Map([
     coachId: "15935",
     name: "Michael Grondin",
     source: "firebase_app_manual",
+    entityType: "member",
+    ownershipStatus: "confirmed",
+    clientSelectable: true,
     status: "manual",
     phoneNormalized: "8192771825",
     membershipLabel: "Membership conserve",
@@ -535,6 +545,7 @@ const results = {
   manualMergeRiskLevel: manualMergeClients[0]?.data?.riskLevel || "",
   manualMergeNotes: manualMergeClients[0]?.data?.notes || "",
   manualMergeLinkedFromManual: manualMergeClients[0]?.data?.linkedFromManual === true,
+  manualMergeOwnershipStatus: manualMergeClients[0]?.data?.ownershipStatus || "",
   sourceThenPhoneClientCount: sourceThenPhoneClients.length,
   sourceThenPhonePhone: sourceThenPhoneClients[0]?.data?.phoneNormalized || "",
   sourceThenPhoneSourceId: sourceThenPhoneClients[0]?.data?.sourceClientId || "",
@@ -564,6 +575,8 @@ const results = {
   invalidCoachRxClientCount: invalidCoachRxClients.length,
   invalidCoachRxNames: invalidCoachRxClients.map((client) => client.data.name),
   invalidCoachRxSkippedCount: invalidCoachRxClients.__diagnostics?.skippedInvalidNameCount || 0,
+  invalidCoachRxMarcOwnershipStatus: invalidCoachRxClients.find((client) => client.data.name === "Marc-Andre Menard")?.data?.ownershipStatus || "",
+  invalidCoachRxMarcSelectable: invalidCoachRxClients.find((client) => client.data.name === "Marc-Andre Menard")?.data?.clientSelectable,
   staleImportedDocIds: staleImportedDocs.map((item) => item.id),
   directCoachRxStaleDocIds: directCoachRxStaleDocs.map((item) => item.id),
   directGhlStaleDocIds: directGhlStaleDocs.map((item) => item.id),
@@ -671,41 +684,32 @@ if (results.coachNamedManualRowsMatched !== 1) failures.push("Une reponse questi
 if (results.coachNamedManualQuestionnaireClientId !== "15935_4383995269") failures.push("La reponse questionnaire d'un client manuel doit etre liee a sa fiche Firestore.");
 if (results.coachNamedManualQuestionnaireStatus !== "to_read" || results.coachNamedManualQuestionnaireInvalidReason) failures.push("Une reponse de client manuel matchee ne doit pas etre archivee comme bruit coach.");
 if (results.coachNamedManualReopenedStatus !== "to_read" || results.coachNamedManualReopenedInvalidReason) failures.push("Une reponse archivee par erreur comme coach_as_unmatched_client doit etre rouverte si le client est retrouve par telephone.");
-if (results.manualMergeClientId !== "15935_manual_alex_turcotte") failures.push("Un import CoachRx devrait fusionner avec le client manuel existant par nom.");
+if (results.manualMergeClientId === "15935_manual_alex_turcotte") failures.push("Un import CoachRx ne doit jamais fusionner avec un client manuel par nom seul.");
 if (results.manualMergePhone !== "5145552020") failures.push("La fusion client manuel -> CoachRx devrait ajouter le telephone importe.");
-if (results.manualMergeMembershipEnd !== "2026-08-15") failures.push("La fusion client manuel -> CoachRx devrait conserver la fin membership manuelle.");
-if (results.manualMergeKiloRecurrenceEnd !== "2026-07-01") failures.push("La fusion client manuel -> CoachRx devrait conserver la recurrence Kilo manuelle.");
-if (results.manualMergeRiskLevel !== "medium") failures.push("La fusion client manuel -> CoachRx devrait conserver le risque coach manuel.");
-if (results.manualMergeNotes !== "Note manuelle a conserver") failures.push("La fusion client manuel -> CoachRx devrait conserver les notes manuelles.");
-if (!results.manualMergeLinkedFromManual) failures.push("La fusion client manuel -> CoachRx devrait tracer linkedFromManual.");
-if (results.sourceThenPhoneClientCount !== 1) failures.push("CORE sans telephone + CoachRx avec telephone du meme nom ne devrait pas creer deux clients.");
-if (results.sourceThenPhonePhone !== "5145553030") failures.push("La fusion CORE/CoachRx devrait conserver le telephone CoachRx.");
+if (results.manualMergeMembershipEnd || results.manualMergeKiloRecurrenceEnd || results.manualMergeRiskLevel || results.manualMergeNotes || results.manualMergeLinkedFromManual) failures.push("Un appariement refuse par nom ne doit pas copier les champs de la fiche manuelle homonyme.");
+if (results.manualMergeOwnershipStatus !== "confirmed") failures.push("La nouvelle fiche CoachRx avec telephone et enveloppe coach validee devrait etre confirmee sans toucher l'homonyme.");
+if (results.sourceThenPhoneClientCount !== 2) failures.push("CORE sans telephone et CoachRx avec telephone du meme nom doivent rester deux fiches tant qu'aucune identite forte ne les relie.");
+if (results.sourceThenPhonePhone) failures.push("La fiche CORE sans identite forte ne doit pas absorber le telephone d'un homonyme CoachRx.");
 if (results.sourceThenPhoneSourceId !== "source-only-alex") failures.push("La fusion CORE/CoachRx devrait conserver l'ID source CORE.");
 if (results.blankEnrichmentPhone !== "5145556060") failures.push("Un import client incomplet ne devrait pas effacer un telephone existant utile.");
 if (results.blankEnrichmentEmail !== "keep@example.test") failures.push("Un import client incomplet ne devrait pas effacer un courriel existant utile.");
 if (results.blankEnrichmentMembership !== "Semi-Prive 2x") failures.push("Un import client incomplet ne devrait pas effacer un membership existant utile.");
-if (results.ghlEnrichmentCount !== 2) failures.push("Un import GHL doit enrichir seulement les clients existants, pas creer des contacts orphelins.");
-if (!results.ghlEnrichmentIds.includes("15935_existing_by_name") || !results.ghlEnrichmentIds.includes("15935_existing_by_phone")) failures.push("GHL doit matcher les clients existants par nom unique ou telephone.");
-if (results.ghlCarolinePhone !== "5145559090") failures.push("GHL doit enrichir le telephone d'un client existant sans telephone.");
-if (results.ghlCarolineSourcePreserved !== "google_sheets_core_clients") failures.push("GHL ne doit pas remplacer la source principale d'un client existant.");
-if (results.ghlCarolineManualEndPreserved !== "2026-09-30") failures.push("GHL ne doit pas effacer la fin membership manuelle.");
+if (results.ghlEnrichmentCount !== 1) failures.push("Un import GHL doit enrichir seulement le client relie par identite forte.");
+if (results.ghlEnrichmentIds.includes("15935_existing_by_name") || !results.ghlEnrichmentIds.includes("15935_existing_by_phone")) failures.push("GHL doit refuser le nom seul et conserver le matching telephone.");
+if (results.ghlCarolinePhone || results.ghlCarolineSourcePreserved || results.ghlCarolineManualEndPreserved) failures.push("GHL ne doit pas muter un client apparie seulement par nom.");
 if (results.ghlMichaelPhone !== "8192771825") failures.push("GHL doit matcher un client existant par telephone meme si le nom differe.");
 if (results.ghlMichaelNotesPreserved !== "Client manuel a conserver") failures.push("GHL ne doit pas effacer les notes d'un client manuel.");
-if (results.ghlDiagnostics.rowsWithoutPhone !== 1 || results.ghlDiagnostics.skippedNoExistingClientMatch !== 1 || results.ghlDiagnostics.matchedExistingClients !== 2) failures.push("Le diagnostic GHL doit exposer les contacts enrichis, sans telephone et sans match.");
-if (results.csmEnrichmentCount !== 2) failures.push("L'enrichissement CSM doit enrichir seulement les clients existants, pas creer des clients orphelins.");
-if (!results.csmEnrichmentIds.includes("15935_existing_by_name") || !results.csmEnrichmentIds.includes("15935_existing_by_phone")) failures.push("L'enrichissement CSM doit matcher les clients existants par nom ou telephone.");
-if (results.csmCarolinePhone !== "5145559090") failures.push("L'enrichissement CSM doit ajouter le telephone manquant d'un client existant.");
-if (results.csmCarolineMembership !== "Semi-Prive 1x") failures.push("L'enrichissement CSM doit ajouter le membership manquant d'un client existant.");
-if (results.csmCarolineLastCheckup !== "2026-05-15") failures.push("L'enrichissement CSM doit ajouter le dernier check-up manquant d'un client existant.");
-if (results.csmCarolineAttendance30Days !== 7 || results.csmCarolineClassAttendance30Days !== 4) failures.push("L'enrichissement CSM doit importer l'assiduite 30 jours et ses composantes numeriques.");
-if (results.csmCarolineLevelMethod !== "YELLOW II") failures.push("L'enrichissement CSM doit importer le niveau global Level Method.");
-if (results.csmCarolineTargetPreserved !== 2) failures.push("L'enrichissement CSM ne doit jamais ecraser la cible hebdomadaire manuelle du coach.");
+if (results.ghlDiagnostics.rowsWithoutPhone !== 1 || results.ghlDiagnostics.skippedNoExistingClientMatch !== 2 || results.ghlDiagnostics.matchedExistingClients !== 1) failures.push("Le diagnostic GHL doit exposer les refus de nom seul, les lignes sans telephone et le matching fort.");
+if (results.csmEnrichmentCount !== 1) failures.push("L'enrichissement CSM doit enrichir seulement le client relie par identite forte.");
+if (results.csmEnrichmentIds.includes("15935_existing_by_name") || !results.csmEnrichmentIds.includes("15935_existing_by_phone")) failures.push("CSM doit refuser le nom seul et conserver le matching telephone.");
+if (results.csmCarolinePhone || results.csmCarolineMembership || results.csmCarolineLastCheckup || results.csmCarolineAttendance30Days !== undefined || results.csmCarolineClassAttendance30Days !== undefined || results.csmCarolineLevelMethod || results.csmCarolineTargetPreserved !== undefined) failures.push("CSM ne doit pas muter un client apparie seulement par nom.");
 if (results.csmMichaelMembershipFromCsm !== "Semi-Prive 2x") failures.push("L'enrichissement CSM doit devenir la source prioritaire du membership actif.");
 if (results.csmMichaelZeroAttendancePreserved !== 0) failures.push("Une assiduite reelle de zero doit rester zero et ne pas devenir une valeur manquante.");
-if (results.csmEnrichmentDiagnostics.fieldsApplied.attendance !== 2 || results.csmEnrichmentDiagnostics.fieldsApplied.levelMethod !== 2) failures.push("Le diagnostic CSM doit compter les metriques assiduite et Level Method appliquees.");
-if (results.csmEnrichmentDiagnostics.skippedNoExistingClientMatch !== 1 || results.csmEnrichmentDiagnostics.matchedExistingClients !== 2) failures.push("Le diagnostic CSM doit exposer les lignes enrichies et les lignes sans match.");
-if (results.invalidCoachRxClientCount !== 1 || !results.invalidCoachRxNames.includes("Vrai Client")) failures.push("Les lignes CoachRx parasites ne devraient pas devenir des clients.");
-if (results.invalidCoachRxSkippedCount !== 7) failures.push("Le diagnostic devrait compter les noms clients invalides ignores.");
+if (results.csmEnrichmentDiagnostics.fieldsApplied.attendance !== 1 || results.csmEnrichmentDiagnostics.fieldsApplied.levelMethod !== 1) failures.push("Le diagnostic CSM doit compter seulement les metriques appliquees par identite forte.");
+if (results.csmEnrichmentDiagnostics.skippedNoExistingClientMatch !== 2 || results.csmEnrichmentDiagnostics.matchedExistingClients !== 1) failures.push("Le diagnostic CSM doit exposer les refus de nom seul et les matchings forts.");
+if (results.invalidCoachRxClientCount !== 2 || !results.invalidCoachRxNames.includes("Vrai Client") || !results.invalidCoachRxNames.includes("Marc-Andre Menard")) failures.push("Le nom d'un coach doit rester visible en quarantaine, pas etre supprime silencieusement.");
+if (results.invalidCoachRxMarcOwnershipStatus !== "needs_review" || results.invalidCoachRxMarcSelectable !== false) failures.push("Un homonyme de coach doit etre non selectionnable et en validation.");
+if (results.invalidCoachRxSkippedCount !== 6) failures.push("Le diagnostic devrait compter les autres noms clients invalides ignores.");
 if (results.staleImportedDocIds.length !== 3 || !results.staleImportedDocIds.includes("15935_old_import") || !results.staleImportedDocIds.includes("15935_old_snapshot") || !results.staleImportedDocIds.includes("15935_old_coachrx_task")) failures.push("Le nettoyage stale doit toucher les anciens imports Sheets/snapshots/To-do CoachRx non manuels absents de la source.");
 if (results.directCoachRxStaleDocIds.length !== 1 || results.directCoachRxStaleDocIds[0] !== "15935_old_direct") failures.push("Un snapshot direct CoachRx doit pouvoir marquer stale seulement les anciens imports directs absents.");
 if (results.directGhlStaleDocIds.length !== 0 || results.directGhlStaleSources.length !== 0) failures.push("Un import GHL partiel ne doit jamais marquer des clients stale.");

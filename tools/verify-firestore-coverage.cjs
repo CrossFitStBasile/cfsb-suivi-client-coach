@@ -17,6 +17,8 @@ for (const file of files) {
   collectMatches(source, /collection\s*\(\s*db\s*,\s*"([^"]+)"/g, staticCollections);
   collectMatches(source, /doc\s*\(\s*db\s*,\s*"([^"]+)"/g, staticCollections);
   collectMatches(source, /db\.collection\s*\(\s*"([^"]+)"/g, staticCollections);
+  collectMatches(source, /db\.doc\s*\(\s*[`'"]([^/`'"]+)\//g, staticCollections);
+  collectMatches(source, /CLIENT_OWNERSHIP_LOCK_PATH\s*=\s*"([^/"]+)\//g, staticCollections);
 }
 
 const ruleCollections = new Set();
@@ -80,7 +82,7 @@ const securityContracts = [
       && appSource.includes('patchEntity("questionnaireResponses"')
       && appSource.includes("readByUid")
       && rules.includes("function coachReadsQuestionnaireResponse()")
-      && rules.includes("allow update: if coachReadsQuestionnaireResponse();")
+      && rules.includes("allow update: if ownershipRepairUnlocked() && coachReadsQuestionnaireResponse();")
       && rules.includes("request.resource.data.processingStatus == 'read'")
       && rules.includes("'readByUid'")
       && rules.includes("'readByEmail'")
@@ -96,9 +98,9 @@ const securityContracts = [
       && rules.includes("function isPilotCoachId(coachField)")
       && rules.includes("function transfersOwnDocumentToPilotCoach()")
       && rules.includes("function transfersRelatedDocumentToPilotCoach()")
-      && rules.includes("allow update: if isAdmin() || keepsPilotCoach() || transfersOwnDocumentToPilotCoach();")
-      && rules.includes("allow update: if isAdmin() || keepsPilotCoach() || transfersRelatedDocumentToPilotCoach();")
-      && rules.includes("allow update: if transfersRelatedDocumentToPilotCoach();"),
+      && /match \/clients\/\{clientId\}[\s\S]{0,700}?allow update: if ownershipRepairUnlocked\(\)[\s\S]{0,300}?transfersOwnDocumentToPilotCoach\(\)[\s\S]{0,200}?ownershipAllowsClientUse\(request\.resource\.data\)/.test(rules)
+      && /allow update: if ownershipRepairUnlocked\(\)\s*&& \(isAdmin\(\) \|\| keepsPilotCoach\(\) \|\| transfersRelatedDocumentToPilotCoach\(\)(?: \|\| transfersRebookingDocumentToPilotCoach\(\))?\)\s*&& relatedClientIsSelectable\(request\.resource\.data\);/.test(rules)
+      && rules.includes("allow update: if ownershipRepairUnlocked() && transfersRelatedDocumentToPilotCoach();"),
     detail: "Un coach doit pouvoir transferer un dossier qu'il possede vers un coach pilote, avec les documents lies limites au patch de transfert."
   },
   {

@@ -746,7 +746,7 @@ check(
 
 check(
   "performance check-ups par date metier seulement",
-  app.includes('periodFiltered(state.data.checkups, "checkupDate", { fallbackCreatedAt: false })')
+  app.includes('periodFiltered(portfolioCheckups(), "checkupDate", { fallbackCreatedAt: false })')
     && app.includes("fallbackCreatedAt = options.fallbackCreatedAt !== false")
     && app.includes("dateValue(b.checkupDate) - dateValue(a.checkupDate)"),
   "Les check-ups CSM doivent etre filtres par checkupDate, pas par createdAt d'import."
@@ -790,8 +790,8 @@ check(
 check(
   "client vers alumni depuis fiche client",
   includesAll(app, ["moveClientToAlumni", "Passer en Alumni", "client.moved_to_alumni", "firebase_client_to_alumni"])
-    && includesAll(app, ['status: "alumni"', "alumniId", 'sourceClientId: client.id'])
-    && app.includes('"alumni", "do_not_contact", "import_stale"'),
+    && includesAll(app, ['status: "alumni"', "alumniId", 'sourceClientId: client.id', "const batch = writeBatch(db)", "await batch.commit()"])
+    && includesAll(app, ["removed", "archived", "alumni", "do_not_contact", "import_stale", "ownership_quarantine", "deleted"]),
   "Un coach doit pouvoir sortir un client actif vers Alumni sans effacer son historique ni le laisser dans le portefeuille actif."
 );
 
@@ -1011,12 +1011,16 @@ check(
     "Telephones manquants",
     "Rebookings a relier",
     "Questionnaires a valider",
+    "Identites et appartenance",
     "openClientPhoneFix",
     "openRebookingLinkClient",
     "uniqueById"
   ])
     && includesAll(styles, [".admin-cleanup-queue", ".admin-cleanup-grid", ".admin-cleanup-column", ".admin-cleanup-item"])
-    && app.includes("renderAdminCleanupQueue({ missingPhones, openRebookings, questionnaireToRead, questionnaireToValidate })"),
+    && app.includes("renderAdminCleanupQueue({ missingPhones, openRebookings, questionnaireToRead, questionnaireToValidate, ownershipReviewClients, blockedRelations })")
+    && app.includes("ownershipReviewClients.slice(0, 6)")
+    && app.includes("state.data.rejectedClients")
+    && app.includes("Signaux de coach en conflit"),
   "Admin doit avoir une file courte de corrections terrain avant pilote, separee des diagnostics techniques."
 );
 
@@ -1106,7 +1110,9 @@ check(
 check(
   "responsive desktop mobile",
   styles.includes("@media (max-width: 980px)")
-    && styles.includes("@media (max-width: 560px)")
+    && styles.includes("@media (max-width: 680px)")
+    && !app.includes("(max-width: 560px)")
+    && (app.match(/\(max-width: 680px\)/g) || []).length >= 2
     && styles.includes(".shell {\n    grid-template-columns: 220px minmax(0, 1fr);")
     && styles.includes(".side {\n    position: sticky;")
     && styles.includes(".shell {\n    grid-template-columns: 1fr;")
@@ -1177,7 +1183,7 @@ check(
     && app.includes('patchEntity("questionnaireResponses"')
     && app.includes("readByUid")
     && rules.includes("function coachReadsQuestionnaireResponse()")
-    && rules.includes("allow update: if coachReadsQuestionnaireResponse();")
+    && rules.includes("allow update: if ownershipRepairUnlocked() && coachReadsQuestionnaireResponse();")
     && rules.includes("request.resource.data.processingStatus == 'read'")
     && rules.includes("'readByEmail'")
     && rules.includes("affectedKeys().hasOnly"),
@@ -1190,7 +1196,7 @@ check(
     && app.includes('processingStatus: "to_read"')
     && app.includes("matchedManuallyByEmail")
     && rules.includes("function coachLinksQuestionnaireResponseToClient()")
-    && rules.includes("allow update: if coachLinksQuestionnaireResponseToClient();")
+    && rules.includes("allow update: if ownershipRepairUnlocked() && coachLinksQuestionnaireResponseToClient();")
     && rules.includes("'manualMatchNote'")
     && rules.includes("request.resource.data.processingStatus == 'to_read'")
     && rules.includes("request.resource.data.clientId != ''"),

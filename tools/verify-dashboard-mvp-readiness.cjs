@@ -2,7 +2,14 @@ const fs = require("fs");
 const path = require("path");
 
 const root = path.resolve(__dirname, "..");
-const outputsRoot = path.resolve(root, "..", "..", "..", "..", "2026-06-10", "je-reprends-le-projet-dashboard-coach", "outputs");
+const codexRoot = root.split(path.sep).reduce((current, segment, index, segments) => (
+  segment.toLowerCase() === "codex" ? segments.slice(0, index + 1).join(path.sep) : current
+), "");
+const outputsCandidates = [
+  path.resolve(root, "..", "..", "..", "..", "2026-06-10", "je-reprends-le-projet-dashboard-coach", "outputs"),
+  codexRoot ? path.join(codexRoot, "2026-06-10", "je-reprends-le-projet-dashboard-coach", "outputs") : ""
+].filter(Boolean);
+const outputsRoot = outputsCandidates.find((candidate) => fs.existsSync(candidate)) || outputsCandidates[0];
 
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8");
 const readOutput = (fileName) => fs.readFileSync(path.join(outputsRoot, fileName), "utf8");
@@ -99,7 +106,7 @@ check(
 
 check(
   "CSM checkups feed credible performance periods",
-  app.includes('periodFiltered(state.data.checkups, "checkupDate", { fallbackCreatedAt: false })')
+  app.includes('periodFiltered(portfolioCheckups(), "checkupDate", { fallbackCreatedAt: false })')
     && app.includes("checkupDate")
     && includesAll(JSON.stringify(sourceContract("checkups")), ["checkups", "Performance"])
     && includesAll(JSON.stringify(statusSource("checkups")), ["Performance", "read-only", "AUTO-002"])

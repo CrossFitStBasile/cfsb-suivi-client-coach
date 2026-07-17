@@ -53,7 +53,7 @@ server.listen(port, "127.0.0.1", async () => {
     check(checks, "index references app js", /src="\.\/app\.js(\?[^"]*)?"/.test(html.text) && appJs.status === 200, "index.html doit charger app.js.");
     check(checks, "index references styles", /href="\.\/styles\.css(?:\?[^\"]*)?"/.test(html.text) && stylesCss.status === 200, "index.html doit charger styles.css, avec ou sans cache-buster.");
     check(checks, "app js contains firebase boot", appJs.text.includes("initializeApp") && appJs.text.includes("getAuth") && appJs.text.includes("getFirestore"), "app.js doit initialiser Firebase Auth et Firestore.");
-    check(checks, "styles contains responsive shell", stylesCss.text.includes("@media (max-width: 980px)") && stylesCss.text.includes("@media (max-width: 560px)"), "styles.css doit contenir les garde-fous mobiles.");
+    check(checks, "styles contains responsive shell", stylesCss.text.includes("@media (max-width: 980px)") && stylesCss.text.includes("@media (max-width: 680px)"), "styles.css doit contenir les garde-fous tablette et mobile.");
     check(checks, "spa fallback returns index", fallback.status === 200 && fallback.text.includes('<div id="app"'), "Les routes inconnues doivent retomber sur index.html.");
     check(checks, "public files avoid obvious secrets", !/GHL_PRIVATE_TOKEN|Bearer\s+[A-Za-z0-9._-]+|token=/i.test(html.text + appJs.text + stylesCss.text), "Les assets publics ne doivent pas contenir de secret evident.");
 

@@ -30,7 +30,10 @@ const functions = [
 
 const sandbox = {
   console,
-  state: { data: { questionnaireResponses: [] } }
+  state: { data: { questionnaireResponses: [], questionnaireSends: [] } },
+  portfolioOperationalRecords: (items = []) => items,
+  portfolioQuestionnaireResponses: () => sandbox.state.data.questionnaireResponses,
+  portfolioQuestionnaireSends: () => sandbox.state.data.questionnaireSends
 };
 
 vm.runInNewContext(`${functions}
@@ -43,32 +46,43 @@ globalThis.__helpers = {
 
 const h = sandbox.__helpers;
 const send = {
+  clientId: "client-1",
   clientPhoneNormalized: "819-277-1825",
   sentAt: "2026-06-03T12:00:00.000Z"
 };
 
 const oldResponse = {
+  clientId: "client-1",
   clientPhoneNormalized: "8192771825",
   submittedAt: "2026-06-01T12:00:00.000Z"
 };
 
 const sameMomentResponse = {
+  clientId: "client-1",
   clientPhoneNormalized: "1 (819) 277-1825",
   submittedAt: "2026-06-03T12:00:00.000Z"
 };
 
 const laterResponse = {
+  clientId: "client-1",
   phone: "8192771825",
   submittedAt: "2026-06-04T08:00:00.000Z"
 };
 
 const otherClientResponse = {
+  clientId: "client-2",
   clientPhoneNormalized: "5145550000",
   submittedAt: "2026-06-04T08:00:00.000Z"
 };
 
 const missingDateResponse = {
+  clientId: "client-1",
   clientPhoneNormalized: "8192771825"
+};
+
+const phoneOnlyResponse = {
+  clientPhoneNormalized: "8192771825",
+  submittedAt: "2026-06-04T08:00:00.000Z"
 };
 
 sandbox.state.data.questionnaireSends = [
@@ -85,7 +99,8 @@ const results = {
   laterResponseClosesSend: h.questionnaireSendHasResponse(send, [laterResponse]),
   otherClientDoesNotCloseSend: !h.questionnaireSendHasResponse(send, [otherClientResponse]),
   missingDateStillCountsAsConservativeMatch: h.questionnaireSendHasResponse(send, [missingDateResponse]),
-  missingPhoneDoesNotMatch: !h.questionnaireSendHasResponse({ sentAt: send.sentAt }, [laterResponse]),
+  phoneOnlyResponseDoesNotCrossMatch: !h.questionnaireSendHasResponse(send, [phoneOnlyResponse]),
+  missingClientIdDoesNotMatch: !h.questionnaireSendHasResponse({ sentAt: send.sentAt }, [laterResponse]),
   latestSendIgnoresInputOrder: h.latestSendForClient("client-1")?.id === "new-send"
 };
 
