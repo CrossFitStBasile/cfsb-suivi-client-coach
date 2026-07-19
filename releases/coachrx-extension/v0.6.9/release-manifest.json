@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "release": "0.6.9",
+  "capturedAt": "2026-07-19",
+  "status": "provenance_baseline_not_approved_for_distribution",
+  "artifact": {
+    "file": "coachrx-sync-extension-0.6.9-live.zip",
+    "sha256": "8DCD90C3B1CCC2872430B0B60B2BFE7D60C6E4A3ED8A21CA9857FD2BF0008D30"
+  },
+  "source": {
+    "directory": "source",
+    "baseCommit": "5532df07b552bdac37ebd902fc9655c3d73e9833",
+    "files": {
+      "coachrx-identity.js": "6AE457E2AA46A7B1D5A6CE4F057213A6B3E1A860D122E918DD37F2B34778A5F8",
+      "icons/icon-128.png": "8A6BCFCF2416F1275E5AFA0037D787F467862D51348576784FF732C6260A9686",
+      "icons/icon-16.png": "9218EF2D9985BE01C7F89940C0C8878F19B52DD2A83C249C3B781112A051F211",
+      "icons/icon-32.png": "08AC30FCE34CB970843D95F3EC548C6730995070B65FBC1F2CF941404408C1BB",
+      "icons/icon-48.png": "B70A96FE698B99BEB004F119D3555AA15C18EFB859F432329554999102379890",
+      "manifest.json": "984A127F44FEF6E52D3D0CF40C3F19E0F71FE8EC8EC4B3817D0897CA9B156F86",
+      "popup.css": "BF9FF1D1CD0613AB11CD7E37CD053153F353E00F4BF12591268BB6096917E2BD",
+      "popup.html": "EFDA1C561AA4BFD609D8ACA13B66DF4DBB4A4E137AAADA47516EAA3CA10EEE78",
+      "popup.js": "2920E6A521D43981794F4458E2473BACEA4CD65E5812D32CBD96F1C2E04254F2",
+      "README.md": "0EA10F8DB84950E0078C9404D08812CCF1404011CA3D5A2271F90510859ADD74"
+    }
+  },
+  "verification": {
+    "build": "pwsh -File build.ps1 -OutputPath <new-zip-path>",
+    "test": "node test.mjs",
+    "scenarios": 4
+  },
+  "knownBlockers": [
+    "The extension route marker is 20260718-v75 while Apps Script Web Apps point to version 79.",
+    "The artifact has not completed the seven-coach end-to-end validation.",
+    "The artifact is not published by Firebase Hosting."
+  ]
+}
