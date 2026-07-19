@@ -1,0 +1,8 @@
+*.md text eol=lf
+*.json text eol=lf
+*.mjs text eol=lf
+*.sha256 text eol=lf
+
+# These are exact bytes observed in the deployed Hosting source copy.
+source/** binary
+firebase.json binary

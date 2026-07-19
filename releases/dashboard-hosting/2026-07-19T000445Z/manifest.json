@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "status": "provenance_snapshot_not_approved_for_deployment",
+  "firebaseProject": "cfsb-dashboard-coach-aa9a4",
+  "hostingSite": "cfsb-dashboard-coach-aa9a4",
+  "observedPublicationAt": "2026-07-19T00:04:45Z",
+  "files": {
+    "count": 76,
+    "totalBytes": 1391370,
+    "hashManifest": "files.sha256",
+    "hashManifestSha256": "9AB0AEF779787A16391D2220A4A4CF7495EE3DD8BE59620CF857E352DD91A005"
+  },
+  "hostingComparison": {
+    "directByteMatches": 71,
+    "intentionalRedirects": 5,
+    "unexpectedMismatches": 0
+  },
+  "keyHashes": {
+    "index.html": "1AF651688CC435435E846A7B228140A855457280172928BFED5A8ABA2211BAA7",
+    "app.js": "6D472DD5BE6F80CE5098384D6D62233D440F93485C5DD346F6BDA4AD9216F3BA",
+    "styles.css": "DD5C3560B46B1BABE11E6E844D9AD0DA1EEC95F0E050942B186FEEEC92578D51",
+    "questionnaire/index.html": "33F8839C5D66AFC3AAED147F7BF8E45D77DAB54B17971AA3F0D4F898B270C85F",
+    "questionnaire/questionnaire-form.js": "5EB0D82B7DE93D2B75304B57C8EDA8DE11E37A01536E8A73512597836F1D6A8D",
+    "questionnaire/questionnaire-form.css": "81FBDB8BEBC0D86B59B01DE9B91D68270531310A29480933BE68D96BD706E788",
+    "downloads/coachrx-sync-extension-0.6.8-main-world-api.zip": "38B2FD295894D76D805D64F07928A043ACF1D142E0052F645637FF6EFD8448A9",
+    "firebase.json": "2450EB3A38D993A55CE1961F408187B1863EB0557E8A7B6A60E7DEDD3B8563AA"
+  },
+  "knownUnknowns": [
+    "Exact deployed Cloud Functions source and revision",
+    "Exact deployed Firestore rules revision",
+    "Current Firestore lock and scheduler state"
+  ]
+}
