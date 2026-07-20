@@ -45,6 +45,18 @@ const ASSISTANT_REQUEST_RATE_WINDOW_MS = 5 * 60 * 1000;
 const ASSISTANT_REQUEST_RATE_LIMIT = 12;
 const ASSISTANT_ACTION_PROPOSAL_TTL_MS = 30 * 60 * 1000;
 const ASSISTANT_HISTORY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const CANARY_SYNC_REQUEST_SOURCE = "codex_postdeploy_canary";
+const PROCESS_SYNC_REQUEST_TIMEOUT_SECONDS = 300;
+const SYNC_REQUEST_CLAIM_SAFETY_MARGIN_MS = 5 * 60 * 1000;
+const SYNC_REQUEST_CLAIM_TTL_MS = (PROCESS_SYNC_REQUEST_TIMEOUT_SECONDS * 1000)
+  + SYNC_REQUEST_CLAIM_SAFETY_MARGIN_MS;
+const EXECUTION_LEDGER_CONTRACT_VERSION = 1;
+const EXECUTION_LEDGER_TTL_MS = 10 * 60 * 1000;
+const EXPIRED_EXECUTION_REAP_LIMIT = 10;
+const EXPIRED_EXECUTION_REAP_SCAN_LIMIT = 100;
+const CLAIMABLE_SYNC_REQUEST_STATUSES = new Set(["", "queued", "pending", "created"]);
+const ACTIVE_SYNC_REQUEST_STATUSES = new Set(["running", "processing", "in_progress"]);
+const TERMINAL_SYNC_REQUEST_STATUSES = new Set(["done", "error", "failed", "cancelled"]);
 
 const GHL_API_BASE = "https://services.leadconnectorhq.com";
 const GHL_API_VERSION = "2021-07-28";
@@ -1201,6 +1213,7 @@ exports.scheduledDashboardSync = onSchedule(
     memory: "1GiB"
   },
   async (event) => {
+    await reapExpiredExecutionState();
     await runDashboardSheetsSync({
       request: null,
       source: "firebase_function_sync_sheets_scheduled",
@@ -1219,6 +1232,7 @@ exports.scheduledQuestionnaireResponseSync = onSchedule(
     memory: "1GiB"
   },
   async (event) => {
+    await reapExpiredExecutionState();
     await runDashboardSheetsSync({
       request: null,
       source: "firebase_function_questionnaire_response_sync_scheduled",
@@ -2136,18 +2150,591 @@ function torontoDateKey(value = new Date()) {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
+function currentFunctionRevision() {
+  return cleanString(process.env.K_REVISION).toLowerCase();
+}
+
+function deterministicExecutionLedgerId(prefix, value) {
+  const normalizedPrefix = cleanString(prefix).toLowerCase().replace(/[^a-z0-9_-]+/g, "_") || "execution";
+  const normalizedValue = cleanString(value);
+  if (!normalizedValue) return "";
+  const fingerprint = crypto.createHash("sha256").update(normalizedValue).digest("hex").slice(0, 40);
+  return `${normalizedPrefix}_${fingerprint}`;
+}
+
+function deterministicDashboardSyncRunId(triggeredByEventId) {
+  return deterministicExecutionLedgerId("dashboard_sync", triggeredByEventId);
+}
+
+function deterministicSourceImportRunId(requestId) {
+  return deterministicExecutionLedgerId("source_import", requestId);
+}
+
+function timestampMillis(value) {
+  if (!value) return 0;
+  if (typeof value.toMillis === "function") return Number(value.toMillis()) || 0;
+  if (typeof value.toDate === "function") return value.toDate().getTime();
+  if (Number.isFinite(value.seconds)) {
+    return (Number(value.seconds) * 1000) + Math.floor(Number(value.nanoseconds || 0) / 1e6);
+  }
+  const parsed = Date.parse(cleanString(value));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function validateSyncRequestCanaryBinding({ requestId = "", payload = {}, executedRevision = "" } = {}) {
+  const cleanRequestId = cleanString(requestId);
+  const source = cleanString(payload.source).toLowerCase();
+  const expectedProcessRevision = cleanString(payload.expectedProcessRevision).toLowerCase();
+  const releaseKey = cleanString(payload.releaseKey).toLowerCase();
+  const actualRevision = cleanString(executedRevision).toLowerCase();
+  const hasCanarySignal = source === CANARY_SYNC_REQUEST_SOURCE
+    || cleanRequestId.startsWith("dashboard_canary_")
+    || Boolean(expectedProcessRevision)
+    || Boolean(releaseKey);
+
+  if (!hasCanarySignal) {
+    return { isCanary: false, ok: true, executedRevision: actualRevision };
+  }
+  if (source !== CANARY_SYNC_REQUEST_SOURCE) {
+    return { isCanary: true, ok: false, code: "canary_source_invalid" };
+  }
+  if (!/^[a-f0-9]{24}$/.test(releaseKey)) {
+    return { isCanary: true, ok: false, code: "canary_release_key_invalid" };
+  }
+  if (!expectedProcessRevision) {
+    return { isCanary: true, ok: false, code: "canary_expected_revision_missing" };
+  }
+  if (!actualRevision) {
+    return { isCanary: true, ok: false, code: "canary_executed_revision_missing" };
+  }
+  if (expectedProcessRevision !== actualRevision) {
+    return { isCanary: true, ok: false, code: "canary_revision_mismatch" };
+  }
+
+  const coachId = cleanString(payload.coachId);
+  const scope = cleanString(payload.scope).toLowerCase();
+  const expectedRequestId = `dashboard_canary_${coachId}_${releaseKey}`;
+  if (!coachId || scope !== "coach" || cleanRequestId !== expectedRequestId) {
+    return { isCanary: true, ok: false, code: "canary_request_identity_invalid" };
+  }
+
+  return {
+    isCanary: true,
+    ok: true,
+    executedRevision: actualRevision,
+    expectedProcessRevision,
+    releaseKey
+  };
+}
+
+async function claimSyncRequestExecution({
+  requestRef,
+  requestId = "",
+  processingEventId = "",
+  executedRevision = ""
+} = {}) {
+  const eventId = cleanString(processingEventId).slice(0, 240);
+  const revision = cleanString(executedRevision).toLowerCase().slice(0, 240);
+
+  return db.runTransaction(async (transaction) => {
+    const currentSnap = await transaction.get(requestRef);
+    if (!currentSnap.exists) {
+      return { claimed: false, reason: "request_missing" };
+    }
+
+    const payload = currentSnap.data() || {};
+    const status = cleanString(payload.status).toLowerCase();
+    if (TERMINAL_SYNC_REQUEST_STATUSES.has(status)) {
+      return { claimed: false, reason: "request_terminal", payload };
+    }
+    if (cleanString(payload.processingEventId) || ACTIVE_SYNC_REQUEST_STATUSES.has(status)) {
+      return { claimed: false, reason: "request_already_claimed", payload };
+    }
+
+    const binding = validateSyncRequestCanaryBinding({
+      requestId,
+      payload,
+      executedRevision: revision
+    });
+    const rejectionCode = !eventId
+      ? "processing_event_id_missing"
+      : !CLAIMABLE_SYNC_REQUEST_STATUSES.has(status)
+        ? "request_status_not_claimable"
+        : !binding.ok
+          ? binding.code
+          : "";
+
+    if (rejectionCode) {
+      transaction.set(requestRef, {
+        status: "error",
+        stage: "execution_claim_rejected",
+        executionPhase: "terminal",
+        processingEventId: eventId,
+        executedRevision: revision,
+        errorCode: rejectionCode,
+        errorMessage: "La demande de synchronisation ne respecte pas le contrat d'execution securise.",
+        claimExpiresAt: admin.firestore.FieldValue.delete(),
+        finishedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      return { claimed: false, rejected: true, reason: rejectionCode };
+    }
+
+    const requestType = normalizeSyncRequestType(payload.requestType || payload.type || payload.kind);
+    const sourceImportRunId = requestType === "source_import"
+      ? cleanString(payload.sourceImportRunId) || deterministicSourceImportRunId(requestId)
+      : "";
+    const claimExpiresAt = admin.firestore.Timestamp.fromMillis(Date.now() + SYNC_REQUEST_CLAIM_TTL_MS);
+    const claimPatch = {
+      status: "running",
+      stage: requestType === "source_import"
+        ? "source_import_claimed"
+        : "execution_claimed",
+      executionPhase: "claimed",
+      executionContractVersion: EXECUTION_LEDGER_CONTRACT_VERSION,
+      processingEventId: eventId,
+      executedRevision: revision,
+      executionClaimedAt: admin.firestore.FieldValue.serverTimestamp(),
+      claimExpiresAt,
+      startedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+    if (sourceImportRunId) claimPatch.sourceImportRunId = sourceImportRunId;
+    transaction.set(requestRef, claimPatch, { merge: true });
+
+    return {
+      claimed: true,
+      payload: {
+        ...payload,
+        ...claimPatch,
+        processingEventId: eventId,
+        executedRevision: revision,
+        sourceImportRunId
+      },
+      binding
+    };
+  });
+}
+
+async function markSyncRequestBusinessStarted({
+  requestRef,
+  processingEventId = "",
+  executedRevision = ""
+} = {}) {
+  const eventId = cleanString(processingEventId);
+  const revision = cleanString(executedRevision).toLowerCase();
+  return db.runTransaction(async (transaction) => {
+    const currentSnap = await transaction.get(requestRef);
+    if (!currentSnap.exists) return false;
+    const current = currentSnap.data() || {};
+    if (cleanString(current.status).toLowerCase() !== "running"
+      || cleanString(current.executionPhase) !== "claimed"
+      || Number(current.executionContractVersion) !== EXECUTION_LEDGER_CONTRACT_VERSION
+      || cleanString(current.processingEventId) !== eventId
+      || cleanString(current.executedRevision).toLowerCase() !== revision) {
+      return false;
+    }
+    transaction.set(requestRef, {
+      executionPhase: "business_started",
+      businessStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    return true;
+  });
+}
+
+function syncRequestExecutionLedger({ requestId = "", payload = {} } = {}) {
+  const requestType = normalizeSyncRequestType(payload.requestType || payload.type || payload.kind);
+  if (requestType === "source_import") {
+    return {
+      kind: "source_import",
+      id: cleanString(payload.sourceImportRunId) || deterministicSourceImportRunId(requestId),
+      ref: db.collection("sourceImportRuns").doc(
+        cleanString(payload.sourceImportRunId) || deterministicSourceImportRunId(requestId)
+      )
+    };
+  }
+  if (cleanString(payload.scope).toLowerCase() === "ownership_audit") return null;
+  const runId = deterministicDashboardSyncRunId(requestId);
+  return {
+    kind: "sheets_sync",
+    id: runId,
+    ref: db.collection("syncRuns").doc(runId)
+  };
+}
+
+function executionLedgerMatchesRequest({ requestId = "", payload = {}, ledger = {} } = {}) {
+  if (Number(ledger.executionContractVersion) !== EXECUTION_LEDGER_CONTRACT_VERSION) return false;
+  if (cleanString(ledger.syncRequestId) !== cleanString(requestId)) return false;
+  if (!cleanString(payload.processingEventId)
+    || cleanString(ledger.processingEventId) !== cleanString(payload.processingEventId)) return false;
+  if (!cleanString(payload.executedRevision)
+    || cleanString(ledger.executedRevision).toLowerCase() !== cleanString(payload.executedRevision).toLowerCase()) return false;
+  const releaseKey = cleanString(payload.releaseKey).toLowerCase();
+  if (releaseKey && cleanString(ledger.releaseKey).toLowerCase() !== releaseKey) return false;
+  const expectedRevision = cleanString(payload.expectedProcessRevision).toLowerCase();
+  if (expectedRevision
+    && cleanString(ledger.expectedProcessRevision).toLowerCase() !== expectedRevision) return false;
+  return true;
+}
+
+function terminalSyncRequestPatchFromLedger({ descriptor, ledger }) {
+  const ledgerStatus = cleanString(ledger.status).toLowerCase();
+  if (ledgerStatus === "error") {
+    return {
+      status: "error",
+      stage: descriptor.kind === "source_import" ? "source_import_failed" : "failed",
+      executionPhase: "terminal",
+      ...(descriptor.kind === "source_import" ? { sourceImportRunId: descriptor.id } : {}),
+      errorCode: "execution_ledger_error",
+      errorMessage: cleanString(ledger.errorMessage || "Le registre d'execution indique un echec.").slice(0, 900),
+      claimExpiresAt: admin.firestore.FieldValue.delete(),
+      finishedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+  }
+  if (ledgerStatus !== "done") return null;
+  if (descriptor.kind === "source_import") {
+    return {
+      status: "done",
+      stage: "source_import_completed",
+      executionPhase: "terminal",
+      sourceType: cleanString(ledger.sourceType),
+      sourceImportRunId: descriptor.id,
+      resultSummary: summarizeDirectImportResult(ledger),
+      resultCoachIds: cleanString(ledger.coachId) ? [cleanString(ledger.coachId)] : [],
+      claimExpiresAt: admin.firestore.FieldValue.delete(),
+      finishedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    };
+  }
+  return {
+    status: "done",
+    stage: "completed",
+    executionPhase: "terminal",
+    resultSummary: ledger.resultSummary || summarizeSyncResult(ledger),
+    resultCoachIds: Array.isArray(ledger.resultCoachIds)
+      ? ledger.resultCoachIds
+      : Array.isArray(ledger.coachIds)
+        ? ledger.coachIds
+        : [],
+    claimExpiresAt: admin.firestore.FieldValue.delete(),
+    finishedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  };
+}
+
+async function reconcileClaimedSyncRequest({ requestRef, requestId = "", nowMs = Date.now() } = {}) {
+  return db.runTransaction(async (transaction) => {
+    const currentSnap = await transaction.get(requestRef);
+    if (!currentSnap.exists) return { action: "request_missing" };
+    const payload = currentSnap.data() || {};
+    const status = cleanString(payload.status).toLowerCase();
+    if (TERMINAL_SYNC_REQUEST_STATUSES.has(status)) return { action: "already_terminal" };
+    if (!ACTIVE_SYNC_REQUEST_STATUSES.has(status)) return { action: "request_not_active" };
+    const executionPhase = cleanString(payload.executionPhase);
+    if (Number(payload.executionContractVersion) !== EXECUTION_LEDGER_CONTRACT_VERSION
+      || !["claimed", "business_started"].includes(executionPhase)) {
+      return { action: "unsupported_execution_contract" };
+    }
+
+    const descriptor = syncRequestExecutionLedger({ requestId, payload });
+    const ledgerSnap = descriptor?.ref ? await transaction.get(descriptor.ref) : null;
+    const ledger = ledgerSnap?.exists ? ledgerSnap.data() || {} : null;
+    const ledgerExact = Boolean(ledger && executionLedgerMatchesRequest({ requestId, payload, ledger }));
+    const terminalPatch = executionPhase === "business_started" && ledgerExact
+      ? terminalSyncRequestPatchFromLedger({ descriptor, ledger })
+      : null;
+    if (terminalPatch) {
+      transaction.set(requestRef, terminalPatch, { merge: true });
+      return { action: cleanString(ledger.status).toLowerCase() === "done" ? "terminalized_done" : "terminalized_error" };
+    }
+
+    const expiresAtMs = timestampMillis(payload.claimExpiresAt);
+    if (expiresAtMs > Number(nowMs)) {
+      return { action: "claim_still_active" };
+    }
+
+    const beforeBusiness = cleanString(payload.executionPhase) === "claimed";
+    const ledgerStatus = ledgerExact
+      ? cleanString(ledger.status).toLowerCase() || "unknown"
+      : ledger
+        ? "binding_mismatch"
+        : "absent";
+    transaction.set(requestRef, {
+      status: "error",
+      stage: beforeBusiness ? "abandoned_before_business" : "execution_uncertain",
+      executionPhase: "terminal",
+      errorCode: beforeBusiness ? "claim_expired_before_business" : "claim_expired_after_business_started",
+      errorMessage: beforeBusiness
+        ? "La reservation a expire avant le debut du traitement; aucune operation metier n'a ete relancee."
+        : "L'execution a expire dans un etat incertain; aucune operation metier n'a ete relancee.",
+      claimExpiresAt: admin.firestore.FieldValue.delete(),
+      recoveryLedgerKind: descriptor?.kind || "none",
+      recoveryLedgerStatus: ledgerStatus,
+      finishedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    return { action: beforeBusiness ? "abandoned_before_business" : "execution_uncertain" };
+  });
+}
+
+function syncRequestClaimEligibleForReaping(payload = {}, nowMs = Date.now()) {
+  const status = cleanString(payload.status).toLowerCase();
+  const expiresAtMs = timestampMillis(payload.claimExpiresAt);
+  return ACTIVE_SYNC_REQUEST_STATUSES.has(status)
+    && Number(payload.executionContractVersion) === EXECUTION_LEDGER_CONTRACT_VERSION
+    && ["claimed", "business_started"].includes(cleanString(payload.executionPhase))
+    && Boolean(cleanString(payload.processingEventId))
+    && Boolean(expiresAtMs)
+    && expiresAtMs <= Number(nowMs);
+}
+
+function executionLedgerEligibleForReaping(ledger = {}, nowMs = Date.now()) {
+  const expiresAtMs = timestampMillis(ledger.runExpiresAt);
+  return cleanString(ledger.status).toLowerCase() === "running"
+    && Number(ledger.executionContractVersion) === EXECUTION_LEDGER_CONTRACT_VERSION
+    && Boolean(expiresAtMs)
+    && expiresAtMs <= Number(nowMs);
+}
+
+async function clearIgnoredExpiredExecutionMarker({
+  documentRef,
+  expiresField,
+  nowMs,
+  eligible
+} = {}) {
+  return db.runTransaction(async (transaction) => {
+    const currentSnap = await transaction.get(documentRef);
+    if (!currentSnap.exists) return { cleared: false, reason: "document_missing" };
+    const current = currentSnap.data() || {};
+    const expiresAtMs = timestampMillis(current[expiresField]);
+    if (!expiresAtMs || expiresAtMs > Number(nowMs)) {
+      return { cleared: false, reason: "marker_not_expired" };
+    }
+    if (eligible(current, nowMs)) {
+      return { cleared: false, reason: "document_became_eligible" };
+    }
+    transaction.set(documentRef, {
+      [expiresField]: admin.firestore.FieldValue.delete()
+    }, { merge: true });
+    return { cleared: true, reason: "ignored_marker_removed" };
+  });
+}
+
+async function scanExpiredExecutionDocuments({
+  collectionName,
+  expiresField,
+  now,
+  limit = EXPIRED_EXECUTION_REAP_LIMIT,
+  visit
+} = {}) {
+  const actionLimit = Math.min(
+    EXPIRED_EXECUTION_REAP_LIMIT,
+    Math.max(1, Math.floor(Number(limit) || EXPIRED_EXECUTION_REAP_LIMIT))
+  );
+  const summary = {
+    scanned: 0,
+    eligible: 0,
+    skipped: 0,
+    cleanedSkipped: 0,
+    pages: 0,
+    actions: {}
+  };
+  let cursor = null;
+
+  while (summary.scanned < EXPIRED_EXECUTION_REAP_SCAN_LIMIT
+    && summary.eligible < actionLimit) {
+    const pageLimit = Math.min(
+      EXPIRED_EXECUTION_REAP_LIMIT,
+      EXPIRED_EXECUTION_REAP_SCAN_LIMIT - summary.scanned
+    );
+    let query = db.collection(collectionName)
+      .where(expiresField, "<=", now)
+      .orderBy(expiresField, "asc")
+      .orderBy(admin.firestore.FieldPath.documentId(), "asc")
+      .limit(pageLimit);
+    if (cursor) query = query.startAfter(cursor);
+    const snapshot = await query.get();
+    summary.pages += 1;
+    if (!snapshot.docs.length) break;
+
+    for (const docSnap of snapshot.docs) {
+      summary.scanned += 1;
+      const result = await visit(docSnap);
+      if (!result?.eligible) {
+        summary.skipped += 1;
+        if (result?.cleaned) summary.cleanedSkipped += 1;
+      } else {
+        summary.eligible += 1;
+        const action = cleanString(result.action) || "unknown";
+        summary.actions[action] = Number(summary.actions[action] || 0) + 1;
+      }
+      if (summary.scanned >= EXPIRED_EXECUTION_REAP_SCAN_LIMIT
+        || summary.eligible >= actionLimit) break;
+    }
+
+    cursor = snapshot.docs[snapshot.docs.length - 1];
+    if (snapshot.docs.length < pageLimit) break;
+  }
+
+  return summary;
+}
+
+async function reapExpiredSyncRequestClaims({
+  now = admin.firestore.Timestamp.now(),
+  limit = EXPIRED_EXECUTION_REAP_LIMIT
+} = {}) {
+  const nowMs = timestampMillis(now);
+  try {
+    return await scanExpiredExecutionDocuments({
+      collectionName: "syncRequests",
+      expiresField: "claimExpiresAt",
+      now,
+      limit,
+      visit: async (docSnap) => {
+        const payload = docSnap.data() || {};
+        const requestRef = docSnap.ref || db.collection("syncRequests").doc(docSnap.id);
+        if (!syncRequestClaimEligibleForReaping(payload, nowMs)) {
+          const cleanup = await clearIgnoredExpiredExecutionMarker({
+            documentRef: requestRef,
+            expiresField: "claimExpiresAt",
+            nowMs,
+            eligible: syncRequestClaimEligibleForReaping
+          });
+          return { eligible: false, cleaned: cleanup.cleared };
+        }
+        const result = await reconcileClaimedSyncRequest({
+          requestRef,
+          requestId: docSnap.id,
+          nowMs
+        });
+        return { eligible: true, action: result?.action };
+      }
+    });
+  } catch (error) {
+    console.error("Expired sync request reaper failed", {
+      message: cleanString(error?.message || error || "Erreur reaper inconnue.")
+    });
+    throw error;
+  }
+}
+
+async function terminalizeExpiredExecutionLedger({ ledgerRef, ledgerKind, nowMs }) {
+  return db.runTransaction(async (transaction) => {
+    const currentSnap = await transaction.get(ledgerRef);
+    if (!currentSnap.exists) return { action: "ledger_missing" };
+    const current = currentSnap.data() || {};
+    const expiresAtMs = timestampMillis(current.runExpiresAt);
+    if (cleanString(current.status).toLowerCase() !== "running"
+      || Number(current.executionContractVersion) !== EXECUTION_LEDGER_CONTRACT_VERSION
+      || !expiresAtMs
+      || expiresAtMs > Number(nowMs)) {
+      return { action: "ledger_not_expired_running_contract" };
+    }
+    transaction.set(ledgerRef, {
+      status: "error",
+      stage: "execution_uncertain",
+      errorCode: `${cleanString(ledgerKind) || "execution"}_run_expired`,
+      errorMessage: "Le delai maximal du registre est expire; aucune operation metier n'a ete relancee.",
+      runExpiresAt: admin.firestore.FieldValue.delete(),
+      finishedAt: admin.firestore.FieldValue.serverTimestamp(),
+      completedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    return { action: "ledger_terminalized_uncertain" };
+  });
+}
+
+async function reapExpiredExecutionLedgers({
+  collectionName,
+  ledgerKind,
+  now = admin.firestore.Timestamp.now(),
+  limit = EXPIRED_EXECUTION_REAP_LIMIT
+} = {}) {
+  if (!["syncRuns", "sourceImportRuns"].includes(collectionName)) {
+    throw new Error("Collection de registre non permise pour le reaper.");
+  }
+  const nowMs = timestampMillis(now);
+  return scanExpiredExecutionDocuments({
+    collectionName,
+    expiresField: "runExpiresAt",
+    now,
+    limit,
+    visit: async (docSnap) => {
+      const ledger = docSnap.data() || {};
+      const ledgerRef = docSnap.ref || db.collection(collectionName).doc(docSnap.id);
+      if (!executionLedgerEligibleForReaping(ledger, nowMs)) {
+        const cleanup = await clearIgnoredExpiredExecutionMarker({
+          documentRef: ledgerRef,
+          expiresField: "runExpiresAt",
+          nowMs,
+          eligible: executionLedgerEligibleForReaping
+        });
+        return { eligible: false, cleaned: cleanup.cleared };
+      }
+      const result = await terminalizeExpiredExecutionLedger({
+        ledgerRef,
+        ledgerKind,
+        nowMs
+      });
+      return { eligible: true, action: result?.action };
+    }
+  });
+}
+
+async function reapExpiredExecutionState({
+  now = admin.firestore.Timestamp.now(),
+  limit = EXPIRED_EXECUTION_REAP_LIMIT
+} = {}) {
+  try {
+    const syncRequests = await reapExpiredSyncRequestClaims({ now, limit });
+    const syncRuns = await reapExpiredExecutionLedgers({
+      collectionName: "syncRuns",
+      ledgerKind: "sync_run",
+      now,
+      limit
+    });
+    const sourceImportRuns = await reapExpiredExecutionLedgers({
+      collectionName: "sourceImportRuns",
+      ledgerKind: "source_import_run",
+      now,
+      limit
+    });
+    return { syncRequests, syncRuns, sourceImportRuns };
+  } catch (error) {
+    console.error("Expired execution state reaper failed closed", {
+      message: cleanString(error?.message || error || "Erreur reaper inconnue.")
+    });
+    throw error;
+  }
+}
+
 exports.processSyncRequest = onDocumentCreated(
   {
     region: "us-central1",
     document: "syncRequests/{requestId}",
     secrets: [ghlPrivateToken],
-    timeoutSeconds: 300,
+    timeoutSeconds: PROCESS_SYNC_REQUEST_TIMEOUT_SECONDS,
     memory: "1GiB"
   },
   async (event) => {
     const requestId = event.params.requestId;
     const requestRef = db.collection("syncRequests").doc(requestId);
-    const payload = event.data?.data() || {};
+    const claim = await claimSyncRequestExecution({
+      requestRef,
+      requestId,
+      processingEventId: event.id,
+      executedRevision: currentFunctionRevision()
+    });
+    if (!claim.claimed) {
+      if (claim.reason === "request_already_claimed") {
+        await reconcileClaimedSyncRequest({ requestRef, requestId });
+      }
+      return;
+    }
+
+    const payload = claim.payload;
     const requestedByUid = cleanString(payload.requestedByUid);
     const requestedByEmail = cleanString(payload.requestedByEmail);
     const requestedCoachId = cleanString(payload.coachId);
@@ -2155,14 +2742,42 @@ exports.processSyncRequest = onDocumentCreated(
     const requestType = normalizeSyncRequestType(payload.requestType || payload.type || payload.kind);
 
     if (requestType === "source_import") {
-      await processQueuedSourceImportRequest({ requestId, requestRef, payload });
+      const businessStarted = await markSyncRequestBusinessStarted({
+        requestRef,
+        processingEventId: payload.processingEventId,
+        executedRevision: payload.executedRevision
+      });
+      if (!businessStarted) return;
+      try {
+        await processQueuedSourceImportRequest({ requestId, requestRef, payload });
+      } catch (error) {
+        const message = cleanString(error?.message || error || "Erreur import source inconnue.");
+        console.error("Claimed source import request failed before terminal state", {
+          requestId,
+          processingEventId: cleanString(event.id),
+          message,
+          stack: error?.stack || ""
+        });
+        await requestRef.set({
+          status: "error",
+          stage: "source_import_failed",
+          executionPhase: "terminal",
+          errorMessage: message.slice(0, 900),
+          claimExpiresAt: admin.firestore.FieldValue.delete(),
+          finishedAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      }
       return;
     }
 
     if (!requestedByUid) {
       await requestRef.set({
         status: "error",
+        stage: "failed",
+        executionPhase: "terminal",
         errorMessage: "UID admin manquant dans la demande de synchronisation.",
+        claimExpiresAt: admin.firestore.FieldValue.delete(),
         finishedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
@@ -2171,6 +2786,12 @@ exports.processSyncRequest = onDocumentCreated(
 
     try {
       const profile = await requireAdminUid(requestedByUid);
+      const businessStarted = await markSyncRequestBusinessStarted({
+        requestRef,
+        processingEventId: payload.processingEventId,
+        executedRevision: payload.executedRevision
+      });
+      if (!businessStarted) return;
       await requestRef.set({
         status: "running",
         stage: scope === "ownership_audit"
@@ -2190,7 +2811,9 @@ exports.processSyncRequest = onDocumentCreated(
         await requestRef.set({
           status: "done",
           stage: "ownership_audit_completed",
+          executionPhase: "terminal",
           resultSummary: result,
+          claimExpiresAt: admin.firestore.FieldValue.delete(),
           finishedAt: admin.firestore.FieldValue.serverTimestamp(),
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
@@ -2208,14 +2831,23 @@ exports.processSyncRequest = onDocumentCreated(
         source: scope === "all"
           ? "firebase_firestore_sync_request_all"
           : "firebase_firestore_sync_request_coach",
-        triggeredByEventId: requestId
+        triggeredByEventId: requestId,
+        executionContext: {
+          syncRequestId: requestId,
+          processingEventId: payload.processingEventId,
+          executedRevision: payload.executedRevision,
+          expectedProcessRevision: cleanString(payload.expectedProcessRevision),
+          releaseKey: cleanString(payload.releaseKey)
+        }
       });
 
       await requestRef.set({
         status: "done",
         stage: "completed",
-        resultSummary: summarizeSyncResult(result),
+        executionPhase: "terminal",
+        resultSummary: result.resultSummary || summarizeSyncResult(result),
         resultCoachIds: result.coachIds || [],
+        claimExpiresAt: admin.firestore.FieldValue.delete(),
         finishedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
@@ -2232,7 +2864,9 @@ exports.processSyncRequest = onDocumentCreated(
       await requestRef.set({
         status: "error",
         stage: "failed",
+        executionPhase: "terminal",
         errorMessage: message.slice(0, 900),
+        claimExpiresAt: admin.firestore.FieldValue.delete(),
         finishedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
@@ -2261,20 +2895,56 @@ async function processQueuedSourceImportRequest({ requestId, requestRef, payload
       || payload.operator
       || "apps_script_firestore_queue"
   );
-  const runRef = db.collection("sourceImportRuns").doc();
+  const sourceImportRunId = cleanString(payload.sourceImportRunId) || deterministicSourceImportRunId(requestId);
+  const runRef = db.collection("sourceImportRuns").doc(sourceImportRunId);
   const startedAt = admin.firestore.Timestamp.now();
+
+  const existingRunSnap = await runRef.get();
+  if (existingRunSnap.exists) {
+    const existingRun = existingRunSnap.data() || {};
+    const descriptor = { kind: "source_import", id: sourceImportRunId };
+    const exact = executionLedgerMatchesRequest({ requestId, payload, ledger: existingRun });
+    const terminalPatch = exact
+      ? terminalSyncRequestPatchFromLedger({ descriptor, ledger: existingRun })
+      : null;
+    if (terminalPatch) {
+      await requestRef.set(terminalPatch, { merge: true });
+      return;
+    }
+    await requestRef.set({
+      status: "error",
+      stage: "execution_uncertain",
+      executionPhase: "terminal",
+      errorCode: "source_import_ledger_already_exists",
+      errorMessage: "Le registre d'import existe deja dans un etat non terminal ou non conforme; aucun import n'a ete relance.",
+      sourceImportRunId,
+      claimExpiresAt: admin.firestore.FieldValue.delete(),
+      finishedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    return;
+  }
 
   await requestRef.set({
     status: "running",
     stage: "source_import",
     sourceType,
-    sourceImportRunId: runRef.id,
+    sourceImportRunId,
     recordsReceived: records.length,
     startedAt,
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
 
   await runRef.set({
+    executionContractVersion: EXECUTION_LEDGER_CONTRACT_VERSION,
+    runExpiresAt: admin.firestore.Timestamp.fromMillis(
+      (timestampMillis(startedAt) || Date.now()) + EXECUTION_LEDGER_TTL_MS
+    ),
+    syncRequestId: requestId,
+    processingEventId: cleanString(payload.processingEventId),
+    executedRevision: cleanString(payload.executedRevision).toLowerCase(),
+    expectedProcessRevision: cleanString(payload.expectedProcessRevision).toLowerCase(),
+    releaseKey: cleanString(payload.releaseKey).toLowerCase(),
     sourceType,
     requestedBy,
     status: "running",
@@ -2282,7 +2952,6 @@ async function processQueuedSourceImportRequest({ requestId, requestRef, payload
     createdAt: startedAt,
     startedAt,
     importMode: "firestore_sync_request",
-    syncRequestId: requestId,
     sample: safeImportSample(records)
   });
 
@@ -2315,18 +2984,23 @@ async function processQueuedSourceImportRequest({ requestId, requestRef, payload
 
     await runRef.set({
       ...result,
-      status: result.status || "done",
+      resultStatus: cleanString(result.status),
+      status: "done",
+      stage: "source_import_completed",
+      runExpiresAt: admin.firestore.FieldValue.delete(),
       finishedAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
 
     await requestRef.set({
       status: "done",
-      stage: "completed",
+      stage: "source_import_completed",
+      executionPhase: "terminal",
       sourceType,
-      sourceImportRunId: runRef.id,
+      sourceImportRunId,
       resultSummary: summarizeDirectImportResult(result),
       resultCoachIds: result.coachId ? [result.coachId] : [],
+      claimExpiresAt: admin.firestore.FieldValue.delete(),
       finishedAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
@@ -2342,16 +3016,20 @@ async function processQueuedSourceImportRequest({ requestId, requestRef, payload
     });
     await runRef.set({
       status: "error",
+      stage: "source_import_failed",
       errorMessage: message.slice(0, 900),
+      runExpiresAt: admin.firestore.FieldValue.delete(),
       finishedAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
     await requestRef.set({
       status: "error",
       stage: "source_import_failed",
+      executionPhase: "terminal",
       sourceType,
-      sourceImportRunId: runRef.id,
+      sourceImportRunId,
       errorMessage: message.slice(0, 900),
+      claimExpiresAt: admin.firestore.FieldValue.delete(),
       finishedAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
@@ -2405,6 +3083,10 @@ exports.ingestDashboardSource = onRequest(
     const startedAt = admin.firestore.Timestamp.now();
 
     await runRef.set({
+      executionContractVersion: EXECUTION_LEDGER_CONTRACT_VERSION,
+      runExpiresAt: admin.firestore.Timestamp.fromMillis(
+        (timestampMillis(startedAt) || Date.now()) + EXECUTION_LEDGER_TTL_MS
+      ),
       sourceType,
       requestedBy,
       status: "running",
@@ -2449,7 +3131,10 @@ exports.ingestDashboardSource = onRequest(
 
       await runRef.set({
         ...result,
-        status: result.status || "done",
+        resultStatus: cleanString(result.status),
+        status: "done",
+        stage: "source_import_completed",
+        runExpiresAt: admin.firestore.FieldValue.delete(),
         finishedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
@@ -2465,6 +3150,8 @@ exports.ingestDashboardSource = onRequest(
       const message = cleanString(error?.message || error || "Erreur import inconnue.");
       await runRef.set({
         status: "error",
+        stage: "source_import_failed",
+        runExpiresAt: admin.firestore.FieldValue.delete(),
         errorMessage: message.slice(0, 900),
         finishedAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
@@ -2488,25 +3175,180 @@ function questionnaireReviewRowsForScope(rows = [], requestedCoachId = "") {
   ));
 }
 
-async function runDashboardSheetsSync({
+async function beginDashboardSyncRun({
+  startedAt,
+  request = null,
+  source = "firebase_function_sync_sheets",
+  triggeredBy = "system",
+  triggeredByEventId = "",
+  requestedCoachId = "",
+  syncScope = "",
+  executionContext = {}
+} = {}) {
+  const deterministicRunId = deterministicDashboardSyncRunId(triggeredByEventId);
+  const runRef = deterministicRunId
+    ? db.collection("syncRuns").doc(deterministicRunId)
+    : db.collection("syncRuns").doc();
+  const runExpiresAt = admin.firestore.Timestamp.fromMillis(
+    (timestampMillis(startedAt) || Date.now()) + EXECUTION_LEDGER_TTL_MS
+  );
+  const startData = {
+    executionContractVersion: EXECUTION_LEDGER_CONTRACT_VERSION,
+    runExpiresAt,
+    syncRequestId: cleanString(executionContext.syncRequestId),
+    processingEventId: cleanString(executionContext.processingEventId),
+    executedRevision: cleanString(executionContext.executedRevision).toLowerCase(),
+    expectedProcessRevision: cleanString(executionContext.expectedProcessRevision).toLowerCase(),
+    releaseKey: cleanString(executionContext.releaseKey).toLowerCase(),
+    requestedByUid: request?.auth?.uid || "system",
+    requestedByEmail: request?.auth?.token?.email || "",
+    triggeredBy,
+    triggeredByEventId,
+    coachIds: cleanString(requestedCoachId) ? [cleanString(requestedCoachId)] : [],
+    results: [],
+    sourceOverview: {},
+    tabsRead: {},
+    questionnaireTabsRead: {},
+    checkupTabsRead: {},
+    warnings: [],
+    status: "running",
+    stage: "starting",
+    source,
+    syncScope: cleanString(syncScope),
+    startedAt,
+    createdAt: startedAt,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  };
+  if (!deterministicRunId) {
+    await runRef.set(startData);
+    return { runRef, existing: null };
+  }
+  return db.runTransaction(async (transaction) => {
+    const existingSnap = await transaction.get(runRef);
+    if (existingSnap.exists) {
+      return { runRef, existing: existingSnap.data() || {} };
+    }
+    transaction.set(runRef, startData);
+    return { runRef, existing: null };
+  });
+}
+
+async function runDashboardSheetsSync(options = {}) {
+  const {
+    requestedCoachId = "",
+    request = null,
+    source = "firebase_function_sync_sheets",
+    triggeredByEventId = "",
+    syncScope = "",
+    executionContext = {}
+  } = options;
+  const startedAt = admin.firestore.Timestamp.now();
+  const triggeredBy = request?.auth?.uid
+    ? "manual_admin"
+    : triggeredByEventId
+      ? "scheduled"
+      : "system";
+  const syncRunStart = await beginDashboardSyncRun({
+    startedAt,
+    request,
+    source,
+    triggeredBy,
+    triggeredByEventId,
+    requestedCoachId,
+    syncScope,
+    executionContext
+  });
+  const syncRunRef = syncRunStart.runRef;
+  if (syncRunStart.existing) {
+    const existingStatus = cleanString(syncRunStart.existing.status).toLowerCase();
+    const exactExistingLedger = !cleanString(executionContext.syncRequestId)
+      || executionLedgerMatchesRequest({
+        requestId: executionContext.syncRequestId,
+        payload: executionContext,
+        ledger: syncRunStart.existing
+      });
+    if (existingStatus === "done" && exactExistingLedger) {
+      return {
+        ok: true,
+        coachIds: Array.isArray(syncRunStart.existing.resultCoachIds)
+          ? syncRunStart.existing.resultCoachIds
+          : syncRunStart.existing.coachIds || [],
+        results: Array.isArray(syncRunStart.existing.results) ? syncRunStart.existing.results : [],
+        warnings: Array.isArray(syncRunStart.existing.warnings) ? syncRunStart.existing.warnings : [],
+        resultSummary: syncRunStart.existing.resultSummary || summarizeSyncResult(syncRunStart.existing),
+        recoveredFromLedger: true
+      };
+    }
+    throw new HttpsError(
+      "failed-precondition",
+      "Un registre deterministe existe deja sans resultat exact reutilisable; la synchronisation n'a pas ete relancee."
+    );
+  }
+  let failureRecorded = false;
+  const recordFailure = async ({ error, stage = "run_dashboard_sheets_sync", coachIds = null } = {}) => {
+    await writeFailedSyncRun({
+      runRef: syncRunRef,
+      startedAt,
+      requestedByUid: request?.auth?.uid || "system",
+      requestedByEmail: request?.auth?.token?.email || "",
+      triggeredBy,
+      triggeredByEventId,
+      coachIds: Array.isArray(coachIds)
+        ? coachIds
+        : cleanString(requestedCoachId)
+          ? [cleanString(requestedCoachId)]
+          : [],
+      source,
+      error,
+      stage
+    });
+    failureRecorded = true;
+  };
+
+  try {
+    return await runDashboardSheetsSyncExecution({
+      requestedCoachId,
+      request,
+      source,
+      triggeredByEventId,
+      syncScope,
+      startedAt,
+      triggeredBy,
+      syncRunRef,
+      recordFailure
+    });
+  } catch (error) {
+    if (!failureRecorded) {
+      try {
+        await recordFailure({ error });
+      } catch (journalError) {
+        console.error("Dashboard sync terminal journal write failed", {
+          source,
+          message: cleanString(journalError?.message || journalError)
+        });
+      }
+    }
+    throw error;
+  }
+}
+
+async function runDashboardSheetsSyncExecution({
   requestedCoachId = "",
   request = null,
   source = "firebase_function_sync_sheets",
   triggeredByEventId = "",
-  syncScope = ""
+  syncScope = "",
+  startedAt,
+  triggeredBy,
+  syncRunRef,
+  recordFailure
 } = {}) {
-  const startedAt = admin.firestore.Timestamp.now();
   const ownershipLock = await readClientOwnershipSyncLock();
   const questionnaireOnly = syncScope === "questionnaires_only"
     || source === "firebase_function_questionnaire_response_sync_scheduled";
   if (ownershipLock.active && !questionnaireOnly) {
     throw new HttpsError("failed-precondition", clientOwnershipLockMessage(ownershipLock));
   }
-  const triggeredBy = request?.auth?.uid
-    ? "manual_admin"
-    : triggeredByEventId
-      ? "scheduled"
-      : "system";
   const coaches = await loadCoachDirectory();
   const selectedCoachIds = requestedCoachId
     ? [requestedCoachId]
@@ -2521,14 +3363,8 @@ async function runDashboardSheetsSync({
   try {
     valuesByTab = await readDashboardTabs();
   } catch (error) {
-    await writeFailedSyncRun({
-      startedAt,
-      requestedByUid: request?.auth?.uid || "system",
-      requestedByEmail: request?.auth?.token?.email || "",
-      triggeredBy,
-      triggeredByEventId,
+    await recordFailure({
       coachIds: selectedCoachIds,
-      source,
       error,
       stage: "read_dashboard_tabs"
     });
@@ -2643,14 +3479,8 @@ async function runDashboardSheetsSync({
         message,
         stack: error?.stack || ""
       });
-      await writeFailedSyncRun({
-        startedAt,
-        requestedByUid: request?.auth?.uid || "system",
-        requestedByEmail: request?.auth?.token?.email || "",
-        triggeredBy,
-        triggeredByEventId,
+      await recordFailure({
         coachIds: selectedCoachIds,
-        source,
         error,
         stage: `sync_coach_${coach.id}`
       });
@@ -2745,7 +3575,7 @@ async function runDashboardSheetsSync({
   const finishedAt = admin.firestore.Timestamp.now();
 
   try {
-    await db.collection("syncRuns").add({
+    await syncRunRef.set({
       requestedByUid: request?.auth?.uid || "system",
       requestedByEmail: request?.auth?.token?.email || "",
       triggeredBy,
@@ -2761,13 +3591,19 @@ async function runDashboardSheetsSync({
       csmClientEnrichment,
       questionnaireReview,
       warnings,
+      resultSummary: summarizeSyncResult({ results, warnings }),
+      resultCoachIds: selectedCoachIds,
+      status: "done",
+      stage: "completed",
+      runExpiresAt: admin.firestore.FieldValue.delete(),
       startedAt,
       finishedAt,
       createdAt: startedAt,
       completedAt: finishedAt,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       source,
       clientOwnershipLock: ownershipLock.active ? ownershipLock.summary : null
-    });
+    }, { merge: true });
   } catch (error) {
     const message = cleanString(error?.message || error || "Erreur inconnue pendant l'ecriture syncRuns.");
     console.error("Dashboard sync run write failed", {
@@ -2795,6 +3631,7 @@ async function runDashboardSheetsSync({
     csmClientEnrichment,
     questionnaireReview,
     warnings,
+    resultSummary: summarizeSyncResult({ results, warnings }),
     triggeredBy,
     source,
     clientOwnershipLock: ownershipLock.active ? ownershipLock.summary : null,
@@ -4616,6 +5453,7 @@ function maskPhone(value) {
 }
 
 async function writeFailedSyncRun({
+  runRef = null,
   startedAt,
   requestedByUid = "system",
   requestedByEmail = "",
@@ -4627,7 +5465,8 @@ async function writeFailedSyncRun({
   stage = "unknown"
 }) {
   const message = cleanString(error?.message || error || "Erreur de synchronisation inconnue.");
-  await db.collection("syncRuns").add({
+  const finishedAt = admin.firestore.Timestamp.now();
+  const terminalData = {
     requestedByUid,
     requestedByEmail,
     triggeredBy,
@@ -4644,8 +5483,20 @@ async function writeFailedSyncRun({
     stage,
     errorMessage: message,
     serviceAccountRequired: FIREBASE_SYNC_SERVICE_ACCOUNT,
+    runExpiresAt: admin.firestore.FieldValue.delete(),
     startedAt,
-    finishedAt: admin.firestore.Timestamp.now()
+    finishedAt,
+    completedAt: finishedAt,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  };
+  if (runRef) {
+    await runRef.set(terminalData, { merge: true });
+    return;
+  }
+  const { runExpiresAt: _runExpiresAtDelete, ...createData } = terminalData;
+  await db.collection("syncRuns").add({
+    ...createData,
+    createdAt: startedAt
   });
 }
 

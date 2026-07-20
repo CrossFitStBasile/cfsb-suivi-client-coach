@@ -17,6 +17,8 @@ const {
 const TARGET_COACH_ID = "15935";
 const TARGET_SCOPE = "coach";
 const TARGET_SOURCE = "codex_postdeploy_canary";
+const LIVE_EXECUTION_DISABLED = true;
+const DEPRECATED_RUNNER_ERROR = "Ancien runner canari desactive: utiliser uniquement le runner prive scelle avec preuve scheduler, releaseKey et expectedProcessRevision.";
 const SYNC_REQUEST_COLLECTION = "syncRequests";
 const OWNERSHIP_LOCK_PATH = "systemLocks/clientOwnershipSync";
 const REGION = "us-central1";
@@ -457,16 +459,17 @@ function dryRunResult({ requestId, releaseId, preflight }) {
 
 function printHelp() {
   process.stdout.write([
-    "Usage:",
-    "  node tools/request-live-dashboard-canary.cjs --release-manifest C:\\chemin\\release-functions.json",
-    "  node tools/request-live-dashboard-canary.cjs --release-manifest C:\\chemin\\release-functions.json --execute",
-    "  node tools/request-live-dashboard-canary.cjs --self-test",
+    "Outil desactive pour toute execution live.",
+    "Utiliser uniquement le runner prive scelle documente dans CANARY_RUNBOOK.md.",
+    "Ce runner historique ne possede pas les preuves scheduler et de revision rc2 requises.",
     "",
-    "Sans --execute, le programme fait seulement les lectures de preflight."
+    "Verification locale seulement: node tools/request-live-dashboard-canary.cjs --self-test"
   ].join("\n") + "\n");
 }
 
 function runSelfTest() {
+  assert.equal(LIVE_EXECUTION_DISABLED, true);
+  assert.match(DEPRECATED_RUNNER_ERROR, /runner prive scelle/);
   const expectedRevisions = Object.fromEntries(REQUIRED_FUNCTION_NAMES.map((name) => [
     name,
     `${name.toLowerCase()}-12345-abc`
@@ -576,7 +579,15 @@ function runSelfTest() {
     ...healthyDone,
     resultSummary: { ...healthyDone.resultSummary, warnings: "invalide" }
   }), /Compteur canari invalide/);
-  return { ok: true, mode: "self-test", checks: 22, networkUsed: false, mutated: false };
+  return {
+    ok: true,
+    mode: "self-test",
+    checks: 24,
+    deprecated: true,
+    executionAllowed: false,
+    networkUsed: false,
+    mutated: false
+  };
 }
 
 async function main(argv = process.argv.slice(2)) {
@@ -588,6 +599,10 @@ async function main(argv = process.argv.slice(2)) {
   if (args.selfTest) {
     process.stdout.write(`${JSON.stringify(runSelfTest(), null, 2)}\n`);
     return;
+  }
+
+  if (LIVE_EXECUTION_DISABLED) {
+    throw new Error(DEPRECATED_RUNNER_ERROR);
   }
 
   const expectedRevisions = loadReleaseManifest(args.releaseManifest);
@@ -654,6 +669,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+  DEPRECATED_RUNNER_ERROR,
+  LIVE_EXECUTION_DISABLED,
   REQUIRED_FUNCTION_NAMES,
   REQUEST_FIELD_NAMES,
   TARGET_COACH_ID,
