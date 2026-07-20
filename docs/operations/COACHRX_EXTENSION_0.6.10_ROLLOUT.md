@@ -67,6 +67,10 @@ Le hotfix ne modifie pas la stratégie d'extraction déjà validée sur les sept
 
 ## 6. Validation canari
 
+La séquence poste par poste, le chargement manuel et les contrôles contre les
+faux succès sont détaillés dans
+`docs/operations/COACHRX_EXTENSION_0.6.10_CANARY_CHECKLIST.md`.
+
 Ordre obligatoire:
 
 1. petit portefeuille pilote;
@@ -139,3 +143,4 @@ Le rollback de distribution n'autorise pas un rollback destructif des données.
 | 2026-07-19 | Runbook initial créé à partir des preuves 0.6.8/0.6.9 et du diagnostic live | Codex | Construire et tester le candidat 0.6.10 |
 | 2026-07-19 | Candidat 0.6.10 reconstruit trois fois au SHA-256 `84F2EC6CA8E9742ECDE13827686E6B9314BCDD7A512B02C41E6BE27003BF121D`; 9 scénarios réussis | Codex | Vérifier le paquet réellement servi |
 | 2026-07-19 | Canal Preview `coachrx-0610-candidate` déployé sans ajout de domaine Auth; ZIP HTTP 200, `application/zip`, 29 231 octets et hash exact; live revérifié inchangé en 0.6.8 | Codex | Faire un canari signé avec un coach autorisé avant toute diffusion générale |
+| 2026-07-20 | Dossier canari 0.6.10 créé dans Téléchargements depuis le ZIP exact, 10/10 fichiers vérifiés; 0.6.9 locale conservée intacte; checklist manuelle et contrôles anti-faux-succès ajoutés | Codex | Michael charge le dossier dans Chrome; commencer par « Tester CoachRx » seulement |
