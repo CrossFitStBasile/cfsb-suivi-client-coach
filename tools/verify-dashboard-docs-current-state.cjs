@@ -69,8 +69,9 @@ check(
 check(
   "finalization board current target",
   includesAll(text.finalizationBoard, [
-    "Etat publication 2026-07-15",
-    "live confirme",
+    "Etat Hosting confirme le 2026-07-19",
+    "bundle live porte",
+    "publication initiale",
     `app.js?v=${currentAppVersion}`,
     "audit produit: 86/86",
     "audit live acces coach: OK",

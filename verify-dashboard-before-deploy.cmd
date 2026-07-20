@@ -6,11 +6,19 @@ echo Validation locale du Dashboard Coach avant publication...
 echo Dossier: %cd%
 echo.
 
-set "NODE_EXE=C:\Users\micha\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe"
+if defined CFSB_NODE_EXE (
+  set "NODE_EXE=%CFSB_NODE_EXE%"
+) else (
+  set "NODE_EXE=C:\Users\micha\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe"
+)
 if not exist "%NODE_EXE%" set "NODE_EXE=node"
 
 echo 1/32 Syntaxe backend Firebase Functions...
 "%NODE_EXE%" --check "functions\index.js"
+if errorlevel 1 goto fail
+"%NODE_EXE%" --check "functions\sync-status.js"
+if errorlevel 1 goto fail
+"%NODE_EXE%" --check "functions\task-import.js"
 if errorlevel 1 goto fail
 
 echo.
@@ -24,8 +32,18 @@ echo 2b/35 Provenance du bundle Hosting officiel...
 if errorlevel 1 goto fail
 
 echo.
-echo 3/32 Tests helpers import Firestore...
+echo 3/32 Tests hotfix sync exact-live...
+"%NODE_EXE%" --test "functions\test\live-sync-hotfix.test.js" "functions\test\sync-status.test.js" "functions\test\task-import.test.js"
+if errorlevel 1 goto fail
+
+echo.
+echo 3a/32 Tests helpers import Firestore legacy compatibles...
 "%NODE_EXE%" "tools\verify-firebase-sync-helpers.cjs"
+if errorlevel 1 goto fail
+
+echo.
+echo 3aa/32 Garde-fous outil canari post-deploiement...
+"%NODE_EXE%" "tools\request-live-dashboard-canary.cjs" --self-test
 if errorlevel 1 goto fail
 
 echo.
@@ -226,5 +244,3 @@ exit /b 0
 echo.
 echo ECHEC DE VALIDATION. Corrige les erreurs avant de deployer.
 exit /b 1
-
-

@@ -16,20 +16,24 @@ const validationScriptPath = path.join(root, "verify-dashboard-before-deploy.cmd
 const syncArchitecturePath = path.join(root, "firebase-dashboard", "DATA_SYNC_ARCHITECTURE.md");
 const dataModelPath = path.join(root, "firebase-dashboard", "DATA_MODEL.md");
 
-const app = fs.readFileSync(appPath, "utf8");
-const styles = fs.readFileSync(stylesPath, "utf8");
-const index = fs.readFileSync(indexPath, "utf8");
-const functions = fs.readFileSync(functionsPath, "utf8");
-const rules = fs.readFileSync(path.join(root, "firestore.rules"), "utf8");
-const actionsVerifier = fs.readFileSync(actionsVerifierPath, "utf8");
-const deployContractVerifier = fs.readFileSync(deployContractVerifierPath, "utf8");
-const firestoreCoverageVerifier = fs.readFileSync(firestoreCoverageVerifierPath, "utf8");
-const deployScriptsVerifier = fs.readFileSync(deployScriptsVerifierPath, "utf8");
-const hostingSmokeVerifier = fs.readFileSync(hostingSmokeVerifierPath, "utf8");
-const auditLiveFirestore = fs.readFileSync(auditLiveFirestorePath, "utf8");
-const validationScript = fs.readFileSync(validationScriptPath, "utf8");
-const syncArchitecture = fs.readFileSync(syncArchitecturePath, "utf8");
-const dataModel = fs.readFileSync(dataModelPath, "utf8");
+function read(filePath) {
+  return fs.readFileSync(filePath, "utf8").replace(/\r\n/g, "\n");
+}
+
+const app = read(appPath);
+const styles = read(stylesPath);
+const index = read(indexPath);
+const functions = read(functionsPath);
+const rules = read(path.join(root, "firestore.rules"));
+const actionsVerifier = read(actionsVerifierPath);
+const deployContractVerifier = read(deployContractVerifierPath);
+const firestoreCoverageVerifier = read(firestoreCoverageVerifierPath);
+const deployScriptsVerifier = read(deployScriptsVerifierPath);
+const hostingSmokeVerifier = read(hostingSmokeVerifierPath);
+const auditLiveFirestore = read(auditLiveFirestorePath);
+const validationScript = read(validationScriptPath);
+const syncArchitecture = read(syncArchitecturePath);
+const dataModel = read(dataModelPath);
 const clientCardSurface = app.slice(
   app.indexOf("function renderClientCard"),
   app.indexOf("function renderQuestionnaireItemCard")

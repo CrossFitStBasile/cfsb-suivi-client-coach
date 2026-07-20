@@ -26,7 +26,9 @@ collectMatches(rules, /match\s+\/([A-Za-z0-9_]+)\//g, ruleCollections);
 
 const ignored = new Set([
   // Dynamic collection names are verified by their concrete action callers.
-  "collectionName"
+  "collectionName",
+  // Admin SDK only: browser access intentionally falls through to deny-all.
+  "ownershipAuditSnapshots"
 ]);
 
 const missingRules = [...staticCollections]

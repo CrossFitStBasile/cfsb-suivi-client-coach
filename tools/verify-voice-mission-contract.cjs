@@ -2,11 +2,16 @@ const fs = require("fs");
 const path = require("path");
 
 const root = path.resolve(__dirname, "..");
-const app = fs.readFileSync(path.join(root, "firebase-dashboard", "public", "app.js"), "utf8");
-const styles = fs.readFileSync(path.join(root, "firebase-dashboard", "public", "styles.css"), "utf8");
-const index = fs.readFileSync(path.join(root, "firebase-dashboard", "public", "index.html"), "utf8");
-const functions = fs.readFileSync(path.join(root, "functions", "index.js"), "utf8");
-const rules = fs.readFileSync(path.join(root, "firestore.rules"), "utf8");
+
+function read(filePath) {
+  return fs.readFileSync(filePath, "utf8").replace(/\r\n/g, "\n");
+}
+
+const app = read(path.join(root, "firebase-dashboard", "public", "app.js"));
+const styles = read(path.join(root, "firebase-dashboard", "public", "styles.css"));
+const index = read(path.join(root, "firebase-dashboard", "public", "index.html"));
+const functions = read(path.join(root, "functions", "index.js"));
+const rules = read(path.join(root, "firestore.rules"));
 
 const version = app.match(/const APP_VERSION = "([^"]+)"/)?.[1] || "";
 const quickNoteModal = app.slice(

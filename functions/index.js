@@ -11,6 +11,19 @@ const {
   verifiedEvidenceRefs
 } = require("./assistant-context");
 const { generateReadOnlyAssistantProposal, transcribeAssistantVoice } = require("./assistant-ai");
+const {
+  buildLegacyCoachStatusPatch,
+  buildPipelineStatusData,
+  coachSyncPipeline
+} = require("./sync-status");
+const {
+  TASKS_CURRENT_SOURCE,
+  collectVerifiedOrphanTasksCurrentRecords,
+  createImportedTaskResolver,
+  importedTaskTerminalMetadataFieldsToClear,
+  isTerminalTaskStatus,
+  preserveImportedTaskLifecycle
+} = require("./task-import");
 
 admin.initializeApp();
 
@@ -2468,6 +2481,13 @@ exports.ingestDashboardSource = onRequest(
   }
 );
 
+function questionnaireReviewRowsForScope(rows = [], requestedCoachId = "") {
+  if (cleanString(requestedCoachId)) return [];
+  return (Array.isArray(rows) ? rows : []).filter((row) => (
+    pick(row, ["questionnaire_routing_status"]) !== "matched"
+  ));
+}
+
 async function runDashboardSheetsSync({
   requestedCoachId = "",
   request = null,
@@ -2641,9 +2661,10 @@ async function runDashboardSheetsSync({
     }
   }
 
-  const questionnaireReviewRows = routedQuestionnaireRows.filter((row) => (
-    pick(row, ["questionnaire_routing_status"]) !== "matched"
-  ));
+  const questionnaireReviewRows = questionnaireReviewRowsForScope(
+    routedQuestionnaireRows,
+    requestedCoachId
+  );
   let questionnaireReview = {
     recordsReceived: questionnaireReviewRows.length,
     recordsWritten: 0,
@@ -2686,7 +2707,10 @@ async function runDashboardSheetsSync({
   };
   if (!questionnaireOnly) {
     try {
-      csmClientEnrichment = await syncCsmClientEnrichmentRecords({ rows: coreRows });
+      csmClientEnrichment = await syncCsmClientEnrichmentRecords({
+        rows: coreRows,
+        coachId: requestedCoachId
+      });
     } catch (error) {
       const message = cleanString(error?.message || error || "Erreur inconnue enrichissement CSM.");
       console.error("Dashboard CSM client enrichment failed", {
@@ -2794,33 +2818,43 @@ function summarizeSyncResult(result = {}) {
 }
 
 async function writeCoachSyncStatus({ result, request, source = "firebase_function_sync_sheets", triggeredBy = "system" }) {
-  const warningCount = Array.isArray(result.warnings) ? result.warnings.length : 0;
-  await db.collection("coachSyncStatus").doc(result.coachId).set({
-    coachId: result.coachId,
-    coachName: result.coachName || "",
-    status: warningCount ? "warning" : "ok",
-    warningCount,
-    warnings: Array.isArray(result.warnings) ? result.warnings.slice(0, 5) : [],
-    clientsImported: Number(result.clientsImported || result.clientsEnriched || 0),
-    clientsEnriched: Number(result.clientsEnriched || 0),
-    clientsMissingPhone: Number(result.clientsMissingPhone || result.diagnostics?.importedClients?.missingPhone || 0),
-    tasksImported: Number(result.tasksImported || 0),
-    questionnaireResponsesImported: Number(result.questionnaireResponsesImported || 0),
-    rebookingsImported: Number(result.rebookingsImported || 0),
-    checkupsImported: Number(result.checkupsImported || 0),
-    impactsImported: Number(result.impactsImported || 0),
-    alumniImported: Number(result.alumniImported || 0),
-    sourceCoreClients: Number(result.sourceCoreClients || 0),
-    sourceCoachRxRows: Number(result.sourceCoachRxRows || 0),
-    sourceTaskRows: Number(result.sourceTaskRows || 0),
-    sourceQuestionnaireRows: Number(result.sourceQuestionnaireRows || 0),
-    diagnostics: compactSyncDiagnostics(result.diagnostics),
-    requestedByUid: request?.auth?.uid || "system",
-    requestedByEmail: request?.auth?.token?.email || "",
-    triggeredBy,
-    syncedAt: admin.firestore.FieldValue.serverTimestamp(),
-    source
-  }, { merge: true });
+  if (!result?.coachId) return;
+  const pipeline = coachSyncPipeline({ source, sourceType: result.sourceType });
+  const requestedByEmail = request?.auth?.token?.email || "";
+  const pipelineData = buildPipelineStatusData({ result, pipeline, source, requestedBy: requestedByEmail });
+  const legacyPatch = buildLegacyCoachStatusPatch({ result, pipeline, source, requestedBy: requestedByEmail });
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const statusRef = db.collection("coachSyncStatus").doc(result.coachId);
+  const topLevelPatch = {
+    ...legacyPatch,
+    lastAnySyncAt: now,
+    [`${pipeline}SyncedAt`]: now
+  };
+  if (["coachrx", "dashboard_full"].includes(pipeline)) {
+    Object.assign(topLevelPatch, {
+      tasksImported: Number(result.tasksImported || 0),
+      impactsImported: Number(result.impactsImported || 0),
+      alumniImported: Number(result.alumniImported || 0),
+      sourceCoreClients: Number(result.sourceCoreClients || 0),
+      sourceCoachRxRows: Number(result.sourceCoachRxRows || 0),
+      sourceTaskRows: Number(result.sourceTaskRows || 0),
+      sourceQuestionnaireRows: Number(result.sourceQuestionnaireRows || 0),
+      diagnostics: compactSyncDiagnostics(result.diagnostics),
+      requestedByUid: request?.auth?.uid || "system",
+      triggeredBy,
+      syncedAt: now
+    });
+  }
+  await Promise.all([
+    statusRef.set(topLevelPatch, { merge: true }),
+    statusRef.collection("pipelines").doc(pipeline).set({
+      ...pipelineData,
+      diagnostics: compactSyncDiagnostics(result.diagnostics),
+      requestedByUid: request?.auth?.uid || "system",
+      triggeredBy,
+      syncedAt: now
+    }, { merge: true })
+  ]);
 }
 
 function compactSyncDiagnostics(diagnostics = {}) {
@@ -3345,16 +3379,15 @@ async function processDirectClientImport({ sourceType, sourceLabel, coach, coreR
       updatedFromDirectImportAt: admin.firestore.FieldValue.serverTimestamp()
     }
   });
-  const ownershipQuarantined = Number(diagnostics.ownership?.conflicts || 0)
-    + Number(diagnostics.ownership?.needsReview || 0)
-    + Number(diagnostics.ownership?.staffExcluded || 0);
+  const ownershipQuarantined = ownershipReviewQuarantineCount(diagnostics.ownership);
   const staleSourceCandidates = ownershipQuarantined
     ? new Set()
     : directClientStaleCandidateSources(sourceType);
   const staleClients = staleSourceCandidates.size
-    ? collectStaleImportedMapDocs({
+      ? collectStaleImportedMapDocs({
         existingById: existingClients,
         currentIds: new Set(records.map((record) => record.id)),
+        coachId: sourceType === "coachrx_clients" ? coach.id : "",
         protectedSources: new Set(["firebase_app_manual", "manual", "dashboard_manual"]),
         candidateSources: staleSourceCandidates
       })
@@ -3473,11 +3506,12 @@ async function processDirectClientEnrichmentImport({ coach, records, runId, requ
   return result;
 }
 
-async function syncCsmClientEnrichmentRecords({ rows }) {
+async function syncCsmClientEnrichmentRecords({ rows, coachId = "" }) {
   const existingClients = await loadAllExistingDocs("clients");
   const enrichmentRecords = buildClientEnrichmentRecords({
     rows,
-    existingById: existingClients
+    existingById: existingClients,
+    coachId
   });
   const diagnostics = enrichmentRecords.__diagnostics || {};
   const recordsWritten = await writeImportRecords({
@@ -3543,6 +3577,7 @@ async function processDirectRebookingImport({ coach, records, runId, requestedBy
   const staleRebookings = collectStaleImportedMapDocs({
     existingById: existingRebookings,
     currentIds: new Set(rebookings.map((record) => record.id)),
+    coachId: coach.id,
     protectedSources: new Set(["firebase_app_manual", "manual", "dashboard_manual"]),
     candidateSources: new Set(["direct_rebooking_appscript"])
   });
@@ -3818,6 +3853,21 @@ function clientRecordAvailableForMatching(data = {}) {
     "alumni",
     "do_not_contact",
     "import_stale",
+    "ownership_quarantine",
+    "deleted"
+  ].includes(cleanString(data.status))) return false;
+  return true;
+}
+
+function clientRecordAvailableForImportMatching(data = {}) {
+  if (cleanString(data.entityType) !== "member") return false;
+  if (cleanString(data.ownershipStatus) !== "confirmed") return false;
+  if (data.clientSelectable !== true) return false;
+  if ([
+    "removed",
+    "archived",
+    "alumni",
+    "do_not_contact",
     "ownership_quarantine",
     "deleted"
   ].includes(cleanString(data.status))) return false;
@@ -4491,27 +4541,34 @@ function uniqueFirestoreCriteria(criteria = []) {
 
 async function writeDirectCoachSyncStatus({ result, runId, requestedBy, source }) {
   if (!result?.coachId) return;
-  await db.collection("coachSyncStatus").doc(result.coachId).set({
-    coachId: result.coachId,
-    coachName: result.coachName || "",
-    status: result.status === "warning" ? "warning" : "ok",
-    warningCount: Array.isArray(result.warnings) ? result.warnings.length : 0,
-    warnings: Array.isArray(result.warnings) ? result.warnings.slice(0, 5) : [],
-    clientsImported: Number(result.clientsImported || result.clientsEnriched || 0),
-    clientsEnriched: Number(result.clientsEnriched || 0),
-    clientsMissingPhone: Number(result.clientsMissingPhone || result.diagnostics?.importedClients?.missingPhone || 0),
-    rebookingsImported: Number(result.rebookingsImported || 0),
-    checkupsImported: Number(result.checkupsImported || 0),
-    questionnaireResponsesImported: Number(result.questionnaireResponsesImported || 0),
-    sourceImportRunId: runId,
-    directSourceType: result.sourceType || "",
-    diagnostics: result.diagnostics || {},
-    requestedByUid: "direct_import",
-    requestedByEmail: requestedBy || "",
-    triggeredBy: "direct_import",
-    syncedAt: admin.firestore.FieldValue.serverTimestamp(),
-    source
-  }, { merge: true });
+  const pipeline = coachSyncPipeline({ source, sourceType: result.sourceType });
+  const pipelineData = buildPipelineStatusData({ result, pipeline, source, runId, requestedBy });
+  const legacyPatch = buildLegacyCoachStatusPatch({ result, pipeline, source, runId, requestedBy });
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const statusRef = db.collection("coachSyncStatus").doc(result.coachId);
+  const topLevelPatch = {
+    ...legacyPatch,
+    lastAnySyncAt: now,
+    [`${pipeline}SyncedAt`]: now
+  };
+  if (["coachrx", "dashboard_full"].includes(pipeline)) {
+    Object.assign(topLevelPatch, {
+      diagnostics: result.diagnostics || {},
+      requestedByUid: "direct_import",
+      triggeredBy: "direct_import",
+      syncedAt: now
+    });
+  }
+  await Promise.all([
+    statusRef.set(topLevelPatch, { merge: true }),
+    statusRef.collection("pipelines").doc(pipeline).set({
+      ...pipelineData,
+      diagnostics: result.diagnostics || {},
+      requestedByUid: "direct_import",
+      triggeredBy: "direct_import",
+      syncedAt: now
+    }, { merge: true })
+  ]);
 }
 
 function summarizeDirectImportResult(result = {}) {
@@ -4839,14 +4896,12 @@ async function syncCoachFromRows({
       })
     : [];
   const clientImportDiagnostics = clients.__diagnostics || {};
-  const ownershipQuarantineCount = Number(clientImportDiagnostics.ownership?.conflicts || 0)
-    + Number(clientImportDiagnostics.ownership?.needsReview || 0)
-    + Number(clientImportDiagnostics.ownership?.staffExcluded || 0);
+  const ownershipReviewBlockCount = ownershipReviewQuarantineCount(clientImportDiagnostics.ownership);
   const ghlPhoneEnrichment = clientSyncEnabled
     ? await enrichClientRecordsWithGhlPhones({ clients })
     : { attempted: 0, enriched: 0, skippedDuringOwnershipProtection: true };
   const clientsForMatching = mergeImportRecordLists(mapToImportRecords(existingClients), clients)
-    .filter((client) => clientRecordAvailableForMatching(client.data));
+    .filter((client) => clientRecordAvailableForMatching(client.data) && client.data?.sourceStale !== true);
   // Questionnaire ownership is independent from submitted coach text. The
   // normalized phone was reconciled globally against canonical active clients
   // before this coach loop.
@@ -4888,16 +4943,48 @@ async function syncCoachFromRows({
     ...explicitTasks,
     ...questionnaireTasks
   ];
-  const staleClients = !clientSyncEnabled || ownershipQuarantineCount ? [] : collectStaleImportedDocs({
+  const taskIdentityDiagnostics = explicitTasks.__diagnostics || {};
+  const taskCleanupBlocked = ownershipReviewBlockCount > 0
+    || Number(taskIdentityDiagnostics.rowsSkippedUnmatchedClient || 0) > 0
+    || Number(taskIdentityDiagnostics.rowsSkippedAmbiguousClient || 0) > 0
+    || Number(taskIdentityDiagnostics.rowsSkippedMissingClientIdentity || 0) > 0
+    || Number(taskIdentityDiagnostics.rowsSkippedStrongClientIdMismatch || 0) > 0
+    || Number(taskIdentityDiagnostics.currentIdentityCollisions || 0) > 0
+    || Number(taskIdentityDiagnostics.existingDuplicateCandidates || 0) > 0;
+  const currentClientIds = new Set(clients.map((client) => client.id));
+  const verifiedLegacyCoachRxDuplicates = !clientSyncEnabled || ownershipReviewBlockCount
+    ? []
+    : collectVerifiedLegacyCoachRxDuplicateDocs({
+        snap: existingClientSnap,
+        currentRecords: clients,
+        coachId: coach.id
+      });
+  const genericStaleClients = !clientSyncEnabled || ownershipReviewBlockCount ? [] : collectStaleImportedDocs({
     snap: existingClientSnap,
-    currentIds: new Set(clients.map((client) => client.id)),
-    protectedSources: new Set(["firebase_app_manual", "manual"])
-  });
-  const staleTasks = !clientSyncEnabled || ownershipQuarantineCount ? [] : collectStaleImportedDocs({
-    snap: existingTaskSnap,
-    currentIds: new Set(tasks.map((task) => task.id)),
+    currentIds: currentClientIds,
+    coachId: coach.id,
     protectedSources: new Set(["firebase_app_manual", "manual", "dashboard_manual"])
   });
+  const staleClients = [
+    ...genericStaleClients,
+    ...verifiedLegacyCoachRxDuplicates.filter((client) => (
+      !genericStaleClients.some((candidate) => candidate.id === client.id)
+    ))
+  ];
+  const genericStaleTasks = !clientSyncEnabled || taskCleanupBlocked ? [] : collectStaleImportedDocs({
+    snap: existingTaskSnap,
+    currentIds: new Set(tasks.map((task) => task.id)),
+    coachId: coach.id,
+    protectedSources: new Set(["firebase_app_manual", "manual", "dashboard_manual"])
+  });
+  const verifiedOrphanTasks = !clientSyncEnabled ? [] : collectVerifiedOrphanTasksCurrentRecords({
+    existingById: existingTasks,
+    coachId: coach.id
+  });
+  const staleTasks = [
+    ...genericStaleTasks,
+    ...verifiedOrphanTasks.filter((task) => !genericStaleTasks.some((candidate) => candidate.id === task.id))
+  ];
 
   // Keep this fail-closed assertion even though `clients` is built from the
   // same gate above. It turns a future refactor into a failed sync instead of
@@ -4954,13 +5041,7 @@ async function syncCoachFromRows({
 
   for (const stale of staleTasks) {
     const ref = db.collection("tasks").doc(stale.id);
-    batch.set(ref, {
-      status: "archived",
-      sourceStale: true,
-      staleReason: "Tache absente de la derniere synchronisation Google Sheets / CoachRx.",
-      archivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+    batch.set(ref, buildStaleImportedTaskPatch(stale.data), { merge: true });
     ops += 1;
     await commitIfNeeded();
   }
@@ -5109,7 +5190,20 @@ async function syncCoachFromRows({
     }),
     staleCleanup: {
       clientsMarkedStale: staleClients.length,
+      clientCleanupBlocked: ownershipReviewBlockCount > 0,
+      legacyCoachRxDuplicatesReconciled: verifiedLegacyCoachRxDuplicates.length,
       tasksArchivedStale: staleTasks.length,
+      tasksCleanupBlocked: taskCleanupBlocked,
+      verifiedOrphanTasksArchived: verifiedOrphanTasks.length,
+      tasksCleanupBlockReasons: [
+        ownershipReviewBlockCount > 0 ? "client_ownership_review" : "",
+        Number(taskIdentityDiagnostics.rowsSkippedUnmatchedClient || 0) > 0 ? "unmatched_task_client" : "",
+        Number(taskIdentityDiagnostics.rowsSkippedAmbiguousClient || 0) > 0 ? "ambiguous_task_client" : "",
+        Number(taskIdentityDiagnostics.rowsSkippedMissingClientIdentity || 0) > 0 ? "missing_task_client_identity" : "",
+        Number(taskIdentityDiagnostics.rowsSkippedStrongClientIdMismatch || 0) > 0 ? "strong_task_client_id_mismatch" : "",
+        Number(taskIdentityDiagnostics.currentIdentityCollisions || 0) > 0 ? "task_source_identity_collision" : "",
+        Number(taskIdentityDiagnostics.existingDuplicateCandidates || 0) > 0 ? "existing_task_identity_collision" : ""
+      ].filter(Boolean),
       clientSamples: staleClients.slice(0, 8).map((item) => item.id),
       taskSamples: staleTasks.slice(0, 8).map((item) => item.id)
     },
@@ -5221,7 +5315,11 @@ function buildClientRecords({
   ownershipClaims = new Map()
 }) {
   const clients = new Map();
-  const matchIndex = createClientMatchIndex(existingById);
+  const matchIndex = createClientMatchIndex(existingById, {
+    coachId: coach.id,
+    includeImportStale: true,
+    requireUnique: true
+  });
   const diagnostics = {
     skippedInvalidNameCount: 0,
     skippedInvalidNameSamples: [],
@@ -5308,6 +5406,47 @@ function buildClientRecords({
       sourceSystem: ownership.sourceIdentitySystem,
       preferSource: source === "coachrx"
     });
+    if (matched?.ambiguous) {
+      diagnostics.ownership.needsReview += 1;
+      diagnostics.coachRxPortfolio.needsValidation += 1;
+      if (diagnostics.coachRxPortfolio.samplesToValidate.length < 8) {
+        diagnostics.coachRxPortfolio.samplesToValidate.push({
+          name,
+          reason: "identite forte ambigue parmi les fiches existantes",
+          recommendedAdminAction: "Revoir les doublons avant de relancer la synchronisation."
+        });
+      }
+      return;
+    }
+    if (matched?.id && isCanonicalContractRecord(matched.data)) {
+      diagnostics.ownership.needsReview += 1;
+      diagnostics.coachRxPortfolio.needsValidation += 1;
+      if (diagnostics.coachRxPortfolio.samplesToValidate.length < 8) {
+        diagnostics.coachRxPortfolio.samplesToValidate.push({
+          name,
+          reason: "fiche canonique Dashboard detectee",
+          recommendedAdminAction: "Confirmer le lien CoachRx avec le writer contractuel avant toute mise a jour."
+        });
+      }
+      return;
+    }
+    const matchedSourceClientId = cleanString(matched?.data?.sourceClientId);
+    if (source === "coachrx"
+      && matched?.by === "phone"
+      && sourceClientId
+      && matchedSourceClientId
+      && sourceClientId !== matchedSourceClientId) {
+      diagnostics.ownership.needsReview += 1;
+      diagnostics.coachRxPortfolio.needsValidation += 1;
+      if (diagnostics.coachRxPortfolio.samplesToValidate.length < 8) {
+        diagnostics.coachRxPortfolio.samplesToValidate.push({
+          name,
+          reason: "telephone deja relie a un autre ID CoachRx",
+          recommendedAdminAction: "Verifier l'identite CoachRx avant de fusionner les fiches."
+        });
+      }
+      return;
+    }
     const id = matched?.id || fallbackId;
     const existing = clients.get(id)?.data || matched?.data || existingById.get(id) || {};
     if (ownership.ownershipStatus === "needs_review"
@@ -5371,13 +5510,16 @@ function buildClientRecords({
       sourceCoachPath: ownershipContext?.sourceCoachPath || firstUsefulValue(row, SOURCE_PATH_ALIASES),
       ownershipValidatedAt: admin.firestore.FieldValue.serverTimestamp(),
       recommendedAdminAction: ownership.recommendedAdminAction,
-      sourceUpdatedAt: admin.firestore.FieldValue.serverTimestamp()
+      sourceUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      sourceStale: false,
+      staleAt: admin.firestore.FieldValue.delete(),
+      staleReason: admin.firestore.FieldValue.delete()
     };
     if (matched?.id && matched.id !== fallbackId) {
       importedData.matchedExistingClientId = matched.id;
       importedData.matchedExistingClientBy = matched.by;
     }
-    if (existing.source === "firebase_app_manual" || existing.linkedFromManual) {
+    if (["firebase_app_manual", "manual", "dashboard_manual"].includes(cleanString(existing.source)) || existing.linkedFromManual) {
       importedData.linkedFromManual = true;
     }
     setIfUseful(importedData, "sourceClientId", sourceClientId || existing.sourceClientId);
@@ -5518,7 +5660,10 @@ function buildGhlContactEnrichmentRecords({ coach, rows, existingById = new Map(
   const clients = new Map();
   // GHL is enrichment-only. A duplicate legacy identity must be skipped rather
   // than letting the first matching Firestore document receive the update.
-  const matchIndex = createClientMatchIndex(existingById, { requireUnique: true });
+  const matchIndex = createClientMatchIndex(existingById, {
+    requireUnique: true,
+    coachId: cleanString(coach?.id)
+  });
   const diagnostics = {
     ghlContacts: {
       rowsReceived: Array.isArray(rows) ? rows.length : 0,
@@ -5603,14 +5748,25 @@ function buildGhlContactEnrichmentRecords({ coach, rows, existingById = new Map(
   return records;
 }
 
-function createClientMatchIndex(existingById = new Map(), { requireUnique = false } = {}) {
+function createClientMatchIndex(existingById = new Map(), {
+  requireUnique = false,
+  includeImportStale = false,
+  coachId = ""
+} = {}) {
   const index = {
     byPhone: new Map(),
     bySource: new Map(),
     requireUnique
   };
+  const expectedCoachId = cleanString(coachId);
   existingById.forEach((data, id) => {
-    if (clientRecordAvailableForMatching(data)) indexClientMatch(index, id, data);
+    if (expectedCoachId && cleanString(data.coachId) !== expectedCoachId) return;
+    const available = includeImportStale
+      ? clientRecordAvailableForImportMatching(data)
+      : clientRecordAvailableForMatching(data);
+    if (available) {
+      indexClientMatch(index, id, data, { includeImportStale });
+    }
   });
   return index;
 }
@@ -5633,14 +5789,27 @@ function setClientMatchIndexEntry(index, map, key, candidate) {
   }
 }
 
-function indexClientMatch(index, id, data = {}) {
-  if (!clientRecordAvailableForMatching(data)) return;
+function indexClientMatch(index, id, data = {}, { includeImportStale = false } = {}) {
+  const available = includeImportStale
+    ? clientRecordAvailableForImportMatching(data)
+    : clientRecordAvailableForMatching(data);
+  if (!available) return;
   const phone = clientPhone(data);
   const sourceClientId = cleanString(data.sourceClientId || data.clientId || data.contactId);
   const sourceSystem = sourceIdentitySystem(data);
   const sourceKey = sourceClientId && sourceSystem ? `${sourceSystem}:${sourceClientId}` : "";
   setClientMatchIndexEntry(index, index.byPhone, phone, { id, data, by: "phone" });
   setClientMatchIndexEntry(index, index.bySource, sourceKey, { id, data, by: "sourceClientId" });
+  if (isCanonicalContractRecord(data)
+    && cleanString(data.coachRxLink?.linkStatus) === "verified"
+    && cleanString(data.coachRxLink?.sourceClientId)) {
+    setClientMatchIndexEntry(
+      index,
+      index.bySource,
+      `coachrx:${cleanString(data.coachRxLink.sourceClientId)}`,
+      { id, data, by: "sourceClientId" }
+    );
+  }
 }
 
 function findClientMatch(index, { phoneNormalized, sourceClientId, sourceSystem, preferSource = false }) {
@@ -5653,11 +5822,14 @@ function findClientMatch(index, { phoneNormalized, sourceClientId, sourceSystem,
   return preferSource ? sourceMatch || phoneMatch || null : phoneMatch || sourceMatch || null;
 }
 
-function buildClientEnrichmentRecords({ coach, rows, existingById = new Map() }) {
+function buildClientEnrichmentRecords({ coach, rows, existingById = new Map(), coachId = "" }) {
   const clients = new Map();
   // CSM may enrich a real CoachRx client, but it is never allowed to choose
   // among duplicate historical identities.
-  const matchIndex = createClientMatchIndex(existingById, { requireUnique: true });
+  const matchIndex = createClientMatchIndex(existingById, {
+    requireUnique: true,
+    coachId: cleanString(coachId || coach?.id)
+  });
   const diagnostics = {
     rowsReceived: Array.isArray(rows) ? rows.length : 0,
     rowsWithoutIdentity: 0,
@@ -5816,11 +5988,70 @@ function buildClientEnrichmentRecords({ coach, rows, existingById = new Map() })
   return records;
 }
 
-function collectStaleImportedDocs({ snap, currentIds, protectedSources = new Set() }) {
+function isCanonicalContractRecord(data = {}) {
+  return Number(data.contractVersion) === 1
+    && Boolean(cleanString(data.internalClientId))
+    && ["dashboard_manual", "coachrx_import", "legacy_migrated"].includes(cleanString(data.originSystem));
+}
+
+function clientCanonicalIdentityProtectedFromLegacyStale(data = {}) {
+  return isCanonicalContractRecord(data);
+}
+
+function ownershipReviewQuarantineCount(ownership = {}) {
+  return Number(ownership.conflicts || 0) + Number(ownership.needsReview || 0);
+}
+
+function isLegacyCoachRxImportedClientSource(source) {
+  return ["google_sheets_coachrx_browser", "coachrx_visible_snapshot"].includes(cleanString(source));
+}
+
+function collectVerifiedLegacyCoachRxDuplicateDocs({ snap, currentRecords = [], coachId = "" }) {
+  const expectedCoachId = cleanString(coachId);
+  if (!expectedCoachId) return [];
+  const currentIds = new Set(currentRecords.map((record) => cleanString(record?.id)).filter(Boolean));
+  const currentByName = new Map();
+  currentRecords.forEach((record) => {
+    const data = record?.data || {};
+    if (!isLegacyCoachRxImportedClientSource(data.source)) return;
+    if (!cleanString(data.sourceClientId)) return;
+    if (cleanString(data.coachId) !== expectedCoachId) return;
+    if (data.clientSelectable === false) return;
+    if (["removed", "archived", "alumni", "do_not_contact", "import_stale", "ownership_quarantine"].includes(cleanString(data.status))) return;
+    const nameKey = normalizeComparable(data.name || data.clientName);
+    if (!nameKey) return;
+    const matches = currentByName.get(nameKey) || [];
+    matches.push(record);
+    currentByName.set(nameKey, matches);
+  });
+
+  const verified = [];
+  snap.forEach((docSnap) => {
+    if (currentIds.has(cleanString(docSnap.id))) return;
+    const data = docSnap.data() || {};
+    if (!isLegacyCoachRxImportedClientSource(data.source)) return;
+    if (cleanString(data.sourceClientId)) return;
+    if (data.sourceStale !== true || !data.staleAt) return;
+    if (cleanString(data.status) !== "active" || data.clientSelectable === false) return;
+    if (cleanString(data.coachId) !== expectedCoachId) return;
+    if (data.linkedFromManual || clientCanonicalIdentityProtectedFromLegacyStale(data)) return;
+    const nameKey = normalizeComparable(data.name || data.clientName);
+    const currentMatches = nameKey ? currentByName.get(nameKey) || [] : [];
+    if (currentMatches.length !== 1 || currentMatches[0].id === docSnap.id) return;
+    verified.push({ id: docSnap.id, data });
+  });
+  return verified;
+}
+
+function collectStaleImportedDocs({ snap, currentIds, coachId = "", protectedSources = new Set() }) {
+  const expectedCoachId = cleanString(coachId);
+  if (!expectedCoachId) return [];
   const stale = [];
   snap.forEach((docSnap) => {
     if (currentIds.has(docSnap.id)) return;
     const data = docSnap.data() || {};
+    if (cleanString(data.coachId) !== expectedCoachId) return;
+    if (clientCanonicalIdentityProtectedFromLegacyStale(data)) return;
     if (data.linkedFromManual) return;
     if (protectedSources.has(cleanString(data.source))) return;
     if (data.sourceStale === true) return;
@@ -5834,13 +6065,18 @@ function collectStaleImportedDocs({ snap, currentIds, protectedSources = new Set
 function collectStaleImportedMapDocs({
   existingById = new Map(),
   currentIds = new Set(),
+  coachId = "",
   protectedSources = new Set(),
   candidateSources = new Set()
 }) {
   if (!candidateSources.size) return [];
+  const expectedCoachId = cleanString(coachId);
+  if (!expectedCoachId) return [];
   const stale = [];
   existingById.forEach((data = {}, id) => {
     if (currentIds.has(id)) return;
+    if (cleanString(data.coachId) !== expectedCoachId) return;
+    if (clientCanonicalIdentityProtectedFromLegacyStale(data)) return;
     if (data.linkedFromManual) return;
     const source = cleanString(data.source);
     if (protectedSources.has(source)) return;
@@ -5869,6 +6105,9 @@ async function markStaleImportedRecords({ collectionName, records = [], staleRea
 
   for (const record of records) {
     if (!record?.id) continue;
+    if (collectionName === "clients" && clientCanonicalIdentityProtectedFromLegacyStale(record.data || {})) {
+      continue;
+    }
     const ref = db.collection(collectionName).doc(record.id);
     batch.set(ref, {
       status: "import_stale",
@@ -5885,6 +6124,19 @@ async function markStaleImportedRecords({ collectionName, records = [], staleRea
   return written;
 }
 
+function buildStaleImportedTaskPatch(data = {}) {
+  const currentStatus = cleanString(data.status).toLowerCase();
+  const terminal = isTerminalTaskStatus(currentStatus);
+  const patch = {
+    status: terminal ? currentStatus : "archived",
+    sourceStale: true,
+    staleReason: "Tache absente de la derniere synchronisation Google Sheets / CoachRx.",
+    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  };
+  if (!terminal) patch.archivedAt = admin.firestore.FieldValue.serverTimestamp();
+  return patch;
+}
+
 function isImportedSheetSource(source) {
   const clean = cleanString(source);
   return clean.startsWith("google_sheets_")
@@ -5897,11 +6149,22 @@ function isImportedSheetSource(source) {
 function buildTaskRecords({ coach, taskRows, clients, browserRows, existingById = new Map() }) {
   const tasks = new Map();
   const selectableClients = clients.filter((client) => clientRecordAvailableForMatching(client.data));
-  const clientByName = new Map(selectableClients.map((client) => [normalizeComparable(client.data.name), client]));
+  const taskClientMatcher = buildTaskClientMatcher(selectableClients);
+  const importedTaskResolver = createImportedTaskResolver({ coachId: coach.id, existingById });
+  const sheetDiagnostics = {
+    rowsSkippedUnmatchedClient: 0,
+    rowsSkippedAmbiguousClient: 0,
+    rowsSkippedMissingClientIdentity: 0,
+    rowsSkippedStrongClientIdMismatch: 0,
+    rowsMatchedByClientId: 0,
+    rowsMatchedByPhone: 0,
+    rowsMatchedByEmail: 0,
+    rowsMatchedByUniqueName: 0
+  };
   const addTask = ({ key, client, type, title, description, priority, dueAt, source, sourceEventId = "", sourceSignal = {} }) => {
     const id = `${coach.id}_${slugify(key)}`;
     const existing = existingById.get(id) || {};
-    const existingClosed = ["done", "ignored", "archived"].includes(existing.status);
+    const lifecycle = preserveImportedTaskLifecycle(existing, "open");
     const data = {
       coachId: coach.id,
       coachName: coach.name,
@@ -5913,36 +6176,107 @@ function buildTaskRecords({ coach, taskRows, clients, browserRows, existingById 
       priority,
       priorityRank: priorityRank(priority),
       dueAt: dueAt || "",
-      status: existingClosed ? existing.status : "open",
+      ...lifecycle,
       source,
       sourceEventId: sourceEventId || existing.sourceEventId || "",
       sourceSignal,
-      createdAt: existing.createdAt || admin.firestore.FieldValue.serverTimestamp()
+      sourceStale: false,
+      staleAt: admin.firestore.FieldValue.delete(),
+      staleReason: admin.firestore.FieldValue.delete(),
+      createdAt: lifecycle.createdAt || admin.firestore.FieldValue.serverTimestamp()
     };
-    if (existingClosed && existing.completedAt) data.completedAt = existing.completedAt;
-    if (existingClosed && existing.ignoredAt) data.ignoredAt = existing.ignoredAt;
+    importedTaskTerminalMetadataFieldsToClear(existing).forEach((field) => {
+      data[field] = admin.firestore.FieldValue.delete();
+    });
     tasks.set(id, { id, data });
   };
 
-  taskRows.forEach((row, index) => {
+  taskRows.forEach((row) => {
     const sourceTitle = pick(row, ["title", "titre", "task", "tache", "action", "mission"]);
     const clientName = clientNameFromRow(row);
-    const client = clientByName.get(normalizeComparable(clientName));
+    const clientMatch = taskClientMatcher(row);
+    const client = clientMatch.client;
     const type = inferImportedTaskType(normalizeTaskType(pick(row, ["type", "categorie", "category"])), sourceTitle);
+    const clientTargetedType = ["validation", "program", "rebooking", "questionnaire_followup"].includes(type);
     if (!sourceTitle && !clientName) return;
     if (isObviousJunkTaskTitle(sourceTitle) && !clientName) return;
+    if (clientMatch.strongSignalMismatch) {
+      sheetDiagnostics.rowsSkippedStrongClientIdMismatch += 1;
+      return;
+    }
+    if (clientTargetedType && !client) {
+      if (clientMatch.ambiguous) sheetDiagnostics.rowsSkippedAmbiguousClient += 1;
+      else if (clientName) sheetDiagnostics.rowsSkippedUnmatchedClient += 1;
+      else sheetDiagnostics.rowsSkippedMissingClientIdentity += 1;
+      return;
+    }
+    if (clientMatch.method === "client_id") sheetDiagnostics.rowsMatchedByClientId += 1;
+    if (clientMatch.method === "phone") sheetDiagnostics.rowsMatchedByPhone += 1;
+    if (clientMatch.method === "email") sheetDiagnostics.rowsMatchedByEmail += 1;
+    if (clientMatch.method === "unique_name") sheetDiagnostics.rowsMatchedByUniqueName += 1;
     const title = normalizeImportedTaskTitle({ title: sourceTitle, type, clientName });
     const description = pick(row, ["description", "details", "note", "raison"]) || defaultImportedTaskDescription({ title, type });
-    addTask({
-      key: `sheet-task-${pick(row, ["id", "task id"]) || index}-${title}-${clientName}`,
-      client,
+    const priority = normalizePriority(pick(row, ["priority", "priorite", "priorité"])) || "P2";
+    const dueAt = pick(row, ["due", "due date", "date", "echeance", "échéance"]) || "";
+    const sourceEventId = pick(row, [
+      "task id",
+      "task_id",
+      "source event id",
+      "source_event_id",
+      "event id",
+      "event_id",
+      "source id",
+      "source_id"
+    ]);
+    const resolved = importedTaskResolver.resolve({
+      source: TASKS_CURRENT_SOURCE,
+      sourceEventId,
+      clientId: client?.id || "",
+      clientName: client?.data?.name || clientName,
       type,
       title: title || defaultTaskTitle(type),
       description,
-      priority: normalizePriority(pick(row, ["priority", "priorite", "priorité"])) || "P2",
-      dueAt: pick(row, ["due", "due date", "date", "echeance", "échéance"]) || "",
-      source: "google_sheets_tasks_current"
+      priority,
+      dueAt
     });
+    if (resolved.sourceIdentityCollision) {
+      tasks.delete(resolved.id);
+      return;
+    }
+    const lifecycle = preserveImportedTaskLifecycle(resolved.existing, "open");
+    const data = {
+      coachId: coach.id,
+      coachName: coach.name,
+      clientId: client?.id || "",
+      clientName: client?.data?.name || clientName || "",
+      type,
+      title: title || defaultTaskTitle(type),
+      description,
+      priority,
+      priorityRank: priorityRank(priority),
+      dueAt,
+      source: TASKS_CURRENT_SOURCE,
+      sourceType: "tasks_current",
+      sourceEventId: resolved.identity.sourceEventId,
+      sourceKey: resolved.identity.sourceKey,
+      sourceFingerprint: resolved.identity.sourceFingerprint,
+      sourceLineageFingerprint: resolved.identity.sourceLineageFingerprint,
+      sourceIdentityMethod: resolved.identity.identityMethod,
+      sourceRowHasEventId: resolved.identity.sourceRowHasEventId,
+      clientMatchMethod: clientMatch.method || "none",
+      ...lifecycle,
+      sourceStale: false,
+      staleAt: admin.firestore.FieldValue.delete(),
+      staleReason: admin.firestore.FieldValue.delete(),
+      createdAt: lifecycle.createdAt || admin.firestore.FieldValue.serverTimestamp()
+    };
+    importedTaskTerminalMetadataFieldsToClear(resolved.existing).forEach((field) => {
+      data[field] = admin.firestore.FieldValue.delete();
+    });
+    const current = tasks.get(resolved.id);
+    if (!current || deterministicTaskPayloadKey(data) < deterministicTaskPayloadKey(current.data)) {
+      tasks.set(resolved.id, { id: resolved.id, data });
+    }
   });
 
   selectableClients.forEach((client) => {
@@ -5965,7 +6299,84 @@ function buildTaskRecords({ coach, taskRows, clients, browserRows, existingById 
     });
   });
 
-  return [...tasks.values()];
+  const records = [...tasks.values()];
+  records.__diagnostics = {
+    ...importedTaskResolver.snapshotDiagnostics(),
+    ...sheetDiagnostics
+  };
+  return records;
+}
+
+function buildTaskClientMatcher(clients = []) {
+  const byClientId = new Map();
+  const byPhone = new Map();
+  const byEmail = new Map();
+  const byName = new Map();
+  const add = (index, rawKey, client) => {
+    const key = normalizeComparable(rawKey);
+    if (!key) return;
+    if (!index.has(key)) index.set(key, []);
+    if (!index.get(key).some((candidate) => candidate.id === client.id)) index.get(key).push(client);
+  };
+  clients.forEach((client) => {
+    const data = client.data || {};
+    [
+      client.id,
+      data.clientKey,
+      data.sourceClientId,
+      data.coachRxLink?.sourceClientId,
+      data.ghlContactId
+    ].forEach((value) => add(byClientId, value, client));
+    add(byPhone, clientPhone(data), client);
+    add(byEmail, data.email || data.clientEmail, client);
+    add(byName, data.name || data.clientName, client);
+  });
+
+  return (row) => {
+    const signals = [
+      ["client_id", byClientId, pick(row, [
+        "client key",
+        "client id",
+        "client_id",
+        "coachrx client id",
+        "coachrx_client_id",
+        "id client",
+        "contact id",
+        "contact_id",
+        "member id",
+        "athlete id"
+      ])],
+      ["phone", byPhone, normalizePhone(pick(row, PHONE_ALIASES))],
+      ["email", byEmail, pick(row, EMAIL_ALIASES)],
+      ["unique_name", byName, clientNameFromRow(row)]
+    ];
+    for (const [method, index, rawSignal] of signals) {
+      const key = normalizeComparable(rawSignal);
+      if (!key) continue;
+      const candidates = index.get(key) || [];
+      if (candidates.length === 1) {
+        return { client: candidates[0], method, ambiguous: false, strongSignalMismatch: false };
+      }
+      if (candidates.length > 1) {
+        return { client: null, method, ambiguous: true, strongSignalMismatch: false };
+      }
+      if (method === "client_id") {
+        return { client: null, method, ambiguous: false, strongSignalMismatch: true };
+      }
+    }
+    return { client: null, method: "", ambiguous: false, strongSignalMismatch: false };
+  };
+}
+
+function deterministicTaskPayloadKey(data = {}) {
+  return JSON.stringify([
+    data.title || "",
+    data.description || "",
+    data.priority || "",
+    data.dueAt || "",
+    data.clientId || "",
+    data.clientName || ""
+  ]);
 }
 
 function addCoachRxProgramTask({ addTask, coach, client, kind, signal = {}, dueLabel = "" }) {
@@ -6043,6 +6454,7 @@ function defaultImportedTaskDescription({ title, type }) {
 
 function taskImportDiagnostics({ explicitTasks = [], questionnaireTasks = [], taskRows = [], sourceTaskRows = [] }) {
   const all = [...explicitTasks, ...questionnaireTasks].map((task) => task.data || {});
+  const identityDiagnostics = explicitTasks.__diagnostics || {};
   const byType = {};
   const bySource = {};
   all.forEach((task) => {
@@ -6052,6 +6464,7 @@ function taskImportDiagnostics({ explicitTasks = [], questionnaireTasks = [], ta
     bySource[source] = (bySource[source] || 0) + 1;
   });
   return {
+    ...identityDiagnostics,
     total: all.length,
     explicitTaskRowsMatched: taskRows.length,
     sourceTaskRowsAvailable: sourceTaskRows.length,
@@ -7469,7 +7882,7 @@ function rowBelongsToCoach(row, coach) {
 
 function taskRowBelongsToCoach(row, coach) {
   const explicitCoachId = rowCoachIdValue(row);
-  if (valuesMatchCoachId(explicitCoachId, coach)) return true;
+  if (explicitCoachId) return valuesMatchCoachId(explicitCoachId, coach);
   const coachText = normalizeComparable(rowCoachTextValue(row));
   if (!coachText) return false;
   const aliases = coachAliasValues(coach)

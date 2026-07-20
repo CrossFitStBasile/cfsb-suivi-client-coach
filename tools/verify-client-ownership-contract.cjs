@@ -115,7 +115,11 @@ function main() {
   must(indexSource, /source:\$\{normalizedSourceSystem\}:\$\{normalizedSourceId\}/, "ID source namespace par systeme");
   must(indexSource, /clientSelectable: false/, "blocage de selection");
   must(indexSource, /CLIENT_OWNERSHIP_LOCK_PATH = "systemLocks\/clientOwnershipSync"/, "verrou anti-sync");
-  must(indexSource, /questionnaireOnlyWhileLocked/, "ingestion questionnaire maintenue sous verrou");
+  must(
+    indexSource,
+    /const questionnaireOnly = syncScope === "questionnaires_only"[\s\S]*source === "firebase_function_questionnaire_response_sync_scheduled"[\s\S]*if \(ownershipLock\.active && !questionnaireOnly\)/,
+    "ingestion questionnaire maintenue sous verrou"
+  );
   must(indexSource, /source === "firebase_function_questionnaire_response_sync_scheduled"/, "exception limitee au scheduled questionnaire");
   must(indexSource, /scheduledQuestionnaireSendPlans[\s\S]*clientRecordAvailableForMatching\(client\)[\s\S]*status: "paused"[\s\S]*appartenance client a valider/, "planifications questionnaire suspendues pour les clients bloques");
   must(indexSource, /clientRecordAvailableForMatching/, "matching exclut la quarantaine");

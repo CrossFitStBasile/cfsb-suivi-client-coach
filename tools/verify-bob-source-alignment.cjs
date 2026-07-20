@@ -53,6 +53,37 @@ function parseCsv(text) {
   return records.map((record) => Object.fromEntries(headers.map((header, index) => [header, record[index] || ""])));
 }
 
+function normalizeLabel(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function readOptional(filePath) {
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function normalizeBobRow(row = {}) {
+  let linkedSources = "";
+  if (row.fiche) {
+    const recordPath = path.resolve(path.dirname(bobRegistryPath), row.fiche);
+    const historyPath = path.join(path.dirname(path.dirname(recordPath)), "history", `${row.id}.md`);
+    linkedSources = `${readOptional(recordPath)}\n${readOptional(historyPath)}`;
+  }
+
+  return {
+    name: row.nom || row.nom_canonique || "",
+    destination: row.destination || linkedSources,
+    scriptSource: row.script_source || row.projets_principaux || linkedSources,
+    status: row.statut || ""
+  };
+}
+
 const checks = [];
 function check(name, passed, detail = "") {
   checks.push({ name, passed: Boolean(passed), detail });
@@ -83,7 +114,7 @@ if (!fs.existsSync(bobRegistryPath)) {
     },
     {
       id: "AUTO-003",
-      nameFragment: "Suivi semi-prives",
+      nameFragment: "Suivi semi-prive",
       sheetId: "1s7shtrkL0gs1DO0LbzkbabZteidGnYLhVou6KliHXVU",
       scriptId: "1OsXzGrmJacMYHMIEcTM3dTK-UvaA01bDf0F90HkFNt29XYgK2iHkyBlE",
       dashboardSourceTypes: ["rebooking"]
@@ -103,23 +134,27 @@ if (!fs.existsSync(bobRegistryPath)) {
       dashboardSourceTypes: ["questionnaire_responses"]
     }
   ];
+  const normalizedById = Object.fromEntries(
+    expected.map((item) => [item.id, normalizeBobRow(byId[item.id])])
+  );
 
   check(
     "bob registry contains dashboard automations",
-    expected.every((item) => byId[item.id] && byId[item.id].nom.includes(item.nameFragment)),
+    expected.every((item) => byId[item.id]
+      && normalizeLabel(normalizedById[item.id].name).includes(normalizeLabel(item.nameFragment))),
     "Bob doit confirmer les automations qui alimentent ou entourent le dashboard."
   );
 
   check(
     "dashboard docs preserve bob script and sheet ids",
     expected.every((item) => {
-      const row = byId[item.id] || {};
+      const row = normalizedById[item.id];
       const combined = `${sourceRegistry}\n${sourceAudit}\n${dataArchitecture}\n${migrationReadiness}`;
       return combined.includes(item.id)
         && combined.includes(item.sheetId)
         && combined.includes(item.scriptId)
         && row.destination.includes(item.sheetId)
-        && row.script_source.includes(item.scriptId);
+        && row.scriptSource.includes(item.scriptId);
     }),
     "Les docs Dashboard doivent citer les memes Sheets et scripts que le registre Bob."
   );
@@ -147,7 +182,7 @@ if (!fs.existsSync(bobRegistryPath)) {
 
   check(
     "bob states rebooking legacy remains active",
-    byId["AUTO-003"]?.statut === "Actif"
+    ["Actif", "PROD"].includes(normalizedById["AUTO-003"].status)
       && sourceAudit.includes("Ne pas casser l'app actuelle")
       && migrationReadiness.includes("Rebooking legacy reste actif"),
     "Le rebooking Apps Script actif doit rester le filet de securite pendant la migration."
