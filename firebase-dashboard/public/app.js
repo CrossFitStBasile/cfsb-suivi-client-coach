@@ -1087,7 +1087,7 @@ function subscribeCoachSyncStatus(coachId) {
 }
 
 function subscribeCollection(collectionName, coachId, setter, { rejectedSetter = null } = {}) {
-  const criteria = coachSubscriptionCriteria(coachId);
+  const criteria = coachSubscriptionCriteria(coachId, collectionName);
   const snapshots = new Map();
   const initialized = new Set();
   const apply = () => {
@@ -1108,7 +1108,7 @@ function subscribeCollection(collectionName, coachId, setter, { rejectedSetter =
     scheduleRender();
   };
 
-  criteria.forEach(({ field, value }) => {
+  criteria.forEach(({ field, value, optionalLegacy = false }) => {
     const key = `${field}:${value}`;
     state.unsubscribers.push(onSnapshot(
       query(collection(db, collectionName), where(field, "==", value)),
@@ -1119,8 +1119,16 @@ function subscribeCollection(collectionName, coachId, setter, { rejectedSetter =
       },
       (error) => {
         initialized.add(key);
+        snapshots.set(key, []);
         state.data.loaded[collectionName] = initialized.size >= criteria.length;
-        showDataError(`${collectionName}/${field}`, error);
+        const permissionDenied = ["permission-denied", "firestore/permission-denied"].includes(error?.code);
+        if (optionalLegacy && permissionDenied) {
+          console.info(`Lecture legacy ignoree pour ${collectionName}/${field}; la lecture canonique reste active.`, error?.code || "erreur");
+          apply();
+        } else {
+          apply();
+          showDataError(`${collectionName}/${field}`, error);
+        }
       }
     ));
   });
@@ -1153,6 +1161,9 @@ function coachIdFromFirestoreNameSignal(value) {
 }
 
 function resolveFirestoreItemCoachId(item = {}) {
+  const canonicalSignal = String(item.dashboardResponsibleCoachId || "").trim();
+  if (canonicalSignal) return coachIdFromFirestoreIdSignal(canonicalSignal);
+
   const idSignals = uniqueClean([item.coachId, item.coachRxId, item.assignedCoachId]);
   if (idSignals.length) {
     const resolvedIds = idSignals.map(coachIdFromFirestoreIdSignal);
@@ -1176,21 +1187,50 @@ function firestoreItemBelongsToCoach(item = {}, coachId) {
   return resolveFirestoreItemCoachId(item) === targetCoachId;
 }
 
-function coachSubscriptionCriteria(coachId) {
+const CANONICAL_COACH_SCOPED_COLLECTIONS = new Set([
+  "clients",
+  "tasks",
+  "questionnaireResponses",
+  "questionnaireSends",
+  "questionnaireSchedules",
+  "rebookings",
+  "checkups",
+  "impacts",
+  "alumni"
+]);
+
+function coachSubscriptionCriteria(coachId, collectionName = "") {
+  const canonicalCoachScoped = CANONICAL_COACH_SCOPED_COLLECTIONS.has(collectionName);
   if (!isInfoAdmin()) {
-    return uniqueCriteria([{ field: "coachId", value: String(coachId || state.profile?.coachId || "").trim() }]);
+    const targetCoachId = String(coachId || state.profile?.coachId || "").trim();
+    if (canonicalCoachScoped) {
+      return uniqueCriteria([
+        { field: "dashboardResponsibleCoachId", value: targetCoachId }
+      ]);
+    }
+    return uniqueCriteria([{ field: "coachId", value: targetCoachId }]);
   }
   const coach = coachRecordById(coachId);
-  if (!coach) return uniqueCriteria([{ field: "coachId", value: coachId }]);
+  if (!coach) {
+    return uniqueCriteria(canonicalCoachScoped
+      ? [
+          { field: "dashboardResponsibleCoachId", value: coachId },
+          { field: "coachId", value: coachId, optionalLegacy: true }
+        ]
+      : [{ field: "coachId", value: coachId }]);
+  }
   const idValues = uniqueClean([coach.id, coach.coachRxId]);
   const idCriteriaValues = uniqueClean(idValues.flatMap(firestoreIdVariants));
   const nameValues = coachNameValues(coach).slice(0, 5);
   return uniqueCriteria([
-    ...idCriteriaValues.map((value) => ({ field: "coachId", value })),
-    ...idCriteriaValues.map((value) => ({ field: "coachRxId", value })),
-    ...idCriteriaValues.map((value) => ({ field: "assignedCoachId", value })),
-    ...nameValues.map((value) => ({ field: "coachName", value })),
-    ...nameValues.map((value) => ({ field: "assignedCoachName", value }))
+    ...(canonicalCoachScoped
+      ? idCriteriaValues.map((value) => ({ field: "dashboardResponsibleCoachId", value }))
+      : []),
+    ...idCriteriaValues.map((value) => ({ field: "coachId", value, optionalLegacy: canonicalCoachScoped })),
+    ...idCriteriaValues.map((value) => ({ field: "coachRxId", value, optionalLegacy: canonicalCoachScoped })),
+    ...idCriteriaValues.map((value) => ({ field: "assignedCoachId", value, optionalLegacy: canonicalCoachScoped })),
+    ...nameValues.map((value) => ({ field: "coachName", value, optionalLegacy: canonicalCoachScoped })),
+    ...nameValues.map((value) => ({ field: "assignedCoachName", value, optionalLegacy: canonicalCoachScoped }))
   ]);
 }
 

@@ -174,6 +174,32 @@ describe("clients: canonical responsibility and bounded legacy reads", () => {
     await assertFails(getDocs(collection(db, "clients")));
   });
 
+  test("legacy coachId queries cannot expose a canonically transferred client", async () => {
+    await seedFirestore([
+      ["clients/legacy-query-a", {
+        coachId: COACH_A,
+        name: "Legacy query A",
+        entityType: "member",
+        ownershipStatus: "confirmed",
+        clientSelectable: true
+      }],
+      ["clients/canonical-transfer-to-b", {
+        coachId: COACH_A,
+        dashboardResponsibleCoachId: COACH_B,
+        name: "Canonical transfer wins"
+      }]
+    ]);
+
+    const legacyScoped = query(
+      collection(coachAContext().firestore(), "clients"),
+      where("coachId", "==", COACH_A)
+    );
+
+    // A coachId-only query can also match canonically transferred records whose
+    // compatibility mirror is stale. The entire query must fail closed.
+    await assertFails(getDocs(legacyScoped));
+  });
+
   test("an admin may read every coach scope", async () => {
     const db = adminContext().firestore();
     await assertSucceeds(getDoc(doc(db, "clients", CLIENT_A)));
@@ -291,6 +317,29 @@ describe("operational collections: canonical self scope", () => {
     }));
     await assertSucceeds(getDoc(doc(db, "tasks", "legacy-task-a")));
     await assertFails(updateDoc(doc(db, "tasks", "legacy-task-a"), { status: "done" }));
+  });
+
+  test("legacy operational queries cannot expose a canonically transferred task", async () => {
+    await seedFirestore([
+      ["tasks/legacy-query-a", { coachId: COACH_A, title: "Legacy query", status: "open" }],
+      ["tasks/canonical-own-a", taskRecord({ coachId: COACH_A, clientId: CLIENT_A })],
+      ["tasks/canonical-transfer-to-b", {
+        ...taskRecord({ coachId: COACH_B, clientId: CLIENT_B }),
+        coachId: COACH_A
+      }]
+    ]);
+
+    const legacyScoped = query(
+      collection(coachAContext().firestore(), "tasks"),
+      where("coachId", "==", COACH_A)
+    );
+
+    await assertFails(getDocs(legacyScoped));
+    await assertSucceeds(getDocs(query(
+      collection(coachAContext().firestore(), "tasks"),
+      where("dashboardResponsibleCoachId", "==", COACH_A)
+    )));
+    await assertSucceeds(getDocs(collection(adminContext().firestore(), "tasks")));
   });
 
   test("performance settings and sync status are self-only", async () => {

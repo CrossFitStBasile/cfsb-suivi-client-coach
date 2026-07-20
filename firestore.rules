@@ -86,6 +86,20 @@ service cloud.firestore {
         || (isActiveCoach() && documentIsScopedToCoach(documentData, coachId()));
     }
 
+    // Firestore cannot safely prove the absence of a canonical field for a
+    // coachId-only collection query. Keeping the legacy branch in `list` would
+    // let a stale coachId mirror expose a document canonically transferred to
+    // another coach. Coaches must query the canonical field; legacy documents
+    // remain available by direct get only until the migration/backfill is done.
+    function canListCanonicalCoachScopedDocument(documentData) {
+      return isAdmin()
+        || (
+          isActiveCoach()
+          && hasCanonicalCoachScope(documentData)
+          && documentData.dashboardResponsibleCoachId == coachId()
+        );
+    }
+
     function createsOwnCanonicalCoachScope(documentData) {
       return isActiveCoach()
         && hasValidCanonicalCoachScope(documentData)
@@ -320,7 +334,8 @@ service cloud.firestore {
     }
 
     match /clients/{clientId} {
-      allow read: if canReadCoachScopedDocument(resource.data);
+      allow get: if canReadCoachScopedDocument(resource.data);
+      allow list: if canListCanonicalCoachScopedDocument(resource.data);
 
       // Client identity, links and responsibility are server-command only.
       // Authenticated callables use Admin SDK after enforcing their own contract.
@@ -341,7 +356,8 @@ service cloud.firestore {
     }
 
     match /tasks/{taskId} {
-      allow read: if canReadCoachScopedDocument(resource.data);
+      allow get: if canReadCoachScopedDocument(resource.data);
+      allow list: if canListCanonicalCoachScopedDocument(resource.data);
       allow create: if ownershipRepairUnlocked()
         && (
           createsOwnCanonicalCoachScope(request.resource.data)
@@ -359,7 +375,8 @@ service cloud.firestore {
     }
 
     match /questionnaireResponses/{responseId} {
-      allow read: if canReadCoachScopedDocument(resource.data);
+      allow get: if canReadCoachScopedDocument(resource.data);
+      allow list: if canListCanonicalCoachScopedDocument(resource.data);
       allow create: if false;
       allow update: if ownershipRepairUnlocked()
         && adminCreatesOrUpdatesCanonicalCoachScope(request.resource.data)
@@ -369,17 +386,20 @@ service cloud.firestore {
     }
 
     match /questionnaireSends/{sendId} {
-      allow read: if canReadCoachScopedDocument(resource.data);
+      allow get: if canReadCoachScopedDocument(resource.data);
+      allow list: if canListCanonicalCoachScopedDocument(resource.data);
       allow create, update, delete: if false;
     }
 
     match /questionnaireSchedules/{scheduleId} {
-      allow read: if canReadCoachScopedDocument(resource.data);
+      allow get: if canReadCoachScopedDocument(resource.data);
+      allow list: if canListCanonicalCoachScopedDocument(resource.data);
       allow create, update, delete: if false;
     }
 
     match /rebookings/{rebookingId} {
-      allow read: if canReadCoachScopedDocument(resource.data);
+      allow get: if canReadCoachScopedDocument(resource.data);
+      allow list: if canListCanonicalCoachScopedDocument(resource.data);
       allow create: if ownershipRepairUnlocked()
         && (
           createsOwnCanonicalCoachScope(request.resource.data)
@@ -397,14 +417,16 @@ service cloud.firestore {
     }
 
     match /checkups/{checkupId} {
-      allow read: if canReadCoachScopedDocument(resource.data);
+      allow get: if canReadCoachScopedDocument(resource.data);
+      allow list: if canListCanonicalCoachScopedDocument(resource.data);
       allow create, update: if ownershipRepairUnlocked()
         && adminCreatesOrUpdatesCanonicalCoachScope(request.resource.data);
       allow delete: if ownershipRepairUnlocked() && isAdmin();
     }
 
     match /alumni/{alumniId} {
-      allow read: if canReadCoachScopedDocument(resource.data);
+      allow get: if canReadCoachScopedDocument(resource.data);
+      allow list: if canListCanonicalCoachScopedDocument(resource.data);
       allow create: if (
           createsOwnCanonicalCoachScope(request.resource.data)
           || adminCreatesOrUpdatesCanonicalCoachScope(request.resource.data)
@@ -419,7 +441,8 @@ service cloud.firestore {
     }
 
     match /impacts/{impactId} {
-      allow read: if canReadCoachScopedDocument(resource.data);
+      allow get: if canReadCoachScopedDocument(resource.data);
+      allow list: if canListCanonicalCoachScopedDocument(resource.data);
       allow create: if ownershipRepairUnlocked()
         && (
           createsOwnCanonicalCoachScope(request.resource.data)
@@ -450,12 +473,14 @@ service cloud.firestore {
     }
 
     match /actionLogs/{logId} {
-      allow read: if canReadCoachScopedDocument(resource.data);
+      allow get: if canReadCoachScopedDocument(resource.data);
+      allow list: if canListCanonicalCoachScopedDocument(resource.data);
       allow create, update, delete: if false;
     }
 
     match /usageEvents/{eventId} {
-      allow read: if canReadCoachScopedDocument(resource.data);
+      allow get: if canReadCoachScopedDocument(resource.data);
+      allow list: if canListCanonicalCoachScopedDocument(resource.data);
       allow create: if (
           createsOwnCanonicalCoachScope(request.resource.data)
           || adminCreatesOrUpdatesCanonicalCoachScope(request.resource.data)

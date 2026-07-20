@@ -7,7 +7,7 @@
     "node": "22"
   },
   "scripts": {
-    "lint": "node --check index.js && node --check client-contract.js && node --check questionnaire-link.js && node --check access-control.js",
+    "lint": "node --check index.js && node --check client-contract.js && node --check questionnaire-link.js && node --check access-control.js && node --check external-identity-claim.js && node --check coachrx-roster-contract.js && node --check sync-status.js",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {

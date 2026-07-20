@@ -96,3 +96,96 @@ test("les commandes client restent bornees aux sept coachs pilotes", () => {
   assert.match(helperSource, /isPilotCoachId\(canonicalId\)/);
   assert.match(helperSource, /failed-precondition/);
 });
+
+test("la proposition CoachRx est une commande admin idempotente qui reserve un claim candidat", () => {
+  const start = INDEX_SOURCE.indexOf("exports.proposeCoachRxLink");
+  const end = INDEX_SOURCE.indexOf("exports.confirmCoachRxLink", start);
+  const source = INDEX_SOURCE.slice(start, end);
+  assert.ok(start > 0 && end > start);
+  assert.match(source, /requireAdminProfile\(request\)/);
+  assert.match(source, /requireActiveClientCoach\(data\.coachRxOwnerId\)/);
+  assert.match(source, /command:\s*"proposeCoachRxLink"/);
+  assert.match(source, /type:\s*"propose_coachrx_link"/);
+  assert.match(source, /idempotencyKey/);
+
+  const runnerStart = INDEX_SOURCE.indexOf("async function runAdminClientContractTransition");
+  const runnerEnd = INDEX_SOURCE.indexOf("function clientCommandHttpsError", runnerStart);
+  const runner = INDEX_SOURCE.slice(runnerStart, runnerEnd);
+  assert.match(runner, /resolveExternalIdentityClaim/);
+  assert.match(runner, /"propose_coachrx_link", "confirm_coachrx_link"/);
+  assert.match(runner, /status:\s*nextContract\.coachRxLink\.linkStatus === "verified" \? "active" : "candidate"/);
+  assert.match(runner, /transaction\.create\(receiptRef/);
+});
+
+test("le writer CoachRx canonique est explicitement gate et transactionnel", () => {
+  const contextStart = INDEX_SOURCE.indexOf("async function resolveValidatedImportContext");
+  const contextEnd = INDEX_SOURCE.indexOf("function firstUsefulValue", contextStart);
+  const context = INDEX_SOURCE.slice(contextStart, contextEnd);
+  assert.match(context, /Number\(payload\.clientContractVersion\) === 1/);
+  assert.match(context, /canonicalContractMode\)\.toLowerCase\(\) === "phase2"/);
+  assert.match(context, /requireCanonicalClientContractActivation\(coach\.id\)/);
+
+  const importStart = INDEX_SOURCE.indexOf("async function processCanonicalCoachRxRosterImport");
+  const importEnd = INDEX_SOURCE.indexOf("async function processDirectClientImport", importStart);
+  const canonicalImport = INDEX_SOURCE.slice(importStart, importEnd);
+  assert.match(canonicalImport, /sourceRunId:\s*ownershipContext\?\.sourceRunId/);
+  assert.equal(canonicalImport.includes("ownershipContext?.sourceRunId || runId"), false);
+
+  const activationStart = INDEX_SOURCE.indexOf("async function requireCanonicalClientContractActivation");
+  const activationEnd = INDEX_SOURCE.indexOf("function clientOwnershipLockMessage", activationStart);
+  const activation = INDEX_SOURCE.slice(activationStart, activationEnd);
+  assert.match(activation, /systemConfig\/clientContractPhase2/);
+  assert.match(activation, /data\.backfillCompleted === true/);
+  assert.match(activation, /data\.claimsVerified === true/);
+  assert.match(activation, /allowedCoachIds\.includes/);
+
+  const writerStart = INDEX_SOURCE.indexOf("async function writeCanonicalCoachRxActiveObservation");
+  const writerEnd = INDEX_SOURCE.indexOf("async function markCanonicalCoachRxRosterAbsences", writerStart);
+  const writer = INDEX_SOURCE.slice(writerStart, writerEnd);
+  assert.match(writer, /db\.runTransaction/);
+  assert.match(writer, /externalIdentityClaimRef\("coachrx", sourceClientId\)/);
+  assert.match(writer, /resolveExternalIdentityClaim/);
+  assert.match(writer, /propose_coachrx_link/);
+  assert.match(writer, /createCoachRxImportedClientContract/);
+  assert.ok(
+    (writer.match(/assertClientDocumentIdentity\(current, clientRef\.id\)/g) || []).length >= 2
+  );
+  assert.match(writer, /error\.code === "client_document_identity_mismatch"/);
+  assert.match(writer, /sourceObservations/);
+  assert.match(writer, /pending_identity_confirmation/);
+  assert.equal(writer.includes("findClientMatch"), false);
+  assert.equal(writer.includes("clientNameFromRow(row) ==="), false);
+
+  const receiptStart = INDEX_SOURCE.indexOf("async function registerCoachRxRosterEnvelope");
+  const receiptEnd = INDEX_SOURCE.indexOf("function canonicalCoachRxClientPayload", receiptStart);
+  const receipt = INDEX_SOURCE.slice(receiptStart, receiptEnd);
+  assert.match(receipt, /db\.runTransaction/);
+  assert.match(receipt, /resolveCoachRxRosterReceipt/);
+  assert.match(receipt, /fingerprint/);
+});
+
+test("les absences CoachRx exigent un roster complet horodate et ne suppriment jamais la fiche", () => {
+  const start = INDEX_SOURCE.indexOf("async function markCanonicalCoachRxRosterAbsences");
+  const end = INDEX_SOURCE.indexOf("async function processCanonicalCoachRxRosterImport", start);
+  const source = INDEX_SOURCE.slice(start, end);
+  assert.match(source, /if \(!envelope\.complete\)/);
+  assert.match(source, /rosterStatus:\s*"not_in_latest_roster"/);
+  assert.match(source, /rosterComplete:\s*true/);
+  assert.match(source, /status:\s*"inactive"/);
+  assert.equal(/transaction\.(?:delete|remove)/.test(source), false);
+});
+
+test("les statuts de pipeline sont separes sans perdre la compatibilite coachSyncStatus", () => {
+  const firstStart = INDEX_SOURCE.indexOf("async function writeCoachSyncStatus");
+  const firstEnd = INDEX_SOURCE.indexOf("function compactSyncDiagnostics", firstStart);
+  const directStart = INDEX_SOURCE.indexOf("async function writeDirectCoachSyncStatus");
+  const directEnd = INDEX_SOURCE.indexOf("function summarizeDirectImportResult", directStart);
+  for (const source of [
+    INDEX_SOURCE.slice(firstStart, firstEnd),
+    INDEX_SOURCE.slice(directStart, directEnd)
+  ]) {
+    assert.match(source, /collection\("pipelines"\)\.doc\(pipeline\)/);
+    assert.match(source, /buildLegacyCoachStatusPatch/);
+    assert.match(source, /buildPipelineStatusData/);
+  }
+});

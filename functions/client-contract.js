@@ -69,6 +69,19 @@ function normalizeInternalClientId(value) {
   return clean;
 }
 
+function assertClientDocumentIdentity(contract, documentId) {
+  if (!isPlainObject(contract)) fail("invalid_client", "Le contrat client doit etre un objet.");
+  const internalClientId = normalizeInternalClientId(contract.internalClientId);
+  const normalizedDocumentId = normalizeInternalClientId(documentId);
+  if (internalClientId !== normalizedDocumentId) {
+    fail(
+      "client_document_identity_mismatch",
+      "L'identite interne ne correspond pas au document client."
+    );
+  }
+  return contract;
+}
+
 function normalizeServiceScopes(value) {
   if (!Array.isArray(value) || value.length === 0 || value.length > SERVICE_SCOPES.length) {
     fail("invalid_service_scopes", "serviceScopes doit contenir au moins un service reconnu.", {
@@ -177,6 +190,8 @@ function normalizeCoachRxLink(value) {
     "rosterStatus",
     "observedAt",
     "importRunId",
+    "proposedAt",
+    "proposedByUid",
     "linkedAt",
     "linkedByUid"
   ], "coachRxLink");
@@ -195,7 +210,14 @@ function normalizeCoachRxLink(value) {
     sourceClientId: requiredId(value.sourceClientId, "coachRxLink.sourceClientId"),
     linkStatus,
     rosterStatus
-  }, ["observedAt", "importRunId", "linkedAt", "linkedByUid"]);
+  }, [
+    "observedAt",
+    "importRunId",
+    "proposedAt",
+    "proposedByUid",
+    "linkedAt",
+    "linkedByUid"
+  ]);
 }
 
 function hasActiveVerifiedCoachRx(contract) {
@@ -294,6 +316,45 @@ function createDashboardClientContract({
   });
 }
 
+function createCoachRxImportedClientContract({
+  internalClientId = crypto.randomUUID(),
+  dashboardResponsibleCoachId,
+  coachRxOwnerId,
+  sourceClientId,
+  importRunId = ""
+} = {}) {
+  const responsibleCoachId = requiredId(
+    dashboardResponsibleCoachId || coachRxOwnerId,
+    "dashboardResponsibleCoachId"
+  );
+  const ownerId = requiredId(coachRxOwnerId, "coachRxOwnerId");
+  if (responsibleCoachId !== ownerId) {
+    fail(
+      "invalid_responsibility_mode",
+      "Un client cree depuis CoachRx doit commencer sous la responsabilite du coach observe."
+    );
+  }
+  const link = {
+    sourceSystem: "coachrx",
+    sourceClientId: requiredId(sourceClientId, "sourceClientId"),
+    linkStatus: "verified",
+    rosterStatus: "active"
+  };
+  if (cleanString(importRunId)) link.importRunId = requiredId(importRunId, "importRunId");
+  return validateClientContract({
+    contractVersion: CLIENT_CONTRACT_VERSION,
+    internalClientId,
+    originSystem: "coachrx_import",
+    identityStatus: "active",
+    dashboardResponsibleCoachId: responsibleCoachId,
+    responsibilityMode: "follow_coachrx",
+    serviceScopes: ["coachrx_programming"],
+    coachRxLink: link,
+    coachRxOwnerId: ownerId,
+    ghlLink: null
+  });
+}
+
 function resolveContactSignalClaim(existingClaim, { dashboardResponsibleCoachId, profileFingerprint } = {}) {
   requiredId(dashboardResponsibleCoachId, "dashboardResponsibleCoachId");
   const fingerprint = cleanString(profileFingerprint);
@@ -379,6 +440,13 @@ function transitionClientContract(currentRecord, transition = {}) {
       }
       return current;
     }
+    if (next.coachRxLink?.linkStatus === "candidate"
+      && next.coachRxLink.sourceClientId !== sourceClientId) {
+      fail(
+        "external_identity_conflict",
+        "Le client possede deja un autre candidat CoachRx; une revue explicite est requise."
+      );
+    }
     next.coachRxLink = {
       sourceSystem: "coachrx",
       sourceClientId,
@@ -422,6 +490,59 @@ function transitionClientContract(currentRecord, transition = {}) {
     }
     next.coachRxLink = { ...next.coachRxLink, linkStatus: "verified", rosterStatus: "active" };
     next.responsibilityMode = decision;
+  } else if (type === "observe_coachrx_roster") {
+    assertAllowedCommandFields(
+      transition,
+      [
+        "type",
+        "sourceClientId",
+        "coachRxOwnerId",
+        "rosterStatus",
+        "rosterComplete",
+        "importRunId"
+      ],
+      type
+    );
+    if (!next.coachRxLink || !["candidate", "verified"].includes(next.coachRxLink.linkStatus)) {
+      fail("invalid_transition", "Aucun lien CoachRx tracable a observer.");
+    }
+    const sourceClientId = requiredId(transition.sourceClientId, "sourceClientId");
+    if (sourceClientId !== next.coachRxLink.sourceClientId) {
+      fail("external_identity_conflict", "L'observation CoachRx vise une autre identite externe.");
+    }
+    const rosterStatus = cleanString(transition.rosterStatus);
+    if (!COACHRX_ROSTER_STATUSES.includes(rosterStatus) || rosterStatus === "unknown") {
+      fail("invalid_roster_observation", "Une observation de roster incomplete ne peut modifier la fiche.");
+    }
+    const importRunId = cleanString(transition.importRunId);
+    if (importRunId) next.coachRxLink.importRunId = requiredId(importRunId, "importRunId");
+
+    if (rosterStatus === "not_in_latest_roster") {
+      if (transition.rosterComplete !== true) {
+        fail(
+          "incomplete_roster",
+          "Seul un roster complet peut marquer un client absent de CoachRx."
+        );
+      }
+      next.coachRxLink.rosterStatus = "not_in_latest_roster";
+      next.responsibilityMode = "dashboard_only";
+    } else {
+      const observedOwnerId = requiredId(transition.coachRxOwnerId, "coachRxOwnerId");
+      next.coachRxOwnerId = observedOwnerId;
+      next.coachRxLink.rosterStatus = "active";
+      if (next.coachRxLink.linkStatus === "candidate") {
+        next.responsibilityMode = "dashboard_only";
+      } else if (current.responsibilityMode === "manual_override") {
+        // A roster refresh may update the CoachRx owner but never the explicit
+        // Dashboard assignment. The override survives the observation.
+        next.responsibilityMode = "manual_override";
+      } else if (next.dashboardResponsibleCoachId === observedOwnerId) {
+        next.responsibilityMode = "follow_coachrx";
+      } else {
+        // Preserve the Dashboard owner and make the divergence explicit.
+        next.responsibilityMode = "manual_override";
+      }
+    }
   } else {
     fail("invalid_transition", "Type de transition client inconnu.", { type });
   }
@@ -436,9 +557,11 @@ module.exports = {
   RESPONSIBILITY_MODES,
   SERVICE_SCOPES,
   ClientContractError,
+  assertClientDocumentIdentity,
   assertAllowedCommandFields,
   clientCommandFingerprint,
   clientCommandReceiptId,
+  createCoachRxImportedClientContract,
   createDashboardClientContract,
   normalizeInternalClientId,
   normalizeServiceScopes,

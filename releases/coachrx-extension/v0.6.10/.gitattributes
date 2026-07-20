@@ -1,0 +1,9 @@
+# Keep provenance tooling predictable.
+*.md text eol=lf
+*.json text eol=lf
+*.mjs text eol=lf
+*.ps1 text eol=lf
+
+# Preserve the exact bytes extracted from the tested ZIP on every platform.
+source/** -text
+coachrx-sync-extension-0.6.10-live.zip -text

@@ -4,9 +4,11 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
   ClientContractError,
+  assertClientDocumentIdentity,
   assertAllowedCommandFields,
   clientCommandFingerprint,
   clientCommandReceiptId,
+  createCoachRxImportedClientContract,
   createDashboardClientContract,
   resolveContactSignalClaim,
   resolveClientCommandReceipt,
@@ -58,6 +60,23 @@ test("un lien CoachRx propose puis confirme conserve l'identite interne", () => 
     sourceClientId: "coachrx-client-42",
     coachRxOwnerId: "15935"
   }), confirmed);
+});
+
+test("un second candidat CoachRx ne remplace jamais le premier silencieusement", () => {
+  const manual = createDashboardClientContract({
+    internalClientId: CLIENT_ID,
+    dashboardResponsibleCoachId: "15935"
+  });
+  const proposed = transitionClientContract(manual, {
+    type: "propose_coachrx_link",
+    sourceClientId: "coachrx-client-42",
+    coachRxOwnerId: "15935"
+  });
+  assert.throws(() => transitionClientContract(proposed, {
+    type: "propose_coachrx_link",
+    sourceClientId: "coachrx-client-99",
+    coachRxOwnerId: "15935"
+  }), (error) => error.code === "external_identity_conflict");
 });
 
 test("un coach Dashboard different du coach CoachRx devient un override explicite", () => {
@@ -117,6 +136,19 @@ test("l'identite et l'origine sont immuables", () => {
   );
 });
 
+test("un contrat charge sous un autre document UUID est refuse avant toute transition", () => {
+  const manual = createDashboardClientContract({
+    internalClientId: CLIENT_ID,
+    dashboardResponsibleCoachId: "15935"
+  });
+  assert.equal(assertClientDocumentIdentity(manual, CLIENT_ID), manual);
+  assert.throws(
+    () => assertClientDocumentIdentity(manual, "018f7b68-8aa0-70f0-8a33-8f214b5cef00"),
+    (error) => error.code === "client_document_identity_mismatch"
+      && !error.message.includes(CLIENT_ID)
+  );
+});
+
 test("un client ne dans CoachRx peut quitter le roster sans perdre son identite", () => {
   const inactive = validateClientContract({
     contractVersion: 1,
@@ -138,6 +170,109 @@ test("un client ne dans CoachRx peut quitter le roster sans perdre son identite"
   assert.equal(inactive.internalClientId, CLIENT_ID);
   assert.equal(inactive.coachRxLink.rosterStatus, "not_in_latest_roster");
   assert.equal(inactive.responsibilityMode, "dashboard_only");
+});
+
+test("un client ne dans CoachRx est cree avec un lien verifie et une identite UUID", () => {
+  const imported = createCoachRxImportedClientContract({
+    internalClientId: CLIENT_ID,
+    coachRxOwnerId: "15935",
+    sourceClientId: "coachrx-client-42",
+    importRunId: "coachrx_run_12345678"
+  });
+  assert.equal(imported.originSystem, "coachrx_import");
+  assert.equal(imported.dashboardResponsibleCoachId, "15935");
+  assert.equal(imported.coachRxOwnerId, "15935");
+  assert.equal(imported.responsibilityMode, "follow_coachrx");
+  assert.equal(imported.coachRxLink.linkStatus, "verified");
+  assert.equal(imported.coachRxLink.rosterStatus, "active");
+});
+
+test("une observation CoachRx ne deplace jamais le responsable Dashboard", () => {
+  const imported = createCoachRxImportedClientContract({
+    internalClientId: CLIENT_ID,
+    coachRxOwnerId: "15935",
+    sourceClientId: "coachrx-client-42"
+  });
+  const observed = transitionClientContract(imported, {
+    type: "observe_coachrx_roster",
+    sourceClientId: "coachrx-client-42",
+    coachRxOwnerId: "15928",
+    rosterStatus: "active",
+    importRunId: "coachrx_run_12345678"
+  });
+  assert.equal(observed.dashboardResponsibleCoachId, "15935");
+  assert.equal(observed.coachRxOwnerId, "15928");
+  assert.equal(observed.responsibilityMode, "manual_override");
+});
+
+test("un override manuel survit a une observation CoachRx active", () => {
+  const manual = createDashboardClientContract({
+    internalClientId: CLIENT_ID,
+    dashboardResponsibleCoachId: "15935"
+  });
+  const confirmed = transitionClientContract(transitionClientContract(manual, {
+    type: "propose_coachrx_link",
+    sourceClientId: "coachrx-client-42",
+    coachRxOwnerId: "15928"
+  }), {
+    type: "confirm_coachrx_link",
+    expectedSourceClientId: "coachrx-client-42",
+    expectedCoachRxOwnerId: "15928",
+    responsibilityMode: "manual_override"
+  });
+  const refreshed = transitionClientContract(confirmed, {
+    type: "observe_coachrx_roster",
+    sourceClientId: "coachrx-client-42",
+    coachRxOwnerId: "15936",
+    rosterStatus: "active",
+    importRunId: "coachrx_run_12345678"
+  });
+  assert.equal(refreshed.dashboardResponsibleCoachId, "15935");
+  assert.equal(refreshed.coachRxOwnerId, "15936");
+  assert.equal(refreshed.responsibilityMode, "manual_override");
+});
+
+test("seul un roster complet peut marquer le lien CoachRx absent", () => {
+  const imported = createCoachRxImportedClientContract({
+    internalClientId: CLIENT_ID,
+    coachRxOwnerId: "15935",
+    sourceClientId: "coachrx-client-42"
+  });
+  const transition = {
+    type: "observe_coachrx_roster",
+    sourceClientId: "coachrx-client-42",
+    rosterStatus: "not_in_latest_roster",
+    importRunId: "coachrx_run_12345678"
+  };
+  assert.throws(
+    () => transitionClientContract(imported, transition),
+    (error) => error.code === "incomplete_roster"
+  );
+  const absent = transitionClientContract(imported, { ...transition, rosterComplete: true });
+  assert.equal(absent.internalClientId, CLIENT_ID);
+  assert.equal(absent.dashboardResponsibleCoachId, "15935");
+  assert.equal(absent.coachRxLink.rosterStatus, "not_in_latest_roster");
+  assert.equal(absent.responsibilityMode, "dashboard_only");
+});
+
+test("un roster incomplet ou d'identite differente echoue ferme", () => {
+  const imported = createCoachRxImportedClientContract({
+    internalClientId: CLIENT_ID,
+    coachRxOwnerId: "15935",
+    sourceClientId: "coachrx-client-42"
+  });
+  assert.throws(() => transitionClientContract(imported, {
+    type: "observe_coachrx_roster",
+    sourceClientId: "coachrx-client-42",
+    coachRxOwnerId: "15935",
+    rosterStatus: "unknown"
+  }), (error) => error.code === "invalid_roster_observation");
+  assert.throws(() => transitionClientContract(imported, {
+    type: "observe_coachrx_roster",
+    sourceClientId: "coachrx-client-other",
+    coachRxOwnerId: "15935",
+    rosterStatus: "active"
+  }), (error) => error.code === "external_identity_conflict");
 });
 
 test("les champs forgeables sont refuses au bord de la commande", () => {

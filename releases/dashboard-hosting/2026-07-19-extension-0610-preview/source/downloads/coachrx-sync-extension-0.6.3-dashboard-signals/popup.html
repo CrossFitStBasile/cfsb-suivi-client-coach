@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CFSB CoachRx Sync</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>CFSB CoachRx Sync</h1>
+        <span id="statusPill">Pret</span>
+      </header>
+
+      <section class="coach-choice">
+        <label>
+          Coach a mettre a jour
+          <select id="coachSelect">
+            <option value="">Charge la liste des coachs</option>
+          </select>
+        </label>
+        <button id="syncNow" class="primary-action" type="button">Mettre a jour CoachRx</button>
+        <button id="openCoachRx" class="secondary" type="button">Ouvrir la page CoachRx du coach</button>
+      </section>
+
+      <details class="settings">
+        <summary>Configuration</summary>
+        <label>
+          Apps Script Web App URL
+          <input id="webAppUrl" type="url" placeholder="https://script.google.com/macros/s/.../exec">
+        </label>
+        <label>
+          Secret de sync CoachRx
+          <input id="syncSecret" type="password" placeholder="Secret partage">
+        </label>
+        <button id="loadCoaches" class="secondary" type="button">Charger les coachs</button>
+        <button id="saveSettings" type="button">Enregistrer</button>
+      </details>
+
+      <section class="actions">
+        <button id="testCoachRx" class="secondary" type="button">Tester CoachRx</button>
+        <button id="scanAdvanced" class="secondary" type="button">Scan avance CoachRx</button>
+      </section>
+
+      <pre id="log" aria-live="polite"></pre>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,64 @@
+{
+  "hosting": {
+    "site": "cfsb-dashboard-coach-aa9a4",
+    "predeploy": [
+      "node tools/verify-coachrx-extension-hosting-preview.mjs"
+    ],
+    "public": "releases/dashboard-hosting/2026-07-19-extension-0610-preview/source",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "cleanUrls": true,
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-store"
+          }
+        ]
+      }
+    ],
+    "redirects": [
+      {
+        "source": "/downloads/coachrx-sync-extension-0.6.2-dashboard-signals.zip",
+        "destination": "/downloads/coachrx-sync-extension-0.6.10-live.zip",
+        "type": 302
+      },
+      {
+        "source": "/downloads/coachrx-sync-extension-0.6.3-dashboard-signals.zip",
+        "destination": "/downloads/coachrx-sync-extension-0.6.10-live.zip",
+        "type": 302
+      },
+      {
+        "source": "/downloads/coachrx-sync-extension-0.6.4-dashboard-signals.zip",
+        "destination": "/downloads/coachrx-sync-extension-0.6.10-live.zip",
+        "type": 302
+      },
+      {
+        "source": "/downloads/coachrx-sync-extension-0.6.5-identity-guard.zip",
+        "destination": "/downloads/coachrx-sync-extension-0.6.10-live.zip",
+        "type": 302
+      },
+      {
+        "source": "/downloads/coachrx-sync-extension-0.6.6-identity-contact-guard.zip",
+        "destination": "/downloads/coachrx-sync-extension-0.6.10-live.zip",
+        "type": 302
+      },
+      {
+        "source": "/downloads/coachrx-sync-extension-0.6.7-route-guard.zip",
+        "destination": "/downloads/coachrx-sync-extension-0.6.10-live.zip",
+        "type": 302
+      }
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

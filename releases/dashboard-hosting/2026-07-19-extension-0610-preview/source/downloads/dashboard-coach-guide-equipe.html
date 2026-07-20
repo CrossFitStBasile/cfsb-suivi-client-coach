@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Guide equipe - Dashboard Coach CFSB</title>
+    <style>
+      :root {
+        --red: #e51f2a;
+        --text: #07111f;
+        --muted: #536170;
+        --line: #d8e0e8;
+        --soft: #f5f7fa;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        color: var(--text);
+        background: #eef2f6;
+        font-family: Arial, Helvetica, sans-serif;
+        line-height: 1.45;
+      }
+
+      main {
+        width: min(960px, calc(100% - 32px));
+        margin: 32px auto;
+        padding: 28px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #fff;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        margin-bottom: 6px;
+        font-size: 34px;
+      }
+
+      h2 {
+        margin-top: 28px;
+        padding-top: 18px;
+        border-top: 1px solid var(--line);
+      }
+
+      .kicker {
+        color: var(--red);
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+      }
+
+      .intro {
+        color: var(--muted);
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .card {
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--soft);
+      }
+
+      .card strong {
+        display: block;
+        margin-bottom: 4px;
+      }
+
+      ol,
+      ul {
+        padding-left: 22px;
+      }
+
+      li {
+        margin: 8px 0;
+      }
+
+      code {
+        padding: 2px 5px;
+        border-radius: 4px;
+        background: #e9eef4;
+        font-weight: 800;
+      }
+
+      .callout {
+        padding: 14px;
+        border-left: 5px solid var(--red);
+        border-radius: 8px;
+        background: #fff7f4;
+        font-weight: 700;
+      }
+
+      @media print {
+        body {
+          background: #fff;
+        }
+
+        main {
+          width: 100%;
+          margin: 0;
+          border: 0;
+          border-radius: 0;
+        }
+      }
+
+      @media (max-width: 720px) {
+        main {
+          width: calc(100% - 20px);
+          margin: 10px auto;
+          padding: 18px;
+        }
+
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="kicker">CFSB Coach Command</div>
+      <h1>Guide equipe - Dashboard Coach</h1>
+      <p class="intro">Le dashboard sert a regrouper les priorites quotidiennes, clients, questionnaires, rebooking et pilotage coach dans un seul endroit.</p>
+
+      <h2>1. Premiere connexion</h2>
+      <ol>
+        <li>Ouvre le dashboard: <strong>https://cfsb-dashboard-coach-aa9a4.web.app</strong>.</li>
+        <li>Connecte-toi avec Google ou avec courriel + mot de passe.</li>
+        <li>Confirme que ton nom apparait dans le menu coach.</li>
+        <li>Si tu vois le mauvais coach, choisis ton nom dans le selecteur.</li>
+        <li>Commence par la page <strong>To-do</strong>.</li>
+      </ol>
+
+      <div class="callout">Chaque coach peut consulter les autres coachs pilotes pour couvrir une absence ou aider l'equipe, mais les actions importantes restent journalisees.</div>
+
+      <h2>2. Connexion Google ou mot de passe</h2>
+      <div class="grid">
+        <div class="card">
+          <strong>Connexion Google</strong>
+          Utilise cette option si ton compte Google est associe au courriel autorise.
+        </div>
+        <div class="card">
+          <strong>Courriel + mot de passe</strong>
+          Utilise cette option si tu n'as pas de compte Google ou si Google boucle sur mobile.
+        </div>
+      </div>
+
+      <h2>3. Routine quotidienne</h2>
+      <ol>
+        <li><strong>To-do:</strong> traite les missions concretes: programme, questionnaire, rebooking ou note coach.</li>
+        <li><strong>Clients:</strong> cherche un client, consulte sa fiche, ajoute une mission ou corrige une information.</li>
+        <li><strong>Questionnaires:</strong> lis les reponses, envoie un questionnaire ou gere les automatisations.</li>
+        <li><strong>Rebooking:</strong> confirme les seances a remettre, ajoute une seance manuelle si elle manque, puis ferme le dossier.</li>
+        <li><strong>Pilotage:</strong> prepare ou complete la rencontre hebdo avec les notes, IDS et indicateurs.</li>
+      </ol>
+
+      <h2>4. Installer l'extension CoachRx</h2>
+      <ol>
+        <li>Dans le Guide du dashboard, telecharge le ZIP CoachRx Sync.</li>
+        <li>Clic droit sur le ZIP, puis <strong>Extraire tout</strong>.</li>
+        <li>Dans Chrome, ouvre <code>chrome://extensions</code>.</li>
+        <li>Active le <strong>mode developpeur</strong>.</li>
+        <li>Clique <strong>Charger l'extension non empaquetee</strong>.</li>
+        <li>Selectionne le dossier extrait, pas le fichier ZIP.</li>
+        <li>Dans le Guide, copie l'URL Apps Script et le secret, puis colle-les dans l'extension.</li>
+        <li>Ouvre la page Clients CoachRx du bon coach et clique <strong>Mettre a jour CoachRx</strong>.</li>
+      </ol>
+
+      <h2>5. Verification apres sync CoachRx</h2>
+      <ul>
+        <li>Le nombre de clients recus doit ressembler a CoachRx.</li>
+        <li>Les signaux rouges ou jaunes CoachRx creent des missions programme.</li>
+        <li>Les clients sans signal restent dans Clients; ils ne doivent pas devenir des To-do.</li>
+        <li>Si un telephone manque, corriger la fiche ou la source avant de tester GHL/questionnaire.</li>
+      </ul>
+
+      <h2>6. Quand demander de l'aide</h2>
+      <ul>
+        <li>Tu vois clairement le portefeuille d'un mauvais coach.</li>
+        <li>Une mission est incomprehensible ou technique.</li>
+        <li>Un bouton principal bloque ton travail.</li>
+        <li>Les chiffres de check-ups, rebooking ou clients semblent impossibles.</li>
+      </ul>
+    </main>
+  </body>
+</html>

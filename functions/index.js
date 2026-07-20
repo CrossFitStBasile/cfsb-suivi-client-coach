@@ -6,9 +6,11 @@ const admin = require("firebase-admin");
 const crypto = require("crypto");
 const {
   ClientContractError,
+  assertClientDocumentIdentity,
   assertAllowedCommandFields,
   clientCommandFingerprint,
   clientCommandReceiptId,
+  createCoachRxImportedClientContract,
   createDashboardClientContract,
   normalizeInternalClientId,
   resolveContactSignalClaim,
@@ -16,6 +18,23 @@ const {
   transitionClientContract,
   validateClientContract
 } = require("./client-contract");
+const {
+  externalIdentityClaimId,
+  normalizeExternalIdentityClaim,
+  resolveExternalIdentityClaim
+} = require("./external-identity-claim");
+const {
+  buildCoachRxObservation,
+  coachRxSourceClientId,
+  decideCoachRxIdentityAction,
+  normalizeCoachRxRosterEnvelope,
+  resolveCoachRxRosterReceipt
+} = require("./coachrx-roster-contract");
+const {
+  buildLegacyCoachStatusPatch,
+  buildPipelineStatusData,
+  coachSyncPipeline
+} = require("./sync-status");
 const { canProfileActOnCoach } = require("./access-control");
 const { buildWeeklyProductReport } = require("./product-report");
 const {
@@ -1064,6 +1083,42 @@ exports.linkGhlContact = onCall(
         },
         compatibilityPatch: {},
         action: "client.ghl_link_confirmed",
+        reason: data.reason
+      });
+    } catch (error) {
+      throw clientCommandHttpsError(error);
+    }
+  }
+);
+
+exports.proposeCoachRxLink = onCall(
+  { region: "us-central1", invoker: "public", timeoutSeconds: 30 },
+  async (request) => {
+    try {
+      const data = request.data || {};
+      assertAllowedCommandFields(data, [
+        "clientId",
+        "sourceClientId",
+        "coachRxOwnerId",
+        "importRunId",
+        "reason",
+        "idempotencyKey"
+      ], "proposeCoachRxLink");
+      await requireAdminProfile(request);
+      const coach = await requireActiveClientCoach(data.coachRxOwnerId);
+      return await runAdminClientContractTransition({
+        request,
+        command: "proposeCoachRxLink",
+        clientId: data.clientId,
+        idempotencyKey: data.idempotencyKey,
+        transition: {
+          type: "propose_coachrx_link",
+          sourceClientId: data.sourceClientId,
+          coachRxOwnerId: coach.id,
+          importRunId: data.importRunId
+        },
+        compatibilityPatch: {},
+        action: "client.coachrx_link_proposed",
         reason: data.reason
       });
     } catch (error) {
@@ -2858,33 +2913,43 @@ function summarizeSyncResult(result = {}) {
 }
 
 async function writeCoachSyncStatus({ result, request, source = "firebase_function_sync_sheets", triggeredBy = "system" }) {
-  const warningCount = Array.isArray(result.warnings) ? result.warnings.length : 0;
-  await db.collection("coachSyncStatus").doc(result.coachId).set({
-    coachId: result.coachId,
-    coachName: result.coachName || "",
-    status: warningCount ? "warning" : "ok",
-    warningCount,
-    warnings: Array.isArray(result.warnings) ? result.warnings.slice(0, 5) : [],
-    clientsImported: Number(result.clientsImported || result.clientsEnriched || 0),
-    clientsEnriched: Number(result.clientsEnriched || 0),
-    clientsMissingPhone: Number(result.clientsMissingPhone || result.diagnostics?.importedClients?.missingPhone || 0),
-    tasksImported: Number(result.tasksImported || 0),
-    questionnaireResponsesImported: Number(result.questionnaireResponsesImported || 0),
-    rebookingsImported: Number(result.rebookingsImported || 0),
-    checkupsImported: Number(result.checkupsImported || 0),
-    impactsImported: Number(result.impactsImported || 0),
-    alumniImported: Number(result.alumniImported || 0),
-    sourceCoreClients: Number(result.sourceCoreClients || 0),
-    sourceCoachRxRows: Number(result.sourceCoachRxRows || 0),
-    sourceTaskRows: Number(result.sourceTaskRows || 0),
-    sourceQuestionnaireRows: Number(result.sourceQuestionnaireRows || 0),
-    diagnostics: compactSyncDiagnostics(result.diagnostics),
-    requestedByUid: request?.auth?.uid || "system",
-    requestedByEmail: request?.auth?.token?.email || "",
-    triggeredBy,
-    syncedAt: admin.firestore.FieldValue.serverTimestamp(),
-    source
-  }, { merge: true });
+  if (!result?.coachId) return;
+  const pipeline = coachSyncPipeline({ source, sourceType: result.sourceType });
+  const requestedByEmail = request?.auth?.token?.email || "";
+  const pipelineData = buildPipelineStatusData({ result, pipeline, source, requestedBy: requestedByEmail });
+  const legacyPatch = buildLegacyCoachStatusPatch({ result, pipeline, source, requestedBy: requestedByEmail });
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const statusRef = db.collection("coachSyncStatus").doc(result.coachId);
+  const topLevelPatch = {
+    ...legacyPatch,
+    lastAnySyncAt: now,
+    [`${pipeline}SyncedAt`]: now
+  };
+  if (["coachrx", "dashboard_full"].includes(pipeline)) {
+    Object.assign(topLevelPatch, {
+      tasksImported: Number(result.tasksImported || 0),
+      impactsImported: Number(result.impactsImported || 0),
+      alumniImported: Number(result.alumniImported || 0),
+      sourceCoreClients: Number(result.sourceCoreClients || 0),
+      sourceCoachRxRows: Number(result.sourceCoachRxRows || 0),
+      sourceTaskRows: Number(result.sourceTaskRows || 0),
+      sourceQuestionnaireRows: Number(result.sourceQuestionnaireRows || 0),
+      diagnostics: compactSyncDiagnostics(result.diagnostics),
+      requestedByUid: request?.auth?.uid || "system",
+      triggeredBy,
+      syncedAt: now
+    });
+  }
+  await Promise.all([
+    statusRef.set(topLevelPatch, { merge: true }),
+    statusRef.collection("pipelines").doc(pipeline).set({
+      ...pipelineData,
+      diagnostics: compactSyncDiagnostics(result.diagnostics),
+      requestedByUid: request?.auth?.uid || "system",
+      triggeredBy,
+      syncedAt: now
+    }, { merge: true })
+  ]);
 }
 
 function compactSyncDiagnostics(diagnostics = {}) {
@@ -3008,6 +3073,29 @@ async function readClientOwnershipSyncLock() {
   return { active, summary };
 }
 
+async function requireCanonicalClientContractActivation(coachId) {
+  const snap = await db.doc("systemConfig/clientContractPhase2").get();
+  const data = snap.exists ? snap.data() || {} : {};
+  const allowedCoachIds = Array.isArray(data.pilotCoachIds)
+    ? data.pilotCoachIds.map(cleanString)
+    : [];
+  const enabled = data.enabled === true
+    && Number(data.contractVersion) === 1
+    && data.backfillCompleted === true
+    && data.claimsVerified === true
+    && allowedCoachIds.includes(cleanString(coachId));
+  if (!enabled) {
+    throw new Error(
+      "Writer canonique CoachRx non active: backfill, claims et pilote serveur doivent etre verifies."
+    );
+  }
+  return {
+    enabled: true,
+    activationId: cleanString(data.activationId),
+    contractVersion: 1
+  };
+}
+
 function clientOwnershipLockMessage(lock = {}) {
   const repairId = cleanString(lock.summary?.repairId);
   return `Synchronisation des identites clients verrouillee pendant la reparation d'appartenance${repairId ? ` (${repairId})` : ""}.`;
@@ -3041,7 +3129,7 @@ async function resolveValidatedImportContext({ sourceType, payload = {}, records
 
   const sourcePath = firstUsefulValue(payload, [
     "sourcePath", "source_path", "sourceUrl", "source_url", "coachUrl", "coachRxUrl", "url", "path"
-  ]);
+  ]) || firstUsefulValue(records[0] || {}, SOURCE_PATH_ALIASES);
   const sourcePathCoachId = parseCoachIdFromSourcePath(sourcePath);
   if (sourceType === "coachrx_clients" && !sourcePathCoachId) {
     throw new Error("Import CoachRx refuse: sourcePath doit prouver /team/{coachId}/clients ou /api/v1/coaches/{coachId}/clients.json.");
@@ -3065,6 +3153,12 @@ async function resolveValidatedImportContext({ sourceType, payload = {}, records
     coaches,
     requireEvidence: sourceType === "coachrx_clients"
   }));
+  const canonicalModeRequested = sourceType === "coachrx_clients"
+    && Number(payload.clientContractVersion) === 1
+    && cleanString(payload.canonicalContractMode).toLowerCase() === "phase2";
+  const canonicalActivation = canonicalModeRequested
+    ? await requireCanonicalClientContractActivation(coach.id)
+    : { enabled: false, activationId: "", contractVersion: 1 };
   return {
     coach,
     ownershipContext: {
@@ -3078,7 +3172,13 @@ async function resolveValidatedImportContext({ sourceType, payload = {}, records
           ? "ghl"
           : "client_directory",
       payloadCoachIdFields: explicitIdValues.length,
-      rowsValidated: records.length
+      rowsValidated: records.length,
+      canonicalContractModeRequested: canonicalModeRequested,
+      canonicalContractMode: canonicalActivation.enabled,
+      canonicalActivationId: canonicalActivation.activationId,
+      sourceRunId: cleanString(payload.sourceRunId || payload.sourceSnapshotId),
+      sourceGeneratedAt: cleanString(payload.sourceGeneratedAt || payload.extractedAt),
+      expectedClientCount: payload.expectedClientCount
     }
   };
 }
@@ -3174,6 +3274,15 @@ function resolveCoachForImport(payload = {}, records = [], coaches = []) {
 
 async function processDirectImport({ sourceType, records, coach, runId, requestedBy, ownershipContext = null }) {
   if (sourceType === "coachrx_clients") {
+    if (ownershipContext?.canonicalContractMode === true) {
+      return processCanonicalCoachRxRosterImport({
+        coach,
+        records,
+        runId,
+        requestedBy,
+        ownershipContext
+      });
+    }
     return processDirectClientImport({
       sourceType,
       sourceLabel: "direct_coachrx_extension",
@@ -3216,6 +3325,486 @@ async function processDirectImport({ sourceType, records, coach, runId, requeste
     recordsWritten: 0,
     requestedBy
   };
+}
+
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(Math.max(1, limit), items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      results[index] = await worker(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+function incomingCoachRxObservationIsOlder(existing = {}, sourceGeneratedAt = null) {
+  const incomingMillis = sourceGeneratedAt ? Date.parse(sourceGeneratedAt) : NaN;
+  const existingMillis = Date.parse(cleanString(existing.coachRxObservationGeneratedAt));
+  return Number.isFinite(incomingMillis)
+    && Number.isFinite(existingMillis)
+    && incomingMillis < existingMillis;
+}
+
+function coachRxIdentityReviewRef(sourceClientId) {
+  return db.collection("coachRxIdentityReviews").doc(externalIdentityClaimId("coachrx", sourceClientId));
+}
+
+function coachRxRosterAuditRef(runId, sourceClientId, suffix = "observed") {
+  const digest = crypto.createHash("sha256")
+    .update(`${cleanString(runId)}:${cleanString(sourceClientId)}:${cleanString(suffix)}`)
+    .digest("hex");
+  return db.collection("actionLogs").doc(`coachrx_roster_${digest}`);
+}
+
+function coachRxRosterReceiptRef(coachId, sourceRunId) {
+  const digest = crypto.createHash("sha256")
+    .update(`${cleanString(coachId)}:${cleanString(sourceRunId)}`)
+    .digest("hex");
+  return db.collection("coachRxRosterReceipts").doc(`roster_${digest}`);
+}
+
+async function registerCoachRxRosterEnvelope({ coach, envelope, runId }) {
+  const receiptRef = coachRxRosterReceiptRef(coach.id, envelope.sourceRunId);
+  await db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(receiptRef);
+    const receiptResolution = resolveCoachRxRosterReceipt(
+      snap.exists ? snap.data() || {} : null,
+      envelope.fingerprint
+    );
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    transaction.set(receiptRef, {
+      receiptVersion: 1,
+      coachId: coach.id,
+      sourceRunId: envelope.sourceRunId,
+      fingerprint: receiptResolution.fingerprint,
+      observedClientCount: envelope.observedClientCount,
+      expectedClientCount: envelope.expectedClientCount,
+      complete: envelope.complete,
+      sourceImportRunId: runId,
+      firstAcceptedAt: snap.exists ? snap.get("firstAcceptedAt") || now : now,
+      lastAcceptedAt: now
+    }, { merge: true });
+  });
+  return receiptRef;
+}
+
+function canonicalCoachRxClientPayload({ contract, row, coach, requestedBy, now, sourceGeneratedAt }) {
+  const name = requiredClientDisplayName(clientNameFromRow(row));
+  const phoneNormalized = normalizePhone(pick(row, PHONE_ALIASES));
+  let email = "";
+  try {
+    email = optionalClientEmail(pick(row, EMAIL_ALIASES));
+  } catch {
+    email = "";
+  }
+  return {
+    ...contract,
+    coachRxLink: { ...contract.coachRxLink, observedAt: now },
+    displayName: name,
+    name,
+    phoneNormalized: phoneNormalized || null,
+    emailNormalized: email || null,
+    email: email || "",
+    contactDataSource: "coachrx",
+    contactDataUpdatedAt: now,
+    originCreatedAt: now,
+    originCreatedByUid: "coachrx_roster_writer",
+    responsibilityAssignedAt: now,
+    responsibilityAssignedByUid: "coachrx_roster_writer",
+    responsibilityReason: "coachrx_initial_import",
+    source: "direct_coachrx_contract_v1",
+    membershipSource: "coachrx_import",
+    status: "active",
+    entityType: "member",
+    ownershipStatus: "confirmed",
+    ownershipSource: "verified_coachrx_roster",
+    ownershipEvidence: ["verified_roster_source_path", "stable_coachrx_client_id"],
+    ownershipValidatedAt: now,
+    clientSelectable: true,
+    active: true,
+    stale: false,
+    createdByUid: "coachrx_roster_writer",
+    createdByEmail: cleanString(requestedBy),
+    coachRxObservationGeneratedAt: sourceGeneratedAt || null,
+    createdAt: now,
+    updatedAt: now,
+    coachName: coach.name
+  };
+}
+
+async function writeCanonicalCoachRxActiveObservation({
+  coach,
+  row,
+  runId,
+  requestedBy,
+  envelope
+}) {
+  const sourceClientId = coachRxSourceClientId(row);
+  const claimRef = externalIdentityClaimRef("coachrx", sourceClientId);
+  const phoneNormalized = normalizePhone(pick(row, PHONE_ALIASES));
+  const contactSignalRef = phoneNormalized ? clientPhoneSignalClaimRef(phoneNormalized) : null;
+  const generatedClientId = crypto.randomUUID();
+
+  return db.runTransaction(async (transaction) => {
+    const claimSnap = await transaction.get(claimRef);
+    let signalSnap = null;
+    if (!claimSnap.exists && contactSignalRef) signalSnap = await transaction.get(contactSignalRef);
+
+    let action = decideCoachRxIdentityAction({
+      claim: claimSnap.exists ? claimSnap.data() || {} : null,
+      contactSignal: signalSnap?.exists ? signalSnap.data() || {} : null
+    });
+    let internalClientId = generatedClientId;
+    let clientRef = db.collection("clients").doc(internalClientId);
+    let current = null;
+    let nextContract = null;
+    let clientSnap = null;
+
+    if (claimSnap.exists) {
+      const normalizedClaim = normalizeExternalIdentityClaim(claimSnap.data() || {});
+      internalClientId = normalizedClaim.internalClientId;
+      clientRef = db.collection("clients").doc(internalClientId);
+      clientSnap = await transaction.get(clientRef);
+      if (!clientSnap.exists) {
+        throw new ClientContractError(
+          "corrupt_external_identity_claim",
+          "Une reservation CoachRx pointe vers une fiche inexistante."
+        );
+      }
+      const existing = clientSnap.data() || {};
+      current = validateClientContract(existing);
+      assertClientDocumentIdentity(current, clientRef.id);
+      if (incomingCoachRxObservationIsOlder(existing, envelope.sourceGeneratedAt)) {
+        return { action: "ignored_stale_observation", internalClientId, sourceClientId };
+      }
+      nextContract = transitionClientContract(current, {
+        type: "observe_coachrx_roster",
+        sourceClientId,
+        coachRxOwnerId: coach.id,
+        rosterStatus: "active",
+        importRunId: envelope.sourceRunId
+      });
+    } else if (signalSnap?.exists) {
+      internalClientId = normalizeInternalClientId(signalSnap.get("internalClientId"));
+      clientRef = db.collection("clients").doc(internalClientId);
+      clientSnap = await transaction.get(clientRef);
+      const candidateData = clientSnap.exists ? clientSnap.data() || {} : {};
+      try {
+        current = validateClientContract(candidateData);
+        assertClientDocumentIdentity(current, clientRef.id);
+        if (current.coachRxLink
+          && current.coachRxLink.sourceClientId !== sourceClientId) {
+          action = "needs_review_conflicting_candidate";
+        } else {
+          nextContract = transitionClientContract(current, {
+            type: "propose_coachrx_link",
+            sourceClientId,
+            coachRxOwnerId: coach.id,
+            importRunId: envelope.sourceRunId
+          });
+        }
+      } catch (error) {
+        if (!(error instanceof ClientContractError)) throw error;
+        if (error.code === "client_document_identity_mismatch") throw error;
+        action = "needs_review_noncanonical_contact_signal";
+      }
+    } else {
+      nextContract = createCoachRxImportedClientContract({
+        internalClientId,
+        dashboardResponsibleCoachId: coach.id,
+        coachRxOwnerId: coach.id,
+        sourceClientId,
+        importRunId: envelope.sourceRunId
+      });
+    }
+
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    if (!nextContract) {
+      transaction.set(coachRxIdentityReviewRef(sourceClientId), {
+        sourceSystem: "coachrx",
+        sourceClientId,
+        coachRxOwnerId: coach.id,
+        candidateInternalClientId: internalClientId,
+        status: "needs_review",
+        reason: action,
+        importRunId: envelope.sourceRunId,
+        sourceGeneratedAt: envelope.sourceGeneratedAt,
+        updatedAt: now
+      }, { merge: true });
+      return { action, internalClientId, sourceClientId };
+    }
+
+    const desiredClaimStatus = nextContract.coachRxLink.linkStatus === "verified"
+      ? "active"
+      : "candidate";
+    const resolvedClaim = resolveExternalIdentityClaim(
+      claimSnap.exists ? claimSnap.data() || {} : null,
+      {
+        claimVersion: 1,
+        system: "coachrx",
+        externalId: sourceClientId,
+        internalClientId,
+        status: desiredClaimStatus
+      }
+    );
+
+    if (action === "create_coachrx_identity") {
+      const payload = canonicalCoachRxClientPayload({
+        contract: nextContract,
+        row,
+        coach,
+        requestedBy,
+        now,
+        sourceGeneratedAt: envelope.sourceGeneratedAt
+      });
+      transaction.create(clientRef, payload);
+      if (contactSignalRef) {
+        transaction.create(contactSignalRef, {
+          signalType: "phone",
+          signalDigest: contactSignalRef.id.slice("phone_".length),
+          profileFingerprint: clientContactProfileFingerprint(payload.name, phoneNormalized),
+          internalClientId,
+          dashboardResponsibleCoachId: coach.id,
+          status: "active",
+          createdAt: now,
+          updatedAt: now
+        });
+      }
+    } else {
+      transaction.update(clientRef, {
+        ...nextContract,
+        coachRxLink: {
+          ...nextContract.coachRxLink,
+          observedAt: now,
+          ...(nextContract.coachRxLink.linkStatus === "candidate"
+            ? { proposedAt: now, proposedByUid: "coachrx_roster_writer" }
+            : {})
+        },
+        coachRxObservationGeneratedAt: envelope.sourceGeneratedAt || null,
+        updatedByUid: "coachrx_roster_writer",
+        updatedAt: now
+      });
+    }
+
+    transaction.set(claimRef, {
+      ...resolvedClaim,
+      updatedAt: now,
+      updatedByUid: "coachrx_roster_writer"
+    }, { merge: true });
+    transaction.set(clientRef.collection("sourceObservations").doc("coachrx"), {
+      sourceSystem: "coachrx",
+      sourceClientId,
+      coachRxOwnerId: coach.id,
+      rosterStatus: "active",
+      linkStatus: nextContract.coachRxLink.linkStatus,
+      observation: buildCoachRxObservation(row),
+      importRunId: envelope.sourceRunId,
+      sourceGeneratedAt: envelope.sourceGeneratedAt,
+      observedAt: now,
+      updatedAt: now
+    }, { merge: true });
+    transaction.set(clientRef.collection("engagements").doc("coachrx_programming"), {
+      engagementId: "coachrx_programming",
+      internalClientId,
+      serviceScope: "coachrx_programming",
+      status: nextContract.coachRxLink.linkStatus === "verified"
+        ? "active"
+        : "pending_identity_confirmation",
+      sourceSystem: "coachrx",
+      updatedAt: now
+    }, { merge: true });
+    transaction.set(coachRxRosterAuditRef(envelope.sourceRunId, sourceClientId), {
+      action: action === "propose_existing_dashboard_identity"
+        ? "client.coachrx_link_proposed_by_roster"
+        : "client.coachrx_roster_observed",
+      entityType: "clients",
+      entityId: internalClientId,
+      coachId: nextContract.dashboardResponsibleCoachId,
+      sourceCoachRxOwnerId: coach.id,
+      details: {
+        previousCoachRxOwnerId: current?.coachRxOwnerId || null,
+        coachRxOwnerId: nextContract.coachRxOwnerId,
+        previousResponsibilityMode: current?.responsibilityMode || null,
+        responsibilityMode: nextContract.responsibilityMode,
+        dashboardResponsibleCoachId: nextContract.dashboardResponsibleCoachId
+      },
+      source: "firebase_function_coachrx_contract_writer_v1",
+      importRunId: envelope.sourceRunId,
+      createdAt: now
+    }, { merge: true });
+    return { action, internalClientId, sourceClientId };
+  });
+}
+
+async function markCanonicalCoachRxRosterAbsences({ coach, envelope, observedSourceIds }) {
+  if (!envelope.complete) {
+    return { marked: 0, skippedIncomplete: true };
+  }
+  const snap = await db.collection("clients").where("coachRxOwnerId", "==", coach.id).get();
+  const candidates = snap.docs.filter((docSnap) => {
+    const data = docSnap.data() || {};
+    return isCanonicalContractRecord(data)
+      && ["candidate", "verified"].includes(cleanString(data.coachRxLink?.linkStatus))
+      && cleanString(data.coachRxLink?.rosterStatus) === "active"
+      && cleanString(data.coachRxLink?.sourceClientId)
+      && !observedSourceIds.has(cleanString(data.coachRxLink?.sourceClientId));
+  });
+  const results = await mapWithConcurrency(candidates, 8, async (candidate) => {
+    return db.runTransaction(async (transaction) => {
+      const currentSnap = await transaction.get(candidate.ref);
+      if (!currentSnap.exists) return false;
+      const existing = currentSnap.data() || {};
+      const current = validateClientContract(existing);
+      const sourceClientId = cleanString(current.coachRxLink?.sourceClientId);
+      if (!sourceClientId
+        || observedSourceIds.has(sourceClientId)
+        || current.coachRxOwnerId !== coach.id
+        || current.coachRxLink.rosterStatus !== "active"
+        || incomingCoachRxObservationIsOlder(existing, envelope.sourceGeneratedAt)) {
+        return false;
+      }
+      const nextContract = transitionClientContract(current, {
+        type: "observe_coachrx_roster",
+        sourceClientId,
+        rosterStatus: "not_in_latest_roster",
+        rosterComplete: true,
+        importRunId: envelope.sourceRunId
+      });
+      const now = admin.firestore.FieldValue.serverTimestamp();
+      transaction.update(candidate.ref, {
+        ...nextContract,
+        coachRxLink: { ...nextContract.coachRxLink, observedAt: now },
+        coachRxObservationGeneratedAt: envelope.sourceGeneratedAt,
+        updatedByUid: "coachrx_roster_writer",
+        updatedAt: now
+      });
+      transaction.set(candidate.ref.collection("sourceObservations").doc("coachrx"), {
+        sourceSystem: "coachrx",
+        sourceClientId,
+        coachRxOwnerId: current.coachRxOwnerId,
+        rosterStatus: "not_in_latest_roster",
+        linkStatus: current.coachRxLink.linkStatus,
+        importRunId: envelope.sourceRunId,
+        sourceGeneratedAt: envelope.sourceGeneratedAt,
+        observedAt: now,
+        updatedAt: now
+      }, { merge: true });
+      transaction.set(candidate.ref.collection("engagements").doc("coachrx_programming"), {
+        engagementId: "coachrx_programming",
+        internalClientId: current.internalClientId,
+        serviceScope: "coachrx_programming",
+        status: "inactive",
+        sourceSystem: "coachrx",
+        endedAt: now,
+        updatedAt: now
+      }, { merge: true });
+      transaction.set(coachRxRosterAuditRef(envelope.sourceRunId, sourceClientId, "absent"), {
+        action: "client.coachrx_roster_absence_observed",
+        entityType: "clients",
+        entityId: current.internalClientId,
+        coachId: current.dashboardResponsibleCoachId,
+        sourceCoachRxOwnerId: coach.id,
+        details: {
+          previousResponsibilityMode: current.responsibilityMode,
+          responsibilityMode: nextContract.responsibilityMode,
+          dashboardResponsibleCoachId: nextContract.dashboardResponsibleCoachId
+        },
+        source: "firebase_function_coachrx_contract_writer_v1",
+        importRunId: envelope.sourceRunId,
+        createdAt: now
+      }, { merge: true });
+      return true;
+    });
+  });
+  return { marked: results.filter(Boolean).length, skippedIncomplete: false };
+}
+
+async function processCanonicalCoachRxRosterImport({
+  coach,
+  records,
+  runId,
+  requestedBy,
+  ownershipContext
+}) {
+  const envelope = normalizeCoachRxRosterEnvelope({
+    coachRxOwnerId: coach.id,
+    sourcePath: ownershipContext?.sourceCoachPath,
+    sourceRunId: ownershipContext?.sourceRunId,
+    sourceGeneratedAt: ownershipContext?.sourceGeneratedAt,
+    expectedClientCount: ownershipContext?.expectedClientCount,
+    records
+  });
+  const rosterReceiptRef = await registerCoachRxRosterEnvelope({ coach, envelope, runId });
+  const recordResults = await mapWithConcurrency(records, 8, (row) => {
+    return writeCanonicalCoachRxActiveObservation({
+      coach,
+      row,
+      runId,
+      requestedBy,
+      envelope
+    });
+  });
+  const absences = await markCanonicalCoachRxRosterAbsences({
+    coach,
+    envelope,
+    observedSourceIds: new Set(envelope.sourceClientIds)
+  });
+  const counts = recordResults.reduce((summary, item) => {
+    summary[item.action] = Number(summary[item.action] || 0) + 1;
+    return summary;
+  }, {});
+  const reviewCount = Object.entries(counts)
+    .filter(([key]) => key.startsWith("needs_review"))
+    .reduce((sum, [, count]) => sum + count, 0);
+  const successfullyWritten = recordResults.filter((item) => {
+    return !item.action.startsWith("needs_review")
+      && item.action !== "ignored_stale_observation";
+  }).length;
+  const result = {
+    status: reviewCount ? "warning" : "done",
+    coachId: coach.id,
+    coachName: coach.name,
+    sourceType: "coachrx_clients",
+    recordsReceived: records.length,
+    recordsWritten: successfullyWritten,
+    clientsImported: successfullyWritten,
+    clientsMissingPhone: records.filter((row) => !normalizePhone(pick(row, PHONE_ALIASES))).length,
+    clientsMarkedNotInLatestRoster: absences.marked,
+    diagnostics: {
+      canonicalContractWriter: {
+        enabled: true,
+        completeRoster: envelope.complete,
+        absenceTransitionsAllowed: envelope.complete,
+        observedClientCount: envelope.observedClientCount,
+        expectedClientCount: envelope.expectedClientCount,
+        actions: counts,
+        markedNotInLatestRoster: absences.marked,
+        reviewCount
+      }
+    },
+    warnings: [
+      ...(reviewCount ? [`${reviewCount} identite(s) CoachRx exige(nt) une revue sans attribution automatique.`] : []),
+      ...(!envelope.complete ? ["Roster non declare complet: aucune absence CoachRx n'a ete appliquee."] : [])
+    ]
+  };
+  await rosterReceiptRef.set({
+    status: result.status,
+    recordsWritten: successfullyWritten,
+    reviewCount,
+    markedNotInLatestRoster: absences.marked,
+    completedAt: admin.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  await writeDirectCoachSyncStatus({
+    result,
+    runId,
+    requestedBy,
+    source: "direct_coachrx_contract_v1"
+  });
+  return result;
 }
 
 async function processDirectClientImport({ sourceType, sourceLabel, coach, coreRows, browserRows, runId, requestedBy, ownershipContext = null }) {
@@ -3833,6 +4422,7 @@ function coachFirestoreCriteria(coachOrId) {
   return uniqueFirestoreCriteria([
     ...idValues.map((value) => ({ field: "coachId", value })),
     ...idValues.map((value) => ({ field: "dashboardResponsibleCoachId", value })),
+    ...idValues.map((value) => ({ field: "coachRxOwnerId", value })),
     ...idValues.map((value) => ({ field: "coachRxId", value })),
     ...idValues.map((value) => ({ field: "assignedCoachId", value })),
     ...nameValues.map((value) => ({ field: "coachName", value })),
@@ -3874,27 +4464,34 @@ function uniqueFirestoreCriteria(criteria = []) {
 
 async function writeDirectCoachSyncStatus({ result, runId, requestedBy, source }) {
   if (!result?.coachId) return;
-  await db.collection("coachSyncStatus").doc(result.coachId).set({
-    coachId: result.coachId,
-    coachName: result.coachName || "",
-    status: result.status === "warning" ? "warning" : "ok",
-    warningCount: Array.isArray(result.warnings) ? result.warnings.length : 0,
-    warnings: Array.isArray(result.warnings) ? result.warnings.slice(0, 5) : [],
-    clientsImported: Number(result.clientsImported || result.clientsEnriched || 0),
-    clientsEnriched: Number(result.clientsEnriched || 0),
-    clientsMissingPhone: Number(result.clientsMissingPhone || result.diagnostics?.importedClients?.missingPhone || 0),
-    rebookingsImported: Number(result.rebookingsImported || 0),
-    checkupsImported: Number(result.checkupsImported || 0),
-    questionnaireResponsesImported: Number(result.questionnaireResponsesImported || 0),
-    sourceImportRunId: runId,
-    directSourceType: result.sourceType || "",
-    diagnostics: result.diagnostics || {},
-    requestedByUid: "direct_import",
-    requestedByEmail: requestedBy || "",
-    triggeredBy: "direct_import",
-    syncedAt: admin.firestore.FieldValue.serverTimestamp(),
-    source
-  }, { merge: true });
+  const pipeline = coachSyncPipeline({ source, sourceType: result.sourceType });
+  const pipelineData = buildPipelineStatusData({ result, pipeline, source, runId, requestedBy });
+  const legacyPatch = buildLegacyCoachStatusPatch({ result, pipeline, source, runId, requestedBy });
+  const now = admin.firestore.FieldValue.serverTimestamp();
+  const statusRef = db.collection("coachSyncStatus").doc(result.coachId);
+  const topLevelPatch = {
+    ...legacyPatch,
+    lastAnySyncAt: now,
+    [`${pipeline}SyncedAt`]: now
+  };
+  if (["coachrx", "dashboard_full"].includes(pipeline)) {
+    Object.assign(topLevelPatch, {
+      diagnostics: result.diagnostics || {},
+      requestedByUid: "direct_import",
+      triggeredBy: "direct_import",
+      syncedAt: now
+    });
+  }
+  await Promise.all([
+    statusRef.set(topLevelPatch, { merge: true }),
+    statusRef.collection("pipelines").doc(pipeline).set({
+      ...pipelineData,
+      diagnostics: result.diagnostics || {},
+      requestedByUid: "direct_import",
+      triggeredBy: "direct_import",
+      syncedAt: now
+    }, { merge: true })
+  ]);
 }
 
 function summarizeDirectImportResult(result = {}) {
@@ -4077,10 +4674,7 @@ function clientContactProfileFingerprint(name, phoneNormalized) {
 }
 
 function externalIdentityClaimRef(system, externalId) {
-  const digest = crypto.createHash("sha256")
-    .update(`${cleanString(system)}:${cleanString(externalId)}`)
-    .digest("hex");
-  return db.collection("externalIdentityClaims").doc(`${cleanString(system)}_${digest}`);
+  return db.collection("externalIdentityClaims").doc(externalIdentityClaimId(system, externalId));
 }
 
 async function runAdminClientContractTransition({
@@ -4119,20 +4713,29 @@ async function runAdminClientContractTransition({
 
     let claim = null;
     if (transition.type === "link_ghl") {
-      claim = { system: "ghl", externalId: nextContract.ghlLink.contactId };
-    } else if (transition.type === "confirm_coachrx_link") {
-      claim = { system: "coachrx", externalId: nextContract.coachRxLink.sourceClientId };
+      claim = { system: "ghl", externalId: nextContract.ghlLink.contactId, status: "active" };
+    } else if (["propose_coachrx_link", "confirm_coachrx_link"].includes(transition.type)) {
+      claim = {
+        system: "coachrx",
+        externalId: nextContract.coachRxLink.sourceClientId,
+        status: nextContract.coachRxLink.linkStatus === "verified" ? "active" : "candidate"
+      };
     }
     let claimRef = null;
+    let resolvedClaim = null;
     if (claim) {
       claimRef = externalIdentityClaimRef(claim.system, claim.externalId);
       const claimSnap = await transaction.get(claimRef);
-      if (claimSnap.exists && cleanString(claimSnap.get("internalClientId")) !== internalClientId) {
-        throw new HttpsError(
-          "already-exists",
-          `Cette identite ${claim.system} est deja liee a une autre fiche active.`
-        );
-      }
+      resolvedClaim = resolveExternalIdentityClaim(
+        claimSnap.exists ? claimSnap.data() || {} : null,
+        {
+          claimVersion: 1,
+          system: claim.system,
+          externalId: claim.externalId,
+          internalClientId,
+          status: claim.status
+        }
+      );
     }
 
     const now = admin.firestore.FieldValue.serverTimestamp();
@@ -4153,6 +4756,14 @@ async function runAdminClientContractTransition({
         verifiedAt: now,
         verifiedByUid: request.auth.uid,
         lastObservedAt: now
+      };
+    }
+    if (transition.type === "propose_coachrx_link") {
+      patch.coachRxLink = {
+        ...nextContract.coachRxLink,
+        proposedAt: now,
+        proposedByUid: request.auth.uid,
+        observedAt: now
       };
     }
     if (transition.type === "confirm_coachrx_link") {
@@ -4177,13 +4788,10 @@ async function runAdminClientContractTransition({
     transaction.update(clientRef, patch);
     if (claimRef) {
       transaction.set(claimRef, {
-        system: claim.system,
-        externalId: claim.externalId,
-        internalClientId,
-        status: "active",
+        ...resolvedClaim,
         updatedAt: now,
         updatedByUid: request.auth.uid
-      });
+      }, { merge: true });
     }
     transaction.create(receiptRef, {
       command,
@@ -4222,7 +4830,13 @@ function clientCommandHttpsError(error) {
     }
     const preconditionCodes = new Set([
       "external_identity_conflict",
+      "external_identity_claim_conflict",
+      "external_identity_claim_status_conflict",
+      "corrupt_external_identity_claim",
       "contact_signal_conflict",
+      "incomplete_roster",
+      "invalid_roster_observation",
+      "client_document_identity_mismatch",
       "immutable_identity",
       "immutable_origin",
       "invalid_transition",
