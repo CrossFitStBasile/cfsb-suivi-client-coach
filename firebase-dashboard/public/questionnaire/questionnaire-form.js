@@ -1,4 +1,13 @@
-const ENDPOINT_URL = "https://script.google.com/macros/s/AKfycbxnhlehsj_NQU73k3csMQPj0NAm3QSQrpjk0Ar6VYOjXYZO-m9_GSxtmEqYw9y_9DSQEA/exec";
+import { readQuestionnaireAccessToken } from "./questionnaire-access.mjs";
+import {
+  resolveQuestionnaireSubmissionEndpoint,
+  submitQuestionnaireWithAcknowledgement
+} from "./questionnaire-submission.mjs";
+
+const ENDPOINT_URL = resolveQuestionnaireSubmissionEndpoint({
+  runtimeEndpoint: window.__CFSB_QUESTIONNAIRE_CONFIG__?.submissionEndpoint,
+  metaEndpoint: document.querySelector('meta[name="cfsb-questionnaire-submit-endpoint"]')?.content
+});
 const SCHEMA_VERSION = "1.1";
 const SOURCE = "cfsb-client-coach-questionnaire";
 const APP_VERSION = "firebase-questionnaire-suite-v1";
@@ -382,28 +391,6 @@ function renderSteps() {
   `).join("");
 }
 
-function paramValue(...names) {
-  for (const name of names) {
-    const value = params.get(name);
-    if (value) return value;
-  }
-  return "";
-}
-
-function setNamedValue(name, value) {
-  if (!value) return;
-  const input = form.elements.namedItem(name);
-  if (input && "value" in input) input.value = value;
-}
-
-function applyPrefill() {
-  setNamedValue("client_name", paramValue("client_name", "name"));
-  setNamedValue("client_email", paramValue("client_email", "email"));
-  setNamedValue("client_phone", paramValue("phone", "client_phone"));
-  const coachName = paramValue("coach_name", "coach");
-  if (coachName) setNamedValue("coach_name", coachName);
-}
-
 async function loadCoaches() {
   try {
     const response = await fetch("/questionnaire/coaches.json", { cache: "no-store" });
@@ -641,20 +628,19 @@ async function submitQuestionnaire() {
 
   try {
     const payload = buildPayload();
-    await fetch(ENDPOINT_URL, {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(payload)
+    const acknowledgement = await submitQuestionnaireWithAcknowledgement({
+      endpoint: ENDPOINT_URL,
+      accessToken: readQuestionnaireAccessToken(params),
+      payload
     });
-    successBox.textContent = "Merci. Ta réponse a été envoyée à ton coach.";
+    successBox.textContent = acknowledgement.message || "Merci. Le serveur a confirmé l'enregistrement de ta réponse.";
     successBox.classList.add("is-visible");
     submitButton.textContent = "Réponse envoyée";
     submitButton.disabled = true;
     previousButton.hidden = true;
   } catch (error) {
     console.error(error);
-    showError("L'envoi n'a pas fonctionné. Vérifie ta connexion et réessaie.");
+    showError(error?.message || "L'envoi n'a pas fonctionné. Vérifie ta connexion et réessaie.");
     submitButton.disabled = false;
     submitButton.textContent = "Envoyer mes réponses";
     isSubmitting = false;
@@ -679,6 +665,5 @@ form.addEventListener("submit", (event) => {
 
 loadCoaches().finally(() => {
   renderSteps();
-  applyPrefill();
   updateStep();
 });

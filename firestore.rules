@@ -39,16 +39,90 @@ service cloud.firestore {
         || coachField == '15936';
     }
 
-    function isPilotTeamUser() {
-      return activeUser() && (isAdmin() || isPilotCoachId(coachId()));
+    function isActiveCoach() {
+      return activeUser()
+        && profile().data.role == 'coach'
+        && profile().data.coachId is string
+        && isPilotCoachId(profile().data.coachId);
     }
 
-    function canReadPilotCoachDoc(coachField) {
-      return isAdmin() || (isPilotTeamUser() && isPilotCoachId(coachField));
+    // Phase 1 canonical scope. coachId remains a read-only compatibility mirror.
+    function hasCanonicalCoachScope(documentData) {
+      return documentData.keys().hasAny(['dashboardResponsibleCoachId'])
+        && documentData.dashboardResponsibleCoachId is string
+        && isPilotCoachId(documentData.dashboardResponsibleCoachId);
     }
 
+    function hasValidCanonicalCoachScope(documentData) {
+      return hasCanonicalCoachScope(documentData)
+        && (
+          !documentData.keys().hasAny(['coachId'])
+          || documentData.coachId == documentData.dashboardResponsibleCoachId
+        );
+    }
+
+    // Legacy fallback is deliberately bounded: no canonical field may be present,
+    // the old field must be a known pilot coach, and it is accepted for reads only.
+    function hasValidLegacyCoachScope(documentData) {
+      return !documentData.keys().hasAny(['dashboardResponsibleCoachId'])
+        && documentData.keys().hasAny(['coachId'])
+        && documentData.coachId is string
+        && isPilotCoachId(documentData.coachId);
+    }
+
+    function documentIsScopedToCoach(documentData, expectedCoachId) {
+      return (
+          hasCanonicalCoachScope(documentData)
+          && documentData.dashboardResponsibleCoachId == expectedCoachId
+        )
+        || (
+          hasValidLegacyCoachScope(documentData)
+          && documentData.coachId == expectedCoachId
+        );
+    }
+
+    function canReadCoachScopedDocument(documentData) {
+      return isAdmin()
+        || (isActiveCoach() && documentIsScopedToCoach(documentData, coachId()));
+    }
+
+    function createsOwnCanonicalCoachScope(documentData) {
+      return isActiveCoach()
+        && hasValidCanonicalCoachScope(documentData)
+        && documentData.dashboardResponsibleCoachId == coachId();
+    }
+
+    function ownsCanonicalCoachScope(documentData) {
+      return isActiveCoach()
+        && hasValidCanonicalCoachScope(documentData)
+        && documentData.dashboardResponsibleCoachId == coachId();
+    }
+
+    function keepsOwnCanonicalCoachScope() {
+      return isActiveCoach()
+        && hasValidCanonicalCoachScope(resource.data)
+        && resource.data.dashboardResponsibleCoachId == coachId()
+        && hasValidCanonicalCoachScope(request.resource.data)
+        && request.resource.data.dashboardResponsibleCoachId == resource.data.dashboardResponsibleCoachId
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'dashboardResponsibleCoachId',
+          'coachId',
+          'coachRxId',
+          'coachName',
+          'previousCoachId',
+          'transferredAt'
+        ]);
+    }
+
+    function adminCreatesOrUpdatesCanonicalCoachScope(documentData) {
+      return isAdmin() && hasValidCanonicalCoachScope(documentData);
+    }
+
+    // Kept for queues that still carry a scalar coach field instead of the
+    // canonical document scope. Unlike the old helper, this is self-only.
     function canCreatePilotCoachDoc(coachField) {
-      return isAdmin() || (isPilotTeamUser() && isPilotCoachId(coachField));
+      return isAdmin()
+        || (isActiveCoach() && coachField == coachId() && isPilotCoachId(coachField));
     }
 
     function ownershipAllowsClientUse(clientData) {
@@ -73,13 +147,21 @@ service cloud.firestore {
         );
     }
 
+    function clientBelongsToCoach(clientData, expectedCoachId) {
+      return documentIsScopedToCoach(clientData, expectedCoachId);
+    }
+
     function relatedClientIsSelectable(documentData) {
       return !documentData.keys().hasAny(['clientId'])
         || documentData.clientId == ''
         || (
           documentData.clientId is string
           && exists(/databases/$(database)/documents/clients/$(documentData.clientId))
-          && get(/databases/$(database)/documents/clients/$(documentData.clientId)).data.coachId == documentData.coachId
+          && hasValidCanonicalCoachScope(documentData)
+          && clientBelongsToCoach(
+            get(/databases/$(database)/documents/clients/$(documentData.clientId)).data,
+            documentData.dashboardResponsibleCoachId
+          )
           && ownershipAllowsClientUse(get(/databases/$(database)/documents/clients/$(documentData.clientId)).data)
         );
     }
@@ -88,71 +170,39 @@ service cloud.firestore {
       return clientId is string
         && clientId != ''
         && exists(/databases/$(database)/documents/clients/$(clientId))
-        && get(/databases/$(database)/documents/clients/$(clientId)).data.coachId == coachField
+        && clientBelongsToCoach(
+          get(/databases/$(database)/documents/clients/$(clientId)).data,
+          coachField
+        )
         && ownershipAllowsClientUse(get(/databases/$(database)/documents/clients/$(clientId)).data);
     }
 
-    function keepsPilotCoach() {
-      return isPilotTeamUser()
-        && isPilotCoachId(resource.data.coachId)
-        && request.resource.data.coachId == resource.data.coachId;
+    function operationalWriteHasValidClient(documentData) {
+      return hasValidCanonicalCoachScope(documentData)
+        && relatedClientIsSelectable(documentData);
     }
 
-    function transfersOwnDocumentToPilotCoach() {
-      return isPilotTeamUser()
-        && isPilotCoachId(resource.data.coachId)
-        && isPilotCoachId(request.resource.data.coachId)
-        && request.resource.data.coachId != resource.data.coachId
-        && request.resource.data.previousCoachId == resource.data.coachId;
-    }
-
-    function transfersRelatedDocumentToPilotCoach() {
-      return transfersOwnDocumentToPilotCoach()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'coachId',
-          'coachRxId',
-          'coachName',
-          'previousCoachId',
-          'transferredAt',
-          'updatedAt'
-        ]);
-    }
-
-    function transfersRebookingDocumentToPilotCoach() {
-      return transfersOwnDocumentToPilotCoach()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'coachId',
-          'coachRxId',
-          'coachName',
-          'previousCoachId',
-          'transferredAt',
-          'history',
-          'updatedAt'
-        ]);
-    }
-
-    function coachMovesClientToAlumni() {
-      return isPilotTeamUser()
-        && isPilotCoachId(resource.data.coachId)
-        && request.resource.data.coachId == resource.data.coachId
-        && ownershipAllowsClientUse(resource.data)
-        && request.resource.data.entityType == 'member'
-        && request.resource.data.ownershipStatus == 'confirmed'
-        && request.resource.data.clientSelectable == false
-        && request.resource.data.status == 'alumni'
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'status',
-          'clientSelectable',
-          'alumniId',
-          'movedToAlumniAt',
-          'updatedAt'
-        ]);
+    function questionnaireBindingIsUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'clientId',
+        'internalClientId',
+        'dashboardResponsibleCoachId',
+        'coachId',
+        'coachRxId',
+        'sourceClientId',
+        'sourceCoachId',
+        'externalIdentities',
+        'coachRxLink',
+        'coachRxOwnerId',
+        'ghlLink',
+        'previousCoachId',
+        'transferredAt'
+      ]);
     }
 
     function coachReadsQuestionnaireResponse() {
-      return isPilotTeamUser()
-        && isPilotCoachId(resource.data.coachId)
-        && request.resource.data.coachId == resource.data.coachId
+      return keepsOwnCanonicalCoachScope()
+        && questionnaireBindingIsUnchanged()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'processingStatus',
           'readAt',
@@ -161,28 +211,6 @@ service cloud.firestore {
           'updatedAt'
         ])
         && request.resource.data.processingStatus == 'read';
-    }
-
-    function coachLinksQuestionnaireResponseToClient() {
-      return isPilotTeamUser()
-        && isPilotCoachId(resource.data.coachId)
-        && request.resource.data.coachId == resource.data.coachId
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'clientId',
-          'clientName',
-          'clientPhoneNormalized',
-          'processingStatus',
-          'matchedManuallyAt',
-          'matchedManuallyByUid',
-          'matchedManuallyByEmail',
-          'manualMatchNote',
-          'updatedAt'
-        ])
-        && request.resource.data.clientId is string
-        && request.resource.data.clientId != ''
-        && request.resource.data.clientName is string
-        && relatedClientIsSelectable(request.resource.data)
-        && request.resource.data.processingStatus == 'to_read';
     }
 
     function isAdminBootstrapProfile(userId) {
@@ -292,133 +320,162 @@ service cloud.firestore {
     }
 
     match /clients/{clientId} {
-      allow read: if canReadPilotCoachDoc(resource.data.coachId);
-      allow create: if ownershipRepairUnlocked()
-        && canCreatePilotCoachDoc(request.resource.data.coachId)
-        && ownershipAllowsClientUse(request.resource.data);
-      allow update: if ownershipRepairUnlocked()
-        && (
-          isAdmin()
-          || coachMovesClientToAlumni()
-          || ((keepsPilotCoach() || transfersOwnDocumentToPilotCoach())
-            && ownershipAllowsClientUse(request.resource.data))
-        );
-      allow delete: if ownershipRepairUnlocked()
-        && (isAdmin() || (isPilotTeamUser() && isPilotCoachId(resource.data.coachId)));
+      allow read: if canReadCoachScopedDocument(resource.data);
+
+      // Client identity, links and responsibility are server-command only.
+      // Authenticated callables use Admin SDK after enforcing their own contract.
+      allow create, update, delete: if false;
+
+      match /engagements/{engagementId} {
+        allow read: if isAdmin()
+          || (
+            isActiveCoach()
+            && exists(/databases/$(database)/documents/clients/$(clientId))
+            && documentIsScopedToCoach(
+              get(/databases/$(database)/documents/clients/$(clientId)).data,
+              coachId()
+            )
+          );
+        allow create, update, delete: if false;
+      }
     }
 
     match /tasks/{taskId} {
-      allow read: if canReadPilotCoachDoc(resource.data.coachId);
+      allow read: if canReadCoachScopedDocument(resource.data);
       allow create: if ownershipRepairUnlocked()
-        && canCreatePilotCoachDoc(request.resource.data.coachId)
-        && relatedClientIsSelectable(request.resource.data);
+        && (
+          createsOwnCanonicalCoachScope(request.resource.data)
+          || adminCreatesOrUpdatesCanonicalCoachScope(request.resource.data)
+        )
+        && operationalWriteHasValidClient(request.resource.data);
       allow update: if ownershipRepairUnlocked()
-        && (isAdmin() || keepsPilotCoach() || transfersRelatedDocumentToPilotCoach())
-        && relatedClientIsSelectable(request.resource.data);
+        && (
+          keepsOwnCanonicalCoachScope()
+          || adminCreatesOrUpdatesCanonicalCoachScope(request.resource.data)
+        )
+        && operationalWriteHasValidClient(request.resource.data);
       allow delete: if ownershipRepairUnlocked()
-        && (isAdmin() || (isPilotTeamUser() && isPilotCoachId(resource.data.coachId)));
+        && (isAdmin() || ownsCanonicalCoachScope(resource.data));
     }
 
     match /questionnaireResponses/{responseId} {
-      allow read: if canReadPilotCoachDoc(resource.data.coachId);
-      allow create, update, delete: if ownershipRepairUnlocked() && isAdmin();
+      allow read: if canReadCoachScopedDocument(resource.data);
+      allow create: if false;
+      allow update: if ownershipRepairUnlocked()
+        && adminCreatesOrUpdatesCanonicalCoachScope(request.resource.data)
+        && questionnaireBindingIsUnchanged();
       allow update: if ownershipRepairUnlocked() && coachReadsQuestionnaireResponse();
-      allow update: if ownershipRepairUnlocked() && coachLinksQuestionnaireResponseToClient();
-      allow update: if ownershipRepairUnlocked() && transfersRelatedDocumentToPilotCoach();
+      allow delete: if ownershipRepairUnlocked() && isAdmin();
     }
 
     match /questionnaireSends/{sendId} {
-      allow read: if canReadPilotCoachDoc(resource.data.coachId);
-      allow create: if ownershipRepairUnlocked()
-        && canCreatePilotCoachDoc(request.resource.data.coachId)
-        && clientIdIsSelectableForCoach(request.resource.data.clientId, request.resource.data.coachId);
-      allow update: if ownershipRepairUnlocked()
-        && (isAdmin() || keepsPilotCoach() || transfersRelatedDocumentToPilotCoach())
-        && clientIdIsSelectableForCoach(request.resource.data.clientId, request.resource.data.coachId);
-      allow delete: if ownershipRepairUnlocked() && isAdmin();
+      allow read: if canReadCoachScopedDocument(resource.data);
+      allow create, update, delete: if false;
     }
 
     match /questionnaireSchedules/{scheduleId} {
-      allow read: if canReadPilotCoachDoc(resource.data.coachId);
-      allow create: if ownershipRepairUnlocked()
-        && canCreatePilotCoachDoc(request.resource.data.coachId)
-        && clientIdIsSelectableForCoach(request.resource.data.clientId, request.resource.data.coachId);
-      allow update: if ownershipRepairUnlocked()
-        && (isAdmin() || keepsPilotCoach() || transfersRelatedDocumentToPilotCoach())
-        && clientIdIsSelectableForCoach(request.resource.data.clientId, request.resource.data.coachId);
-      allow delete: if ownershipRepairUnlocked() && isAdmin();
+      allow read: if canReadCoachScopedDocument(resource.data);
+      allow create, update, delete: if false;
     }
 
     match /rebookings/{rebookingId} {
-      allow read: if canReadPilotCoachDoc(resource.data.coachId);
+      allow read: if canReadCoachScopedDocument(resource.data);
       allow create: if ownershipRepairUnlocked()
-        && canCreatePilotCoachDoc(request.resource.data.coachId)
-        && relatedClientIsSelectable(request.resource.data);
+        && (
+          createsOwnCanonicalCoachScope(request.resource.data)
+          || adminCreatesOrUpdatesCanonicalCoachScope(request.resource.data)
+        )
+        && operationalWriteHasValidClient(request.resource.data);
       allow update: if ownershipRepairUnlocked()
-        && (isAdmin() || keepsPilotCoach() || transfersRelatedDocumentToPilotCoach() || transfersRebookingDocumentToPilotCoach())
-        && relatedClientIsSelectable(request.resource.data);
+        && (
+          keepsOwnCanonicalCoachScope()
+          || adminCreatesOrUpdatesCanonicalCoachScope(request.resource.data)
+        )
+        && operationalWriteHasValidClient(request.resource.data);
       allow delete: if ownershipRepairUnlocked()
-        && (isAdmin() || (isPilotTeamUser() && isPilotCoachId(resource.data.coachId)));
+        && (isAdmin() || ownsCanonicalCoachScope(resource.data));
     }
 
     match /checkups/{checkupId} {
-      allow read: if canReadPilotCoachDoc(resource.data.coachId);
-      allow create, update, delete: if ownershipRepairUnlocked() && isAdmin();
-      allow update: if ownershipRepairUnlocked() && transfersRelatedDocumentToPilotCoach();
+      allow read: if canReadCoachScopedDocument(resource.data);
+      allow create, update: if ownershipRepairUnlocked()
+        && adminCreatesOrUpdatesCanonicalCoachScope(request.resource.data);
+      allow delete: if ownershipRepairUnlocked() && isAdmin();
     }
 
     match /alumni/{alumniId} {
-      allow read: if canReadPilotCoachDoc(resource.data.coachId);
-      allow create: if canCreatePilotCoachDoc(request.resource.data.coachId);
-      allow update: if isAdmin() || keepsPilotCoach() || transfersOwnDocumentToPilotCoach();
+      allow read: if canReadCoachScopedDocument(resource.data);
+      allow create: if (
+          createsOwnCanonicalCoachScope(request.resource.data)
+          || adminCreatesOrUpdatesCanonicalCoachScope(request.resource.data)
+        )
+        && operationalWriteHasValidClient(request.resource.data);
+      allow update: if (
+          keepsOwnCanonicalCoachScope()
+          || adminCreatesOrUpdatesCanonicalCoachScope(request.resource.data)
+        )
+        && operationalWriteHasValidClient(request.resource.data);
       allow delete: if isAdmin();
     }
 
     match /impacts/{impactId} {
-      allow read: if canReadPilotCoachDoc(resource.data.coachId);
+      allow read: if canReadCoachScopedDocument(resource.data);
       allow create: if ownershipRepairUnlocked()
-        && canCreatePilotCoachDoc(request.resource.data.coachId)
-        && relatedClientIsSelectable(request.resource.data);
+        && (
+          createsOwnCanonicalCoachScope(request.resource.data)
+          || adminCreatesOrUpdatesCanonicalCoachScope(request.resource.data)
+        )
+        && operationalWriteHasValidClient(request.resource.data);
       allow update: if ownershipRepairUnlocked()
-        && (isAdmin() || keepsPilotCoach() || transfersRelatedDocumentToPilotCoach())
-        && relatedClientIsSelectable(request.resource.data);
+        && (
+          keepsOwnCanonicalCoachScope()
+          || adminCreatesOrUpdatesCanonicalCoachScope(request.resource.data)
+        )
+        && operationalWriteHasValidClient(request.resource.data);
       allow delete: if ownershipRepairUnlocked() && isAdmin();
     }
 
     match /performanceSettings/{coachDocId} {
-      allow read: if isAdmin() || (isPilotTeamUser() && isPilotCoachId(coachDocId));
+      allow read: if isAdmin() || (isActiveCoach() && coachDocId == coachId());
       allow create: if canCreatePilotCoachDoc(request.resource.data.coachId)
         && request.resource.data.coachId == coachDocId;
       allow update: if isAdmin()
         || (
-          isPilotTeamUser()
-          && isPilotCoachId(coachDocId)
+          isActiveCoach()
+          && coachDocId == coachId()
           && request.resource.data.coachId == resource.data.coachId
           && resource.data.coachId == coachDocId
-        )
-        || (
-          isPilotTeamUser()
-          && isPilotCoachId(coachDocId)
-          && request.resource.data.coachId == coachDocId
         );
       allow delete: if isAdmin();
     }
 
     match /actionLogs/{logId} {
-      allow read: if canReadPilotCoachDoc(resource.data.coachId);
-      allow create: if canCreatePilotCoachDoc(request.resource.data.coachId);
-      allow update, delete: if false;
+      allow read: if canReadCoachScopedDocument(resource.data);
+      allow create, update, delete: if false;
     }
 
     match /usageEvents/{eventId} {
-      allow read: if isAdmin() || canReadPilotCoachDoc(resource.data.coachId);
-      allow create: if canCreatePilotCoachDoc(request.resource.data.coachId)
+      allow read: if canReadCoachScopedDocument(resource.data);
+      allow create: if (
+          createsOwnCanonicalCoachScope(request.resource.data)
+          || adminCreatesOrUpdatesCanonicalCoachScope(request.resource.data)
+        )
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.eventType is string
         && request.resource.data.coachId is string
+        && (
+          isAdmin()
+          || (
+            (!request.resource.data.keys().hasAny(['actorCoachId'])
+              || request.resource.data.actorCoachId == coachId())
+            && (!request.resource.data.keys().hasAny(['selectedCoachId'])
+              || request.resource.data.selectedCoachId == coachId())
+          )
+        )
         && request.resource.data.keys().hasOnly([
           'eventType',
           'coachId',
+          'dashboardResponsibleCoachId',
           'actorCoachId',
           'selectedCoachId',
           'userId',
@@ -492,7 +549,11 @@ service cloud.firestore {
 
     match /voiceMissionRequests/{requestId} {
       allow read: if isAdmin()
-        || (isPilotTeamUser() && resource.data.userId == request.auth.uid);
+        || (
+          isActiveCoach()
+          && resource.data.userId == request.auth.uid
+          && resource.data.coachId == coachId()
+        );
       allow create: if canCreatePilotCoachDoc(request.resource.data.coachId)
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.userEmail == request.auth.token.email
@@ -550,7 +611,9 @@ service cloud.firestore {
           'createdAt'
         ]);
       allow update: if false;
-      allow delete: if isPilotTeamUser() && resource.data.userId == request.auth.uid;
+      allow delete: if isActiveCoach()
+        && resource.data.userId == request.auth.uid
+        && resource.data.coachId == coachId();
     }
 
     match /accessIssues/{issueId} {
@@ -822,7 +885,7 @@ service cloud.firestore {
     }
 
     match /coachSyncStatus/{coachDocId} {
-      allow read: if isAdmin() || (isPilotTeamUser() && isPilotCoachId(coachDocId));
+      allow read: if isAdmin() || (isActiveCoach() && coachDocId == coachId());
       allow create, update, delete: if isAdmin();
     }
 

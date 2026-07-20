@@ -16,8 +16,8 @@ service firebase.storage {
         && profile().data.active == true;
     }
 
-    function isAdmin() {
-      return activeUser() && profile().data.role == 'admin';
+    function coachId() {
+      return profile().data.coachId;
     }
 
     function isPilotCoachId(coachField) {
@@ -30,17 +30,23 @@ service firebase.storage {
         || coachField == '15936';
     }
 
-    function isPilotTeamUser() {
-      return activeUser() && (isAdmin() || isPilotCoachId(profile().data.coachId));
+    function isActiveCoach() {
+      return activeUser()
+        && profile().data.role == 'coach'
+        && profile().data.coachId is string
+        && isPilotCoachId(profile().data.coachId);
+    }
+
+    function canAccessCoachVoicePath(pathCoachId) {
+      return isActiveCoach() && pathCoachId == coachId();
     }
 
     match /taskVoiceNotes/{coachId}/{taskId}/{fileName} {
-      allow read: if isPilotTeamUser() && isPilotCoachId(coachId);
-      allow create, update: if isPilotTeamUser()
-        && isPilotCoachId(coachId)
+      allow read: if canAccessCoachVoicePath(coachId);
+      allow create, update: if canAccessCoachVoicePath(coachId)
         && request.resource.size < 8 * 1024 * 1024
         && request.resource.contentType.matches('audio/.*');
-      allow delete: if isPilotTeamUser() && isPilotCoachId(coachId);
+      allow delete: if canAccessCoachVoicePath(coachId);
     }
   }
 }

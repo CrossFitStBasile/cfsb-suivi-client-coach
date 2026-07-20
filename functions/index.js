@@ -4,6 +4,19 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { defineSecret } = require("firebase-functions/params");
 const admin = require("firebase-admin");
 const crypto = require("crypto");
+const {
+  ClientContractError,
+  assertAllowedCommandFields,
+  clientCommandFingerprint,
+  clientCommandReceiptId,
+  createDashboardClientContract,
+  normalizeInternalClientId,
+  resolveContactSignalClaim,
+  resolveClientCommandReceipt,
+  transitionClientContract,
+  validateClientContract
+} = require("./client-contract");
+const { canProfileActOnCoach } = require("./access-control");
 const { buildWeeklyProductReport } = require("./product-report");
 const {
   buildReadOnlyAssistantContext,
@@ -38,6 +51,8 @@ const GHL_API_VERSION = "2021-07-28";
 const GHL_LOCATION_ID = "hWM7E7ZXB88LWDmjezKU";
 const QUESTIONNAIRE_URL = "https://cfsb-dashboard-coach-aa9a4.web.app/questionnaire/";
 const DEFAULT_QUESTIONNAIRE_TYPE = "suivi_global";
+const SECURE_QUESTIONNAIRE_LINK_ERROR = "secure_questionnaire_link_not_configured";
+const SECURE_QUESTIONNAIRE_LINK_MESSAGE = "Envoi bloque: le lien questionnaire securise n'est pas encore configure.";
 const QUESTIONNAIRE_TYPES = {
   suivi_global: {
     type: "suivi_global",
@@ -561,7 +576,7 @@ async function handleSaveVoiceMission(request) {
         throw new HttpsError("not-found", "Client introuvable.");
       }
       client = clientSnap.data() || {};
-      if (cleanString(client.coachId) !== coachId) {
+      if (clientDashboardResponsibleCoachId(client) !== coachId) {
         throw new HttpsError("failed-precondition", "Le client et la mission ne sont pas dans le meme portefeuille coach.");
       }
       if (!clientRecordAvailableForMatching(client)) {
@@ -824,6 +839,273 @@ exports.processVoiceMissionRequest = onDocumentCreated(
   }
 );
 
+exports.createDashboardClient = onCall(
+  {
+    region: "us-central1",
+    invoker: "public",
+    timeoutSeconds: 30
+  },
+  async (request) => {
+    try {
+      const data = request.data || {};
+      assertAllowedCommandFields(data, [
+        "name",
+        "phone",
+        "email",
+        "serviceScopes",
+        "dashboardResponsibleCoachId",
+        "idempotencyKey"
+      ], "createDashboardClient");
+
+      const profile = await requireActiveClientCommandProfile(request);
+      const requestedCoachId = cleanString(data.dashboardResponsibleCoachId);
+      const actorCoachId = cleanString(profile.coachId);
+      let responsibleCoachId;
+      if (profile.role === "admin") {
+        responsibleCoachId = requestedCoachId;
+      } else {
+        if (requestedCoachId && requestedCoachId !== actorCoachId) {
+          throw new HttpsError(
+            "permission-denied",
+            "Un coach peut creer un client uniquement dans son propre portefeuille."
+          );
+        }
+        responsibleCoachId = actorCoachId;
+      }
+      const coach = await requireActiveClientCoach(responsibleCoachId);
+      const name = requiredClientDisplayName(data.name);
+      const phoneNormalized = requiredClientPhone(data.phone);
+      const email = optionalClientEmail(data.email);
+      const idempotencyKey = requiredClientCommandIdempotencyKey(data.idempotencyKey);
+      const contract = createDashboardClientContract({
+        internalClientId: crypto.randomUUID(),
+        dashboardResponsibleCoachId: coach.id,
+        serviceScopes: data.serviceScopes || ["lifestyle_assessment"]
+      });
+      const fingerprint = clientCommandFingerprint({
+        name,
+        phoneNormalized,
+        email,
+        serviceScopes: contract.serviceScopes,
+        dashboardResponsibleCoachId: coach.id
+      });
+      const receiptRef = clientCommandReceiptRef(
+        "createDashboardClient",
+        request.auth.uid,
+        idempotencyKey
+      );
+      const clientRef = db.collection("clients").doc(contract.internalClientId);
+      const contactSignalRef = clientPhoneSignalClaimRef(phoneNormalized);
+      const contactProfileFingerprint = clientContactProfileFingerprint(name, phoneNormalized);
+      const engagementPlans = contract.serviceScopes.map((serviceScope) => ({
+        engagementId: crypto.randomUUID(),
+        serviceScope
+      }));
+
+      const result = await db.runTransaction(async (transaction) => {
+        const receiptSnap = await transaction.get(receiptRef);
+        if (receiptSnap.exists) {
+          const receipt = receiptSnap.data() || {};
+          return resolveClientCommandReceipt(receipt, fingerprint);
+        }
+
+        // A phone remains only a matching signal. It never becomes the client ID.
+        // A concurrent or ambiguous reuse is stopped for an explicit admin review.
+        const contactSignalSnap = await transaction.get(contactSignalRef);
+        if (contactSignalSnap.exists) {
+          resolveContactSignalClaim(contactSignalSnap.data() || {}, {
+            dashboardResponsibleCoachId: coach.id,
+            profileFingerprint: contactProfileFingerprint
+          });
+        }
+
+        const now = admin.firestore.FieldValue.serverTimestamp();
+        const payload = {
+          ...contract,
+          displayName: name,
+          name,
+          phoneNormalized,
+          emailNormalized: email || null,
+          email,
+          contactDataSource: "dashboard",
+          contactDataUpdatedAt: now,
+          originCreatedAt: now,
+          originCreatedByUid: request.auth.uid,
+          responsibilityAssignedAt: now,
+          responsibilityAssignedByUid: request.auth.uid,
+          responsibilityReason: "initial_creation",
+          source: "dashboard_manual",
+          membershipSource: "dashboard_manual",
+          status: "active",
+          entityType: "member",
+          ownershipStatus: "confirmed",
+          ownershipSource: "server_authenticated_creator",
+          ownershipEvidence: ["authenticated_creator_is_dashboard_responsible"],
+          ownershipValidatedAt: now,
+          clientSelectable: true,
+          active: true,
+          stale: false,
+          createdByUid: request.auth.uid,
+          createdByEmail: cleanString(request.auth.token?.email),
+          createdAt: now,
+          updatedAt: now
+        };
+        const commandResult = {
+          ok: true,
+          clientId: contract.internalClientId,
+          internalClientId: contract.internalClientId,
+          dashboardResponsibleCoachId: coach.id,
+          responsibilityMode: contract.responsibilityMode,
+          reused: false
+        };
+        transaction.create(clientRef, payload);
+        transaction.create(contactSignalRef, {
+          signalType: "phone",
+          signalDigest: contactSignalRef.id.slice("phone_".length),
+          profileFingerprint: contactProfileFingerprint,
+          internalClientId: contract.internalClientId,
+          dashboardResponsibleCoachId: coach.id,
+          status: "active",
+          createdAt: now,
+          updatedAt: now
+        });
+        engagementPlans.forEach(({ engagementId, serviceScope }) => {
+          transaction.create(clientRef.collection("engagements").doc(engagementId), {
+            engagementId,
+            internalClientId: contract.internalClientId,
+            serviceScope,
+            status: "active",
+            startsAt: now,
+            endsAt: null,
+            sourceSystem: "dashboard",
+            createdByUid: request.auth.uid,
+            createdAt: now,
+            updatedAt: now
+          });
+        });
+        transaction.create(receiptRef, {
+          command: "createDashboardClient",
+          actorUid: request.auth.uid,
+          fingerprint,
+          result: commandResult,
+          createdAt: now
+        });
+        transaction.set(db.collection("actionLogs").doc(`client_command_${receiptRef.id}`), {
+          action: "client.dashboard_created",
+          entityType: "clients",
+          entityId: contract.internalClientId,
+          coachId: coach.id,
+          userId: request.auth.uid,
+          userEmail: cleanString(request.auth.token?.email),
+          userRole: cleanString(profile.role),
+          source: "firebase_function_client_contract_v1",
+          createdAt: now
+        });
+        return commandResult;
+      });
+      return result;
+    } catch (error) {
+      throw clientCommandHttpsError(error);
+    }
+  }
+);
+
+exports.assignDashboardResponsible = onCall(
+  { region: "us-central1", invoker: "public", timeoutSeconds: 30 },
+  async (request) => {
+    try {
+      const data = request.data || {};
+      assertAllowedCommandFields(
+        data,
+        ["clientId", "dashboardResponsibleCoachId", "responsibilityMode", "reason", "idempotencyKey"],
+        "assignDashboardResponsible"
+      );
+      await requireAdminProfile(request);
+      const coach = await requireActiveClientCoach(data.dashboardResponsibleCoachId);
+      return await runAdminClientContractTransition({
+        request,
+        command: "assignDashboardResponsible",
+        clientId: data.clientId,
+        idempotencyKey: data.idempotencyKey,
+        transition: {
+          type: "assign_dashboard_responsible",
+          dashboardResponsibleCoachId: coach.id,
+          responsibilityMode: data.responsibilityMode
+        },
+        compatibilityPatch: {},
+        action: "client.dashboard_responsible_assigned",
+        reason: data.reason
+      });
+    } catch (error) {
+      throw clientCommandHttpsError(error);
+    }
+  }
+);
+
+exports.linkGhlContact = onCall(
+  { region: "us-central1", invoker: "public", timeoutSeconds: 30 },
+  async (request) => {
+    try {
+      const data = request.data || {};
+      assertAllowedCommandFields(
+        data,
+        ["clientId", "contactId", "reason", "idempotencyKey"],
+        "linkGhlContact"
+      );
+      return await runAdminClientContractTransition({
+        request,
+        command: "linkGhlContact",
+        clientId: data.clientId,
+        idempotencyKey: data.idempotencyKey,
+        transition: {
+          type: "link_ghl",
+          contactId: data.contactId,
+          matchedBy: "admin_confirmed"
+        },
+        compatibilityPatch: {},
+        action: "client.ghl_link_confirmed",
+        reason: data.reason
+      });
+    } catch (error) {
+      throw clientCommandHttpsError(error);
+    }
+  }
+);
+
+exports.confirmCoachRxLink = onCall(
+  { region: "us-central1", invoker: "public", timeoutSeconds: 30 },
+  async (request) => {
+    try {
+      const data = request.data || {};
+      assertAllowedCommandFields(data, [
+        "clientId",
+        "expectedSourceClientId",
+        "expectedCoachRxOwnerId",
+        "responsibilityMode",
+        "reason",
+        "idempotencyKey"
+      ], "confirmCoachRxLink");
+      return await runAdminClientContractTransition({
+        request,
+        command: "confirmCoachRxLink",
+        clientId: data.clientId,
+        idempotencyKey: data.idempotencyKey,
+        transition: {
+          type: "confirm_coachrx_link",
+          expectedSourceClientId: data.expectedSourceClientId,
+          expectedCoachRxOwnerId: data.expectedCoachRxOwnerId,
+          responsibilityMode: data.responsibilityMode
+        },
+        compatibilityPatch: {},
+        action: "client.coachrx_link_confirmed",
+        reason: data.reason
+      });
+    } catch (error) {
+      throw clientCommandHttpsError(error);
+    }
+  }
+);
+
 exports.sendQuestionnaire = onCall(
   {
     region: "us-central1",
@@ -858,7 +1140,7 @@ exports.sendQuestionnaire = onCall(
     if (!clientRecordAvailableForMatching(client)) {
       throw new HttpsError("failed-precondition", "Ce client est en validation d'appartenance et ne peut pas recevoir de questionnaire.");
     }
-    const coachId = cleanString(client.coachId);
+    const coachId = clientDashboardResponsibleCoachId(client);
     const coachSnap = coachId ? await db.doc(`coaches/${coachId}`).get() : null;
     const pilotCoach = PILOT_COACHES.find((coach) => coach.id === coachId || coach.coachRxId === coachId);
     const coachName = cleanString(client.coachName || coachSnap?.data()?.name || pilotCoach?.name || "");
@@ -903,7 +1185,8 @@ exports.sendQuestionnaire = onCall(
       questionnaireType: questionnaire.type,
       questionnaireLabel: questionnaire.label,
       ghlTag: questionnaire.ghlTag,
-      questionnaireUrl: buildQuestionnaireUrl(phoneNormalized, client.name, client.email, coachName, questionnaire),
+      questionnaireUrl: "",
+      secureQuestionnaireLinkStatus: "not_configured",
       requestedByUid: request.auth.uid,
       requestedByEmail: request.auth.token.email || "",
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -912,63 +1195,20 @@ exports.sendQuestionnaire = onCall(
     };
     await sendRef.set(baseAttempt, { merge: true });
 
-    if (!phoneNormalized) {
-      const message = "Telephone manquant. L'envoi et le matching se font par telephone.";
-      await markSend(sendRef, {
-        status: "error",
-        deliveryStatus: "missing_phone",
-        errorMessage: message
-      });
-      return { ok: false, sendId: sendRef.id, status: "error", message };
-    }
-
-    const token = cleanString(safeSecretValue(ghlPrivateToken));
-    if (!token) {
-      const message = "GHL non configure: ajoute GHL_PRIVATE_TOKEN dans Firebase Functions.";
-      await markSend(sendRef, {
-        status: "error",
-        deliveryStatus: "missing_ghl_config",
-        errorMessage: message
-      });
-      return { ok: false, sendId: sendRef.id, status: "error", message };
-    }
-
-    try {
-      const contact = await findGhlContactByPhone({ token, locationId: GHL_LOCATION_ID, phoneNormalized });
-      if (!contact?.id) {
-        const message = `Contact GHL introuvable pour le telephone ${phoneNormalized}.`;
-        await markSend(sendRef, {
-          status: "error",
-          deliveryStatus: "contact_not_found",
-          errorMessage: message
-        });
-        return { ok: false, sendId: sendRef.id, status: "error", message };
-      }
-
-      await addGhlTag({ token, contactId: contact.id, tag: questionnaire.ghlTag });
-      await markSend(sendRef, {
-        status: "sent",
-        deliveryStatus: "tag_added",
-        sentAt: admin.firestore.FieldValue.serverTimestamp(),
-        ghlContactId: contact.id,
-        ghlContactName: cleanString(contact.contactName || contact.fullName || contact.name)
-      });
-
-      return {
-        ok: true,
-        sendId: sendRef.id,
-        status: "sent",
-        message: `Tag ${questionnaire.ghlTag} ajoute dans GHL. Le workflow devrait envoyer ${questionnaire.label}.`
-      };
-    } catch (error) {
-      const message = humanizeGhlError(error);
-      await markSend(sendRef, {
-        status: "error",
-        deliveryStatus: "ghl_error",
-        errorMessage: message
-      });
-      return { ok: false, sendId: sendRef.id, status: "error", message };
-    }
+    await markSend(sendRef, {
+      status: "error",
+      deliveryStatus: SECURE_QUESTIONNAIRE_LINK_ERROR,
+      secureQuestionnaireLinkStatus: "not_configured",
+      questionnaireUrl: "",
+      errorMessage: SECURE_QUESTIONNAIRE_LINK_MESSAGE
+    });
+    return {
+      ok: false,
+      sendId: sendRef.id,
+      status: "error",
+      code: SECURE_QUESTIONNAIRE_LINK_ERROR,
+      message: SECURE_QUESTIONNAIRE_LINK_MESSAGE
+    };
   }
 );
 
@@ -1040,7 +1280,7 @@ async function processQuestionnaireSendFromQueue({ sendRef, send }) {
     });
     return;
   }
-  const coachId = cleanString(client.coachId);
+  const coachId = clientDashboardResponsibleCoachId(client);
   const requestedCoachId = cleanString(send.coachId);
   if (requestedCoachId && requestedCoachId !== coachId) {
     await markSend(sendRef, {
@@ -1097,59 +1337,20 @@ async function processQuestionnaireSendFromQueue({ sendRef, send }) {
     questionnaireType: questionnaire.type,
     questionnaireLabel: questionnaire.label,
     ghlTag: questionnaire.ghlTag,
-    questionnaireUrl: buildQuestionnaireUrl(phoneNormalized, client.name, client.email, coachName, questionnaire),
+    questionnaireUrl: "",
+    secureQuestionnaireLinkStatus: "not_configured",
     processedBy: "processQuestionnaireSendRequest",
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
 
-  if (!phoneNormalized) {
-    const message = "Telephone manquant. L'envoi et le matching se font par telephone.";
-    await markSend(sendRef, {
-      status: "error",
-      deliveryStatus: "missing_phone",
-      errorMessage: message
-    });
-    return;
-  }
-
-  const token = cleanString(safeSecretValue(ghlPrivateToken));
-  if (!token) {
-    const message = "GHL non configure: ajoute GHL_PRIVATE_TOKEN dans Firebase Functions.";
-    await markSend(sendRef, {
-      status: "error",
-      deliveryStatus: "missing_ghl_config",
-      errorMessage: message
-    });
-    return;
-  }
-
-  try {
-    const contact = await findGhlContactByPhone({ token, locationId: GHL_LOCATION_ID, phoneNormalized });
-    if (!contact?.id) {
-      const message = `Contact GHL introuvable pour le telephone ${phoneNormalized}.`;
-      await markSend(sendRef, {
-        status: "error",
-        deliveryStatus: "contact_not_found",
-        errorMessage: message
-      });
-      return;
-    }
-
-    await addGhlTag({ token, contactId: contact.id, tag: questionnaire.ghlTag });
-    await markSend(sendRef, {
-      status: "sent",
-      deliveryStatus: "tag_added",
-      sentAt: admin.firestore.FieldValue.serverTimestamp(),
-      ghlContactId: contact.id,
-      ghlContactName: cleanString(contact.contactName || contact.fullName || contact.name)
-    });
-  } catch (error) {
-    await markSend(sendRef, {
-      status: "error",
-      deliveryStatus: "ghl_error",
-      errorMessage: humanizeGhlError(error)
-    });
-  }
+  await markSend(sendRef, {
+    status: "error",
+    deliveryStatus: SECURE_QUESTIONNAIRE_LINK_ERROR,
+    secureQuestionnaireLinkStatus: "not_configured",
+    questionnaireUrl: "",
+    errorMessage: SECURE_QUESTIONNAIRE_LINK_MESSAGE
+  });
+  return;
 }
 
 exports.syncDashboardFromSheets = onCall(
@@ -1241,7 +1442,7 @@ exports.scheduledQuestionnaireSendPlans = onSchedule(
       const clientSnap = await db.collection("clients").doc(clientId).get();
       const client = clientSnap.exists ? clientSnap.data() || {} : {};
       if (!clientSnap.exists
-        || cleanString(client.coachId || client.coachRxId) !== coachId
+        || clientDashboardResponsibleCoachId(client) !== coachId
         || !clientRecordAvailableForMatching(client)) {
         skipped += 1;
         batch.set(docSnap.ref, {
@@ -1275,19 +1476,14 @@ exports.scheduledQuestionnaireSendPlans = onSchedule(
         clientId,
         clientName: cleanString(schedule.clientName),
         clientPhoneNormalized: normalizePhone(schedule.clientPhoneNormalized),
-        status: "pending",
-        deliveryStatus: "firestore_queue_pending",
-        errorMessage: "",
+        status: "error",
+        deliveryStatus: SECURE_QUESTIONNAIRE_LINK_ERROR,
+        errorMessage: SECURE_QUESTIONNAIRE_LINK_MESSAGE,
         questionnaireType: questionnaire.type,
         questionnaireLabel: questionnaire.label,
         ghlTag: questionnaire.ghlTag,
-        questionnaireUrl: buildQuestionnaireUrl(
-          normalizePhone(schedule.clientPhoneNormalized),
-          schedule.clientName,
-          "",
-          schedule.coachName,
-          questionnaire
-        ),
+        questionnaireUrl: "",
+        secureQuestionnaireLinkStatus: "not_configured",
         requestedByUid: cleanString(schedule.requestedByUid),
         requestedByEmail: cleanString(schedule.requestedByEmail),
         questionnaireScheduleId: docSnap.id,
@@ -1433,7 +1629,7 @@ exports.processAssistantVoiceRequest = onDocumentCreated(
         const clientSnap = await db.doc(`clients/${contextEntityId}`).get();
         const client = clientSnap.exists ? clientSnap.data() || {} : {};
         if (!clientSnap.exists
-          || cleanString(client.coachId || client.coachRxId) !== targetCoachId
+          || clientDashboardResponsibleCoachId(client) !== targetCoachId
           || !clientRecordAvailableForMatching(client)) {
           throw new Error("assistant_voice_context_client_blocked");
         }
@@ -3099,7 +3295,8 @@ async function processDirectClientImport({ sourceType, sourceLabel, coach, coreR
           ? diagnostics.skippedInvalidNameSamples.slice(0, 8)
           : [],
         ownership: diagnostics.ownership || null,
-        ghlContacts: diagnostics.ghlContacts || null
+        ghlContacts: diagnostics.ghlContacts || null,
+        canonicalLinkCandidates: diagnostics.canonicalLinkCandidates || null
       }
     },
     warnings: [
@@ -3117,6 +3314,9 @@ async function processDirectClientImport({ sourceType, sourceLabel, coach, coreR
     }
     if (Number(ghl.skippedNoExistingClientMatch || 0)) {
       result.warnings.push(`${ghl.skippedNoExistingClientMatch} contact(s) GHL ignore(s), car aucun client existant ne correspond.`);
+    }
+    if (Number(ghl.blockedCanonicalContractWrites || 0)) {
+      result.warnings.push(`${ghl.blockedCanonicalContractWrites} liaison(s) GHL canonique(s) reservee(s) au writer contractuel.`);
     }
     if (!Number(ghl.matchedExistingClients || 0)) {
       result.warnings.push("Aucun client existant n'a ete enrichi par le lot GHL.");
@@ -3148,8 +3348,9 @@ async function processDirectClientEnrichmentImport({ coach, records, runId, requ
     }
   });
   const unmatched = Number(diagnostics.skippedNoExistingClientMatch || 0);
+  const canonicalBlocked = Number(diagnostics.blockedCanonicalContractWrites || 0);
   const result = {
-    status: unmatched ? "warning" : "done",
+    status: unmatched || canonicalBlocked ? "warning" : "done",
     coachId: coach.id,
     coachName: coach.name,
     sourceType: "client_enrichment",
@@ -3159,7 +3360,10 @@ async function processDirectClientEnrichmentImport({ coach, records, runId, requ
     diagnostics: {
       clientEnrichment: diagnostics
     },
-    warnings: unmatched ? [`${unmatched} ligne(s) CSM ignoree(s), car aucune fiche client existante ne correspond.`] : []
+    warnings: [
+      ...(unmatched ? [`${unmatched} ligne(s) CSM ignoree(s), car aucune fiche client existante ne correspond.`] : []),
+      ...(canonicalBlocked ? [`${canonicalBlocked} fiche(s) canonique(s) reservee(s) au writer contractuel.`] : [])
+    ]
   };
   await writeDirectCoachSyncStatus({ result, runId, requestedBy, source: "direct_csm_client_enrichment" });
   return result;
@@ -3628,6 +3832,7 @@ function coachFirestoreCriteria(coachOrId) {
   const nameValues = coach ? coachAliasValues(coach).slice(0, 8) : [];
   return uniqueFirestoreCriteria([
     ...idValues.map((value) => ({ field: "coachId", value })),
+    ...idValues.map((value) => ({ field: "dashboardResponsibleCoachId", value })),
     ...idValues.map((value) => ({ field: "coachRxId", value })),
     ...idValues.map((value) => ({ field: "assignedCoachId", value })),
     ...nameValues.map((value) => ({ field: "coachName", value })),
@@ -3770,6 +3975,269 @@ async function writeFailedSyncRun({
   });
 }
 
+async function requireActiveClientCommandProfile(request) {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Connexion Google requise.");
+  }
+  const profileSnap = await db.doc(`users/${request.auth.uid}`).get();
+  const profile = profileSnap.exists ? profileSnap.data() || {} : {};
+  if (!profileSnap.exists || profile.active !== true || !["coach", "admin"].includes(profile.role)) {
+    throw new HttpsError("permission-denied", "Acces dashboard non configure pour cette commande.");
+  }
+  return profile;
+}
+
+async function requireActiveClientCoach(value) {
+  const requestedId = cleanString(value);
+  if (!requestedId) throw new HttpsError("invalid-argument", "Coach responsable manquant.");
+  const pilotCoach = PILOT_COACHES.find((coach) => coach.id === requestedId || coach.coachRxId === requestedId);
+  const canonicalId = cleanString(pilotCoach?.id || requestedId);
+  if (!isPilotCoachId(canonicalId)) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Ce coach ne fait pas partie du pilote autorise pour les commandes client Phase 1."
+    );
+  }
+  const coachSnap = await db.doc(`coaches/${canonicalId}`).get();
+  if (!pilotCoach && !coachSnap.exists) {
+    throw new HttpsError("invalid-argument", "Coach responsable inconnu.");
+  }
+  if (coachSnap.exists && coachSnap.get("active") === false) {
+    throw new HttpsError("failed-precondition", "Coach responsable inactif.");
+  }
+  return {
+    id: canonicalId,
+    name: cleanString(coachSnap.data()?.name || coachSnap.data()?.displayName || pilotCoach?.name || canonicalId)
+  };
+}
+
+function requiredClientDisplayName(value) {
+  const name = cleanString(value).replace(/\s+/g, " ");
+  if (name.length < 2 || name.length > 160) {
+    throw new HttpsError("invalid-argument", "Le nom du client doit contenir entre 2 et 160 caracteres.");
+  }
+  return name;
+}
+
+function requiredClientPhone(value) {
+  const phone = normalizePhone(value);
+  if (phone.length < 7 || phone.length > 15) {
+    throw new HttpsError("invalid-argument", "Un numero de telephone valide est requis.");
+  }
+  return phone;
+}
+
+function optionalClientEmail(value) {
+  const email = cleanString(value).toLowerCase();
+  if (!email) return "";
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new HttpsError("invalid-argument", "Courriel client invalide.");
+  }
+  return email;
+}
+
+function requiredClientCommandIdempotencyKey(value) {
+  const key = cleanString(value);
+  if (!/^[A-Za-z0-9_-]{8,100}$/.test(key)) {
+    throw new HttpsError(
+      "invalid-argument",
+      "idempotencyKey doit contenir entre 8 et 100 caracteres alphanumeriques."
+    );
+  }
+  return key;
+}
+
+function requiredClientCommandReason(value) {
+  const reason = cleanString(value).replace(/\s+/g, " ");
+  if (reason.length < 3 || reason.length > 240) {
+    throw new HttpsError("invalid-argument", "Un motif administratif de 3 a 240 caracteres est requis.");
+  }
+  return reason;
+}
+
+function clientCommandReceiptRef(command, actorUid, idempotencyKey) {
+  return db.collection("serverCommandReceipts").doc(clientCommandReceiptId({
+    command,
+    actorUid,
+    idempotencyKey
+  }));
+}
+
+function clientPhoneSignalClaimRef(phoneNormalized) {
+  const digest = crypto.createHash("sha256")
+    .update(`cfsb-client-phone-signal-v1:${cleanString(phoneNormalized)}`)
+    .digest("hex");
+  return db.collection("clientContactSignalClaims").doc(`phone_${digest}`);
+}
+
+function clientContactProfileFingerprint(name, phoneNormalized) {
+  return crypto.createHash("sha256")
+    .update(`cfsb-client-contact-profile-v1:${keyOf(name)}:${cleanString(phoneNormalized)}`)
+    .digest("hex");
+}
+
+function externalIdentityClaimRef(system, externalId) {
+  const digest = crypto.createHash("sha256")
+    .update(`${cleanString(system)}:${cleanString(externalId)}`)
+    .digest("hex");
+  return db.collection("externalIdentityClaims").doc(`${cleanString(system)}_${digest}`);
+}
+
+async function runAdminClientContractTransition({
+  request,
+  command,
+  clientId,
+  idempotencyKey,
+  transition,
+  compatibilityPatch = {},
+  action,
+  reason
+}) {
+  const profile = await requireAdminProfile(request);
+  const internalClientId = normalizeInternalClientId(clientId);
+  const key = requiredClientCommandIdempotencyKey(idempotencyKey);
+  const cleanReason = requiredClientCommandReason(reason);
+  const fingerprint = clientCommandFingerprint({ internalClientId, transition, reason: cleanReason });
+  const receiptRef = clientCommandReceiptRef(command, request.auth.uid, key);
+  const clientRef = db.collection("clients").doc(internalClientId);
+
+  return db.runTransaction(async (transaction) => {
+    const receiptSnap = await transaction.get(receiptRef);
+    if (receiptSnap.exists) {
+      const receipt = receiptSnap.data() || {};
+      return resolveClientCommandReceipt(receipt, fingerprint);
+    }
+
+    const clientSnap = await transaction.get(clientRef);
+    if (!clientSnap.exists) throw new HttpsError("not-found", "Client canonique introuvable.");
+    const existing = clientSnap.data() || {};
+    const currentContract = validateClientContract(existing);
+    if (currentContract.internalClientId !== clientRef.id) {
+      throw new HttpsError("failed-precondition", "L'identite interne ne correspond pas au document client.");
+    }
+    const nextContract = transitionClientContract(currentContract, transition);
+
+    let claim = null;
+    if (transition.type === "link_ghl") {
+      claim = { system: "ghl", externalId: nextContract.ghlLink.contactId };
+    } else if (transition.type === "confirm_coachrx_link") {
+      claim = { system: "coachrx", externalId: nextContract.coachRxLink.sourceClientId };
+    }
+    let claimRef = null;
+    if (claim) {
+      claimRef = externalIdentityClaimRef(claim.system, claim.externalId);
+      const claimSnap = await transaction.get(claimRef);
+      if (claimSnap.exists && cleanString(claimSnap.get("internalClientId")) !== internalClientId) {
+        throw new HttpsError(
+          "already-exists",
+          `Cette identite ${claim.system} est deja liee a une autre fiche active.`
+        );
+      }
+    }
+
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const patch = {
+      ...nextContract,
+      ...compatibilityPatch,
+      updatedAt: now,
+      updatedByUid: request.auth.uid
+    };
+    if (transition.type === "assign_dashboard_responsible") {
+      patch.responsibilityAssignedAt = now;
+      patch.responsibilityAssignedByUid = request.auth.uid;
+      patch.responsibilityReason = cleanReason;
+    }
+    if (transition.type === "link_ghl") {
+      patch.ghlLink = {
+        ...nextContract.ghlLink,
+        verifiedAt: now,
+        verifiedByUid: request.auth.uid,
+        lastObservedAt: now
+      };
+    }
+    if (transition.type === "confirm_coachrx_link") {
+      patch.coachRxLink = {
+        ...nextContract.coachRxLink,
+        linkedAt: now,
+        linkedByUid: request.auth.uid
+      };
+      patch.responsibilityAssignedAt = now;
+      patch.responsibilityAssignedByUid = request.auth.uid;
+      patch.responsibilityReason = cleanReason;
+    }
+
+    const commandResult = {
+      ok: true,
+      clientId: internalClientId,
+      internalClientId,
+      dashboardResponsibleCoachId: nextContract.dashboardResponsibleCoachId,
+      responsibilityMode: nextContract.responsibilityMode,
+      reused: false
+    };
+    transaction.update(clientRef, patch);
+    if (claimRef) {
+      transaction.set(claimRef, {
+        system: claim.system,
+        externalId: claim.externalId,
+        internalClientId,
+        status: "active",
+        updatedAt: now,
+        updatedByUid: request.auth.uid
+      });
+    }
+    transaction.create(receiptRef, {
+      command,
+      actorUid: request.auth.uid,
+      fingerprint,
+      result: commandResult,
+      createdAt: now
+    });
+    transaction.set(db.collection("actionLogs").doc(`client_command_${receiptRef.id}`), {
+      action,
+      entityType: "clients",
+      entityId: internalClientId,
+      coachId: nextContract.dashboardResponsibleCoachId,
+      userId: request.auth.uid,
+      userEmail: cleanString(request.auth.token?.email),
+      userRole: cleanString(profile.role),
+      details: {
+        reason: cleanReason,
+        previousDashboardResponsibleCoachId: currentContract.dashboardResponsibleCoachId,
+        dashboardResponsibleCoachId: nextContract.dashboardResponsibleCoachId,
+        previousResponsibilityMode: currentContract.responsibilityMode,
+        responsibilityMode: nextContract.responsibilityMode
+      },
+      source: "firebase_function_client_contract_v1",
+      createdAt: now
+    });
+    return commandResult;
+  });
+}
+
+function clientCommandHttpsError(error) {
+  if (error instanceof HttpsError) return error;
+  if (error instanceof ClientContractError) {
+    if (error.code === "idempotency_conflict") {
+      return new HttpsError("already-exists", error.message, { contractCode: error.code });
+    }
+    const preconditionCodes = new Set([
+      "external_identity_conflict",
+      "contact_signal_conflict",
+      "immutable_identity",
+      "immutable_origin",
+      "invalid_transition",
+      "stale_transition"
+    ]);
+    return new HttpsError(
+      preconditionCodes.has(error.code) ? "failed-precondition" : "invalid-argument",
+      error.message,
+      { contractCode: error.code, ...error.details }
+    );
+  }
+  console.error("client_command_failed", cleanString(error?.message || error));
+  return new HttpsError("internal", "La commande client n'a pas pu etre executee.");
+}
+
 async function requireAdminProfile(request) {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Connexion Google requise.");
@@ -3799,13 +4267,8 @@ function isPilotCoachId(value) {
 }
 
 function canPilotProfileActOnCoach(profile = {}, targetCoachId = "") {
-  const coachId = cleanString(targetCoachId);
-  if (!coachId) return false;
-  if (profile.role === "admin") return true;
-  return profile.active === true
-    && profile.role === "coach"
-    && isPilotCoachId(profile.coachId)
-    && isPilotCoachId(coachId);
+  const allowedCoachIds = new Set(PILOT_COACHES.flatMap((coach) => [coach.id, coach.coachRxId]).map(cleanString));
+  return canProfileActOnCoach(profile, targetCoachId, { allowedCoachIds });
 }
 
 function accessIssueMessage(profile = {}, targetCoachId = "") {
@@ -4052,7 +4515,7 @@ async function syncCoachFromRows({
   const staleClients = questionnaireOnly || ownershipQuarantineCount ? [] : collectStaleImportedDocs({
     snap: existingClientSnap,
     currentIds: new Set(clients.map((client) => client.id)),
-    protectedSources: new Set(["firebase_app_manual", "manual"])
+    protectedSources: new Set(["firebase_app_manual", "manual", "dashboard_manual"])
   });
   const staleTasks = questionnaireOnly || ownershipQuarantineCount ? [] : collectStaleImportedDocs({
     snap: existingTaskSnap,
@@ -4383,6 +4846,11 @@ function buildClientRecords({
       programContextRows: 0,
       lateProgramSignals: 0,
       samplesToValidate: []
+    },
+    canonicalLinkCandidates: {
+      phoneSignalOnly: 0,
+      strongExternalMatchBlocked: 0,
+      samples: []
     }
   };
   const addClient = (row, source) => {
@@ -4444,6 +4912,36 @@ function buildClientRecords({
       sourceClientId,
       sourceSystem: ownership.sourceIdentitySystem
     });
+    if (matched?.id && isCanonicalContractRecord(matched.data)) {
+      diagnostics.ownership.needsReview += 1;
+      diagnostics.canonicalLinkCandidates.strongExternalMatchBlocked += 1;
+      if (diagnostics.canonicalLinkCandidates.samples.length < 8) {
+        diagnostics.canonicalLinkCandidates.samples.push({
+          source,
+          matchStrength: "verified_external_identity",
+          recommendedAdminAction: "Utiliser le writer contractuel Phase 2; ecriture legacy bloquee."
+        });
+      }
+      return;
+    }
+    const canonicalPhoneCandidates = phoneNormalized
+      ? matchIndex.canonicalByPhone.get(phoneNormalized) || []
+      : [];
+    if (!matched && canonicalPhoneCandidates.length) {
+      // A phone is only a candidate signal. A verified external ID is required
+      // before a legacy import may update a canonical client.
+      diagnostics.ownership.needsReview += 1;
+      diagnostics.canonicalLinkCandidates.phoneSignalOnly += 1;
+      if (diagnostics.canonicalLinkCandidates.samples.length < 8) {
+        diagnostics.canonicalLinkCandidates.samples.push({
+          source,
+          candidateCount: canonicalPhoneCandidates.length,
+          hasSourceClientId: Boolean(sourceClientId),
+          recommendedAdminAction: "Confirmer le lien externe sans fusion automatique par telephone."
+        });
+      }
+      return;
+    }
     const id = matched?.id || fallbackId;
     const existing = clients.get(id)?.data || matched?.data || existingById.get(id) || {};
     if (ownership.ownershipStatus === "needs_review"
@@ -4657,6 +5155,7 @@ function buildGhlContactEnrichmentRecords({ coach, rows, existingById = new Map(
       rowsReceived: Array.isArray(rows) ? rows.length : 0,
       rowsWithoutPhone: 0,
       skippedNoExistingClientMatch: 0,
+      blockedCanonicalContractWrites: 0,
       matchedExistingClients: 0,
       matchedBy: {
         phone: 0,
@@ -4701,6 +5200,11 @@ function buildGhlContactEnrichmentRecords({ coach, rows, existingById = new Map(
     }
 
     const existing = clients.get(matched.id)?.data || matched.data || existingById.get(matched.id) || {};
+    if (isCanonicalContractRecord(existing)) {
+      diagnostics.ghlContacts.blockedCanonicalContractWrites += 1;
+      addSkippedSample(row, "canonical_contract_writer_required");
+      return;
+    }
     const importedData = {
       ...existing,
       coachId: coach.id,
@@ -4736,7 +5240,8 @@ function buildGhlContactEnrichmentRecords({ coach, rows, existingById = new Map(
 function createClientMatchIndex(existingById = new Map()) {
   const index = {
     byPhone: new Map(),
-    bySource: new Map()
+    bySource: new Map(),
+    canonicalByPhone: new Map()
   };
   existingById.forEach((data, id) => {
     if (clientRecordAvailableForMatching(data)) indexClientMatch(index, id, data);
@@ -4744,9 +5249,32 @@ function createClientMatchIndex(existingById = new Map()) {
   return index;
 }
 
+function isCanonicalContractRecord(data = {}) {
+  return Number(data.contractVersion) === 1
+    && Boolean(cleanString(data.internalClientId))
+    && ["dashboard_manual", "coachrx_import", "legacy_migrated"].includes(cleanString(data.originSystem));
+}
+
 function indexClientMatch(index, id, data = {}) {
   if (!clientRecordAvailableForMatching(data)) return;
   const phone = clientPhone(data);
+  const isCanonical = isCanonicalContractRecord(data);
+  if (isCanonical) {
+    if (phone) {
+      const candidates = index.canonicalByPhone.get(phone) || [];
+      if (!candidates.some((candidate) => candidate.id === id)) candidates.push({ id });
+      index.canonicalByPhone.set(phone, candidates);
+    }
+    const coachRxSourceClientId = cleanString(data.coachRxLink?.sourceClientId);
+    if (coachRxSourceClientId && data.coachRxLink?.linkStatus === "verified") {
+      index.bySource.set(`coachrx:${coachRxSourceClientId}`, { id, data, by: "sourceClientId" });
+    }
+    const ghlContactId = cleanString(data.ghlLink?.contactId);
+    if (ghlContactId && data.ghlLink?.linkStatus === "verified") {
+      index.bySource.set(`ghl:${ghlContactId}`, { id, data, by: "sourceClientId" });
+    }
+    return;
+  }
   const sourceClientId = cleanString(data.sourceClientId || data.clientId || data.contactId);
   const sourceSystem = sourceIdentitySystem(data);
   const sourceKey = sourceClientId && sourceSystem ? `${sourceSystem}:${sourceClientId}` : "";
@@ -4759,8 +5287,8 @@ function findClientMatch(index, { phoneNormalized, sourceClientId, sourceSystem 
   const source = cleanString(sourceClientId);
   const normalizedSourceSystem = sourceIdentitySystem({}, sourceSystem);
   const sourceKey = source && normalizedSourceSystem ? `${normalizedSourceSystem}:${source}` : "";
-  return (phone && index.byPhone.get(phone))
-    || (sourceKey && index.bySource.get(sourceKey))
+  return (sourceKey && index.bySource.get(sourceKey))
+    || (phone && index.byPhone.get(phone))
     || null;
 }
 
@@ -4771,6 +5299,7 @@ function buildClientEnrichmentRecords({ coach, rows, existingById = new Map() })
     rowsReceived: Array.isArray(rows) ? rows.length : 0,
     rowsWithoutIdentity: 0,
     skippedNoExistingClientMatch: 0,
+    blockedCanonicalContractWrites: 0,
     matchedExistingClients: 0,
     fieldsApplied: {
       phone: 0,
@@ -4821,6 +5350,11 @@ function buildClientEnrichmentRecords({ coach, rows, existingById = new Map() })
     }
 
     const existing = clients.get(matched.id)?.data || matched.data || existingById.get(matched.id) || {};
+    if (isCanonicalContractRecord(existing)) {
+      diagnostics.blockedCanonicalContractWrites += 1;
+      addSkippedSample(row, "canonical_contract_writer_required");
+      return;
+    }
     const importedData = {
       ...existing,
       coachId: coach.id,
@@ -4927,6 +5461,7 @@ function collectStaleImportedDocs({ snap, currentIds, protectedSources = new Set
   snap.forEach((docSnap) => {
     if (currentIds.has(docSnap.id)) return;
     const data = docSnap.data() || {};
+    if (clientCanonicalIdentityProtectedFromLegacyStale(data)) return;
     if (data.linkedFromManual) return;
     if (protectedSources.has(cleanString(data.source))) return;
     if (data.sourceStale === true) return;
@@ -4947,6 +5482,7 @@ function collectStaleImportedMapDocs({
   const stale = [];
   existingById.forEach((data = {}, id) => {
     if (currentIds.has(id)) return;
+    if (clientCanonicalIdentityProtectedFromLegacyStale(data)) return;
     if (data.linkedFromManual) return;
     const source = cleanString(data.source);
     if (protectedSources.has(source)) return;
@@ -4957,6 +5493,13 @@ function collectStaleImportedMapDocs({
     stale.push({ id, data });
   });
   return stale;
+}
+
+function clientCanonicalIdentityProtectedFromLegacyStale(data = {}) {
+  // Phase 2 needs a roster-specific writer that may set
+  // coachRxLink.rosterStatus=not_in_latest_roster. It must never stale or
+  // delete the canonical identity itself.
+  return isCanonicalContractRecord(data);
 }
 
 async function markStaleImportedRecords({ collectionName, records = [], staleReason }) {
@@ -4975,6 +5518,9 @@ async function markStaleImportedRecords({ collectionName, records = [], staleRea
 
   for (const record of records) {
     if (!record?.id) continue;
+    if (collectionName === "clients" && clientCanonicalIdentityProtectedFromLegacyStale(record.data || {})) {
+      continue;
+    }
     const ref = db.collection(collectionName).doc(record.id);
     batch.set(ref, {
       status: "import_stale",
@@ -6283,15 +6829,10 @@ function questionnaireConfig(type) {
   return QUESTIONNAIRE_TYPES[clean] || QUESTIONNAIRE_TYPES[DEFAULT_QUESTIONNAIRE_TYPE];
 }
 
-function buildQuestionnaireUrl(phoneNormalized, clientName, clientEmail, coachName, questionnaire = null) {
-  const config = questionnaire || questionnaireConfig();
-  const url = new URL(config.path || "/questionnaire/", QUESTIONNAIRE_URL);
-  url.searchParams.set("phone", phoneNormalized);
-  if (clientName) url.searchParams.set("client_name", clientName);
-  if (clientEmail) url.searchParams.set("client_email", clientEmail);
-  if (coachName) url.searchParams.set("coach_name", coachName);
-  url.searchParams.set("lock_context", "1");
-  return url.toString();
+function buildQuestionnaireUrl() {
+  // Phase 1 intentionally fails closed. The public URL must be produced only
+  // after an opaque token has a persisted sendId/clientId binding server-side.
+  throw new Error(SECURE_QUESTIONNAIRE_LINK_ERROR);
 }
 
 function phoneSearchCandidates(phoneNormalized) {
@@ -6315,6 +6856,15 @@ function clientPhone(client) {
     || client?.clientPhone
     || client?.telephone
     || client?.mobile
+    || ""
+  );
+}
+
+function clientDashboardResponsibleCoachId(client = {}) {
+  return cleanString(
+    client.dashboardResponsibleCoachId
+    || client.coachId
+    || client.coachRxId
     || ""
   );
 }

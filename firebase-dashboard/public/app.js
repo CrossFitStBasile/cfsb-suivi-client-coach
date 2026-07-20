@@ -34,6 +34,7 @@ import {
   getStorage,
   ref as storageRef
 } from "https://www.gstatic.com/firebasejs/12.13.0/firebase-storage.js";
+import { buildQuestionnaireAccessUrl } from "./questionnaire/questionnaire-access.mjs";
 const COMPATIBLE_AUTH_URL = "https://cfsb-dashboard-coach-aa9a4.firebaseapp.com/?authMode=redirect";
 
 const firebaseConfig = {
@@ -6474,14 +6475,14 @@ function renderQuestionnaireSendAudit(sends) {
             <strong>Journal d'envoi</strong>
             <small>Dernier: ${escapeHtml(latest.clientName || "Client")} · ${escapeHtml(questionnaireTypeLabel(latest.questionnaireType))} · ${formatDateTime(latest.updatedAt || latest.sentAt || latest.createdAt)}</small>
           </span>
-          <span class="pill ${errorCount ? "red" : "green"}">${errorCount ? `${errorCount} erreur${errorCount > 1 ? "s" : ""}` : "OK"}</span>
+          <span class="pill ${errorCount ? "red" : "green"}">${errorCount ? `${errorCount} erreur${errorCount > 1 ? "s" : ""}` : "Sans erreur signalee"}</span>
         </summary>
         <div class="send-audit-list">
           ${sends.slice(0, errorCount ? 12 : 8).map((send) => `
             <div class="send-audit-item ${send.status === "error" ? "error" : ""}">
               <span>${escapeHtml(send.clientName || "Client")}</span>
               <strong>${escapeHtml(questionnaireSendStatusLabel(send.status))}</strong>
-              <small>${escapeHtml(questionnaireTypeLabel(send.questionnaireType))} · ${escapeHtml(send.errorMessage || send.deliveryStatus || "En attente de reponse")} · ${formatDateTime(send.updatedAt || send.sentAt || send.createdAt)}</small>
+              <small>${escapeHtml(questionnaireTypeLabel(send.questionnaireType))} · ${escapeHtml(send.errorMessage || questionnaireDeliveryStatusLabel(send.deliveryStatus) || "En attente de reponse")} · ${formatDateTime(send.updatedAt || send.sentAt || send.createdAt)}</small>
               ${send.status === "error" ? `<em>${escapeHtml(questionnaireSendActionHint(send))}</em>` : ""}
             </div>
           `).join("")}
@@ -7786,16 +7787,13 @@ function questionnaireTypeOptions(current = DEFAULT_QUESTIONNAIRE_TYPE) {
   `).join("");
 }
 
-function questionnaireUrlForClient(client, type = DEFAULT_QUESTIONNAIRE_TYPE) {
+function questionnaireUrlForServerToken(accessToken, type = DEFAULT_QUESTIONNAIRE_TYPE) {
   const config = questionnaireTypeConfig(type);
-  const url = new URL(config.path || "/questionnaire/", QUESTIONNAIRE_BASE_URL);
-  url.searchParams.set("phone", clientPhone(client));
-  if (client.name) url.searchParams.set("client_name", client.name);
-  if (client.email) url.searchParams.set("client_email", client.email);
-  const coachName = client.coachName || coachRecordById(client.coachId || state.selectedCoachId)?.name || activeCoachRecord()?.name || "";
-  if (coachName) url.searchParams.set("coach_name", coachName);
-  url.searchParams.set("lock_context", "1");
-  return url.toString();
+  return buildQuestionnaireAccessUrl({
+    baseUrl: QUESTIONNAIRE_BASE_URL,
+    path: config.path || "/questionnaire/",
+    accessToken
+  });
 }
 
 function renderQuestionnaireSendModal() {
@@ -7804,10 +7802,7 @@ function renderQuestionnaireSendModal() {
   const clients = selectableClientsForCoach();
   const clientsWithPhone = clients.filter(clientPhone).length;
   const clientsMissingPhone = clients.length - clientsWithPhone;
-  const isAdminView = isInfoAdmin();
-  const sendExplanation = isAdminView
-    ? "Le dashboard ajoute le tag GHL dashboardcoach ou le tag associe au questionnaire choisi."
-    : "Le questionnaire sera envoye au client selectionne si son telephone est confirme dans sa fiche.";
+  const sendExplanation = "Envoi en securisation: cette branche Phase 1 n'envoie rien et ne cree aucune file. Le parcours sera active en Phase 2 lorsque le serveur pourra emettre un jeton opaque et confirmer la prise en charge.";
   return modal("Envoyer un questionnaire", `
     <form class="modal-form" data-form="questionnaireSend">
       <label>Client
@@ -7826,7 +7821,7 @@ function renderQuestionnaireSendModal() {
         ${clientsMissingPhone ? `<br>${clientsMissingPhone} client(s) sans telephone sont visibles mais desactives.` : ""}
       </div>
       <div class="modal-actions">
-        <button class="primary" type="submit" ${clientsWithPhone ? "" : "disabled"}>Envoyer</button>
+        <button class="primary" type="submit" disabled title="Disponible apres le branchement serveur Phase 2">Indisponible dans cette branche</button>
         <button class="secondary" type="button" data-action="closeModal">Annuler</button>
       </div>
     </form>
@@ -7876,11 +7871,11 @@ function renderQuestionnaireScheduleModal() {
           <input class="input" name="note" value="${escapeAttr(existing.note || "")}" placeholder="Ex.: suivi mensuel nutrition">
         </label>
       </div>
-      <div class="notice compact">
-        Le serveur verifie les questionnaires dus chaque matin. Si le client repond, la reponse apparaitra dans l'inbox questionnaire comme les envois manuels.
+      <div class="notice compact warning">
+        Automatisation en securisation: aucune nouvelle planification n'est activee dans cette branche Phase 1. Le serveur Phase 2 devra emettre un jeton opaque pour chaque envoi.
       </div>
       <div class="modal-actions">
-        <button class="primary" type="submit" ${phone ? "" : "disabled"}>Enregistrer automatisation</button>
+        <button class="primary" type="submit" disabled title="Disponible apres le branchement serveur Phase 2">Indisponible dans cette branche</button>
         <button class="secondary" type="button" data-action="openClient" data-id="${escapeAttr(client.id)}">Retour client</button>
         <button class="secondary" type="button" data-action="closeModal">Fermer</button>
       </div>
@@ -10921,88 +10916,19 @@ async function reactivateAlumniAsClient(alumniId) {
 }
 
 async function journalQuestionnaireSend(clientId, questionnaireType = DEFAULT_QUESTIONNAIRE_TYPE) {
-  const client = requireSelectableClientForCoach(clientId);
-  const phone = clientPhone(client);
-  if (!phone) throw new Error("Telephone manquant. Le matching et l'envoi se font par telephone.");
-  const questionnaire = questionnaireTypeConfig(questionnaireType);
-  const confirmed = window.confirm(`Envoyer ${questionnaire.label} a ${client.name || "ce client"} (${phone}) via GoHighLevel?`);
-  if (!confirmed) {
-    await logAction("questionnaire.send_cancelled", "clients", clientId, {
-      clientName: client.name || "",
-      phone,
-      questionnaireType: questionnaire.type
-    });
-    return;
-  }
-  const attemptRef = await addDoc(collection(db, "questionnaireSends"), {
-    coachId: client.coachId || state.selectedCoachId,
-    clientId,
-    clientName: client.name || "",
-    clientPhoneNormalized: phone,
-    coachName: client.coachName || coachRecordById(client.coachId || state.selectedCoachId)?.name || activeCoachRecord()?.name || "",
-    status: "pending",
-    deliveryStatus: "firestore_queue_pending",
-    errorMessage: "",
-    questionnaireType: questionnaire.type,
-    questionnaireLabel: questionnaire.label,
-    ghlTag: questionnaire.ghlTag,
-    questionnaireUrl: questionnaireUrlForClient(client, questionnaire.type),
-    requestedByUid: state.user?.uid || "",
-    requestedByEmail: state.user?.email || "",
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-    source: "dashboard_questionnaire_send_click"
-  });
-  closeModal();
-  await logAction("questionnaire.send_queued", "clients", clientId, {
-    clientName: client.name || "",
-    phone,
-    provider: "ghl",
-    questionnaireType: questionnaire.type,
-    ghlTag: questionnaire.ghlTag
-  });
-  showToast(`Envoi ${questionnaire.label} lance. Le statut se mettra a jour automatiquement.`);
+  void clientId;
+  void questionnaireType;
+  throw new Error(
+    "Envoi indisponible dans cette branche Phase 1: le serveur Phase 2 doit d'abord emettre un jeton opaque et accuser la prise en charge."
+  );
 }
 
 async function saveQuestionnaireSchedule(clientId, data) {
-  const client = requireSelectableClientForCoach(clientId);
-  const phone = clientPhone(client);
-  if (!phone) throw new Error("Telephone manquant. La planification depend du telephone.");
-  const questionnaire = questionnaireTypeConfig(data.questionnaireType);
-  const scheduleId = questionnaireScheduleId(client.coachId || state.selectedCoachId, client.id, questionnaire.type);
-  const existing = portfolioQuestionnaireSchedules().find((item) => item.id === scheduleId) || {};
-  const payload = {
-    coachId: client.coachId || state.selectedCoachId,
-    coachRxId: client.coachRxId || coachRecordById(client.coachId || state.selectedCoachId)?.coachRxId || "",
-    coachName: client.coachName || coachRecordById(client.coachId || state.selectedCoachId)?.name || activeCoachRecord()?.name || "",
-    clientId: client.id,
-    clientName: client.name || "",
-    clientPhoneNormalized: phone,
-    questionnaireType: questionnaire.type,
-    questionnaireLabel: questionnaire.label,
-    ghlTag: questionnaire.ghlTag,
-    questionnaireUrl: questionnaireUrlForClient(client, questionnaire.type),
-    frequency: sanitizeQuestionnaireScheduleFrequency(data.frequency),
-    nextSendAt: data.nextSendAt || todayIso(),
-    status: data.status === "paused" ? "paused" : "active",
-    note: String(data.note || "").trim(),
-    requestedByUid: state.user?.uid || "",
-    requestedByEmail: state.user?.email || "",
-    updatedAt: serverTimestamp(),
-    createdAt: existing.createdAt || serverTimestamp(),
-    source: "dashboard_questionnaire_schedule"
-  };
-  await setDoc(doc(db, "questionnaireSchedules", scheduleId), payload, { merge: true });
-  await logAction("questionnaire.schedule_saved", "questionnaireSchedules", scheduleId, {
-    clientId: client.id,
-    clientName: client.name || "",
-    frequency: payload.frequency,
-    nextSendAt: payload.nextSendAt,
-    status: payload.status,
-    questionnaireType: questionnaire.type
-  });
-  closeModal();
-  showToast(`Automatisation ${questionnaire.label} enregistree.`);
+  void clientId;
+  void data;
+  throw new Error(
+    "Automatisation indisponible dans cette branche Phase 1: le serveur Phase 2 doit emettre un jeton opaque par envoi."
+  );
 }
 
 async function toggleQuestionnaireSchedule(scheduleId) {
@@ -13023,7 +12949,8 @@ function questionnaireSendStatusLabel(status) {
   const labels = {
     prepared: "prepare",
     pending: "en cours",
-    sent: "envoye",
+    sent: "transmis (livraison non confirmee)",
+    delivered: "livraison confirmee",
     answered: "repondu",
     error: "erreur",
     cancelled: "archive"
@@ -13031,11 +12958,29 @@ function questionnaireSendStatusLabel(status) {
   return labels[status] || "prepare";
 }
 
+function questionnaireDeliveryStatusLabel(deliveryStatus) {
+  const delivery = String(deliveryStatus || "").toLowerCase();
+  const labels = {
+    tag_added: "Tag GHL ajoute; livraison non confirmee",
+    accepted: "Demande acceptee; livraison non confirmee",
+    provider_accepted: "Demande acceptee par le fournisseur; livraison non confirmee",
+    delivered: "Livraison confirmee par le fournisseur",
+    delivery_confirmed: "Livraison confirmee par le fournisseur",
+    firestore_queue_pending: "En attente de traitement serveur",
+    backend_processing: "Traitement serveur en cours",
+    ghl_pending: "Traitement GHL en cours"
+  };
+  return labels[delivery] || deliveryStatus || "";
+}
+
 function questionnaireSendActionHint(send) {
   const status = String(send?.status || "").toLowerCase();
   const delivery = String(send?.deliveryStatus || "").toLowerCase();
-  if (status === "sent" || delivery === "tag_added") {
-    return "SMS declenche par le workflow GHL; attendre la reponse du client.";
+  if (delivery === "tag_added") {
+    return "Le tag GHL a ete ajoute. Cela ne confirme ni le declenchement ni la livraison du SMS.";
+  }
+  if (status === "sent") {
+    return "La demande a ete transmise au fournisseur; attendre une preuve distincte avant de considerer la livraison confirmee.";
   }
   if (delivery === "missing_phone") {
     return "Ajouter un telephone normalise dans la fiche client, puis reessayer.";
