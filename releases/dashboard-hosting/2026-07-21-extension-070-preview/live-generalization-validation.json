@@ -1,0 +1,70 @@
+{
+  "status": "passed_live_generalization",
+  "validatedAt": "2026-07-21T21:02:46.461Z",
+  "hosting": {
+    "url": "https://cfsb-dashboard-coach-aa9a4.web.app",
+    "appVersion": "20260721-coachrx-extension-070",
+    "extensionVersion": "0.7.0",
+    "zipStatus": 200,
+    "zipContentType": "application/zip",
+    "zipBytes": 29040,
+    "zipSha256": "6D365BFA818C8A3B793E8A5825638380B4E4B2D0DD0CFD6D9D16A150E11D2326",
+    "legacyDownloadRedirectVerified": true
+  },
+  "distribution": {
+    "guidePublished": true,
+    "announcementPublished": true,
+    "announcementAudience": "all",
+    "secretIncludedInPublicArtifacts": false
+  },
+  "rosterSource": {
+    "officialCoaches": 7,
+    "observedSlices": 7,
+    "rawRows": 146,
+    "acceptedClientRows": 144,
+    "excludedExactStaffRows": 2,
+    "duplicateStableClientIds": 0,
+    "crossCoachStableIdConflicts": 0,
+    "structurallyValidSlices": 7,
+    "collectionWindowHours": 48.4,
+    "freshnessLimitHours": 72
+  },
+  "portfolioSync": {
+    "status": "done",
+    "completedAt": "2026-07-21T20:58:56.305Z",
+    "coaches": 7,
+    "clientsImported": 144,
+    "clientsMissingPhone": 4,
+    "tasksImported": 35,
+    "questionnaireResponsesImported": 21,
+    "rebookingsImported": 27,
+    "checkupsImported": 745,
+    "globalVerifiedCoaches": 7,
+    "coachVerifiedCoaches": 7,
+    "clientSyncEnabledCoaches": 7,
+    "rejectedRosterRows": 0,
+    "portfoliosUpdatedAfterRelease": 7
+  },
+  "preservation": {
+    "dashboardManualOrLinkedClientsBefore": 4,
+    "dashboardManualOrLinkedClientsAfter": 4,
+    "ownershipNeedsReviewBefore": 91,
+    "ownershipNeedsReviewAfter": 91,
+    "newOwnershipAmbiguities": 0,
+    "questionnairesUsedForOwnership": false,
+    "csmUsedForOwnership": false
+  },
+  "knownNonBlockingDebt": {
+    "code": "legacy_flat_questionnaire_status_overwrite",
+    "portfolioDataImpact": false,
+    "localFixTested": true,
+    "functionsDeployedInThisRelease": false
+  },
+  "privacy": {
+    "containsClientPii": false,
+    "containsTokens": false,
+    "containsSyncSecret": false,
+    "containsExpectedManagedAppsScriptEndpoint": true,
+    "containsUnexpectedAppsScriptEndpoint": false
+  }
+}

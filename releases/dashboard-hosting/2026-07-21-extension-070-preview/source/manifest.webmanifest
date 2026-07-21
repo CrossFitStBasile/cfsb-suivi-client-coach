@@ -1,0 +1,26 @@
+{
+  "name": "Dashboard Coach CFSB",
+  "short_name": "Coach CFSB",
+  "description": "Dashboard quotidien des coachs CFSB.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f6f8",
+  "theme_color": "#e51f2a",
+  "icons": [
+    {
+      "src": "./favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Creer une mission",
+      "short_name": "Mission",
+      "description": "Ouvrir le dashboard pour ajouter rapidement une mission.",
+      "url": "/?quick=mission"
+    }
+  ]
+}

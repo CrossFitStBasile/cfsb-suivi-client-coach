@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Dashboard Coach CFSB">
+  <rect width="64" height="64" rx="14" fill="#e51f2a"/>
+  <path d="M45.8 22.3c-3.3-3.2-7.4-4.8-12.1-4.8-8.3 0-14.7 6.2-14.7 14.5s6.4 14.5 14.7 14.5c4.8 0 8.9-1.7 12.2-5l-5.5-5.8c-1.7 1.8-3.8 2.8-6.4 2.8-3.9 0-6.8-2.8-6.8-6.5s2.9-6.5 6.8-6.5c2.5 0 4.6.9 6.3 2.6l5.5-5.8z" fill="#ffffff"/>
+  <path d="M48 14h6v36h-6z" fill="#101820"/>
+  <path d="M10 48h21v4H10z" fill="#ffffff" opacity=".95"/>
+</svg>
