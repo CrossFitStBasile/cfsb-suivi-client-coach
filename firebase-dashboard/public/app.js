@@ -51,7 +51,7 @@ const db = getFirestore(firebaseApp);
 const storage = getStorage(firebaseApp);
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: "select_account" });
-const APP_VERSION = "20260717-client-ownership-integrity";
+const APP_VERSION = "20260728-questionnaire-library";
 window.__CFSB_DASHBOARD_VERSION = APP_VERSION;
 const RELEASE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 const USAGE_SESSION_ID = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -62,9 +62,9 @@ const VOICE_QUEUE_CHUNK_CHARS = 600000;
 const VOICE_QUEUE_BATCH_SIZE = 8;
 const VOICE_QUEUE_TIMEOUT_MS = 90000;
 const ADMIN_EMAIL = "info@crossfitstbasilelegrand.com";
-const COACHRX_EXTENSION_VERSION = "0.6.4";
+const COACHRX_EXTENSION_VERSION = "0.7.0";
 const REBOOKING_VOLUME_REVIEW_THRESHOLD = 10;
-const COACHRX_EXTENSION_PUBLIC_DOWNLOAD = "./downloads/coachrx-sync-extension-0.6.4-dashboard-signals.zip";
+const COACHRX_EXTENSION_PUBLIC_DOWNLOAD = "./downloads/coachrx-sync-extension-0.7.0-live.zip";
 const TEAM_ONBOARDING_GUIDE_PUBLIC_DOWNLOAD = "./downloads/dashboard-coach-guide-equipe.html";
 const PERFORMANCE_RENDEMENT_SHEET_URL = "https://docs.google.com/spreadsheets/u/3/d/1ZbhqgbvDnT_-qK3JS1FPRqcZ40vHsXks8hs5fJ5J064/edit?gid=1203687517#gid=1203687517";
 const CSM_PRIORITY_SHEET_URL = "https://docs.google.com/spreadsheets/d/1a2j7IFiDmD6svB4p12IIXwcGQRoLrJ_lejhn0dXUtIw/edit?gid=2049466161#gid=2049466161";
@@ -75,26 +75,29 @@ const QUESTIONNAIRE_TYPES = [
   {
     type: "suivi_global",
     label: "Globale check",
+    libraryLabel: "Suivi global",
     shortLabel: "Globale",
     ghlTag: "dashboardcoach",
     path: "/questionnaire/",
-    description: "Questionnaire deja actif avec le workflow actuel."
+    description: "Bilan complet sur l'entrainement, la progression, les objectifs et les besoins de suivi."
   },
   {
     type: "habitudes_quotidiennes",
     label: "Check-in",
+    libraryLabel: "Check-in - habitudes quotidiennes",
     shortLabel: "Check-in",
     ghlTag: "suiviregulier",
     path: "/questionnaire/check-in/",
-    description: "Questionnaire court sur les habitudes de base."
+    description: "Court suivi sur les habitudes de base et la prochaine priorite."
   },
   {
     type: "evaluation_habitudes_vie",
     label: "Evaluation habitudes de vie",
+    libraryLabel: "Evaluation des habitudes de vie",
     shortLabel: "Evaluation",
     ghlTag: "evaluationnutrition",
     path: "/questionnaire/evaluation-habitudes-vie/",
-    description: "Evaluation plus complete des habitudes de vie."
+    description: "Evaluation detaillee du sommeil, de la nutrition, du stress, de l'energie et des limitations."
   }
 ];
 const QUESTIONNAIRE_READING_SCHEMAS = {
@@ -279,6 +282,8 @@ const state = {
   toast: "",
   busy: false,
   modal: null,
+  modalFocusedInstanceId: "",
+  modalReturnFocus: null,
   announcementDismissedIds: new Set(),
   announcementAutoOpenTimer: null,
   announcementAutoShownThisSession: false,
@@ -1327,6 +1332,7 @@ function renderDashboard() {
   `;
   renderToast();
   syncAllTaskVoicePlaybackDom();
+  scheduleModalFocus();
   scheduleUnreadAnnouncementModal();
 }
 
@@ -1542,8 +1548,8 @@ function renderPrimaryAction() {
     todo: `<button class="primary" data-action="openQuickNote">Ajouter une mission</button>`,
     clients: `<button class="primary" data-action="openClientForm">Ajouter un client</button>`,
     questionnaires: `
-      <button class="primary" data-action="openQuestionnaireSend">Envoyer maintenant</button>
-      <button class="secondary" data-filter="questionnaire" data-value="scheduled">Gerer automatisations</button>
+      <button class="primary" data-action="openQuestionnaireLibrary" aria-haspopup="dialog">Formulaires a partager</button>
+      <button class="secondary" data-action="openQuestionnaireSend">Envoyer automatiquement</button>
     `,
     rebooking: `<button class="primary" data-action="openRebookingForm">Ajouter seance</button>`,
     performance: `<button class="primary" data-action="openPilotageNote">Preparer rencontre hebdo</button>`,
@@ -2057,10 +2063,10 @@ function renderQuestionnaires() {
   const items = views[active] || readable;
   const visibleItems = applySearch(items, "questionnaires");
 
-  return panel("Questionnaires", "Lis, envoie ou planifie les suivis clients.", `
+  return panel("Questionnaires", "Lis les reponses, partage un formulaire ou planifie les suivis clients.", `
     ${filterSelect("questionnaire", "Vue suivi", [
       ["to_read", "A lire", rawReadable.length],
-      ["send", "Envoyer", sendClients.length],
+      ["send", "Envois automatiques", sendClients.length],
       ["scheduled", "Automatisations", activeSchedules.length],
       ["followup", "Relances", sentWaiting.length],
       ["validate", "A valider", rawUnmatched.length],
@@ -4292,18 +4298,19 @@ function renderCoachRxExtensionGuide() {
   const isAdmin = isInfoAdmin();
   const coach = activeCoachRecord();
   const setup = coachRxExtensionSetup();
-  const downloadUrl = setup.extensionDownloadUrl || COACHRX_EXTENSION_PUBLIC_DOWNLOAD;
+  const downloadUrl = COACHRX_EXTENSION_PUBLIC_DOWNLOAD;
   const configured = Boolean(setup.webAppUrl && setup.syncSecret);
   const setupUpdated = setup.updatedAt ? formatDateTime(setup.updatedAt) : "jamais";
   const steps = [
     ["1", "Telecharger le ZIP", "Telecharge le fichier depuis ce Guide. Le ZIP est public et ne contient pas de secret."],
     ["2", "Extraire le dossier", "Clic droit sur le ZIP, Extraire tout, puis garde le dossier extrait dans Documents ou Bureau. Chrome ne peut pas charger le ZIP directement."],
     ["3", "Charger dans Chrome", "Va dans chrome://extensions, active le mode developpeur, clique Charger l'extension non empaquetee, puis selectionne le dossier extrait."],
-    ["4", "Configurer", "Ouvre l'extension et colle l'URL Apps Script et le secret de synchronisation fournis ici apres connexion."],
-    ["5", "Synchroniser", "Ouvre CoachRx sur la page Clients du bon coach, choisis ce coach dans l'extension, puis clique Mettre a jour CoachRx."]
+    ["4", "Configurer", "L'URL Apps Script est geree automatiquement par l'extension. Colle seulement le secret de synchronisation fourni ici apres connexion."],
+    ["5", "Valider puis importer", "Dans l'extension, ouvre la page CoachRx du coach, clique Valider sans ecrire, verifie le nombre de clients, puis importe exactement ce roster valide."]
   ];
   const checks = [
     "Le nombre de clients recus doit ressembler a CoachRx.",
+    "La validation sans ecriture doit reussir et confirmer des identites stables pour toutes les fiches.",
     "Les pastilles rouges ou jaunes CoachRx doivent creer des missions programme.",
     "Les clients verts ou sans signal doivent rester en contexte client, pas devenir des To-do.",
     "Si un telephone manque, corriger la fiche client ou la source interne avant de tester GHL/questionnaire."
@@ -4351,9 +4358,8 @@ function renderCoachRxExtensionGuide() {
         <article class="coachrx-install-card">
           <span>Etape 3</span>
           <strong>Copier la configuration</strong>
-          <p>${configured ? "Copie les deux valeurs dans l'extension. Le secret reste masque dans le dashboard." : "La configuration doit etre completee par un admin avant installation autonome."}</p>
+          <p>${configured ? "L'URL est geree automatiquement. Copie seulement le secret dans l'extension; il reste masque dans le dashboard." : "La configuration doit etre completee par un admin avant installation autonome."}</p>
           <div class="coachrx-copy-grid">
-            <button class="secondary" data-action="copyCoachRxSetup" data-key="webAppUrl" ${setup.webAppUrl ? "" : "disabled"}>Copier URL</button>
             <button class="secondary" data-action="copyCoachRxSetup" data-key="syncSecret" ${setup.syncSecret ? "" : "disabled"}>Copier secret</button>
           </div>
           <small>Config: ${configured ? "prete" : "incomplete"} · mise a jour ${escapeHtml(setupUpdated)}</small>
@@ -4370,9 +4376,9 @@ function renderCoachRxExtensionGuide() {
         <div class="diagnostic-grid">
           ${[
             ["ZIP vide ou impossible a charger", "Ne selectionne pas le ZIP dans Chrome. Extrais-le d'abord, puis selectionne le dossier qui contient manifest.json."],
-            ["Mauvais coach", "Ouvre la page CoachRx du coach choisi et selectionne le meme coach dans l'extension."],
+            ["Mauvais coach", "Utilise le bouton Ouvrir la page CoachRx du coach dans l'extension. L'URL doit contenir /team/{coachId}/clients et correspondre au coach choisi."],
             ["Aucun changement", "Attends le message Termine, puis relance Synchroniser ce coach dans Guide."],
-            ["Erreur extension", "Recharge la page CoachRx, reconnecte CoachRx, puis relance l'extension."],
+            ["Erreur extension", "Recharge la page CoachRx, reconnecte CoachRx, puis relance Valider sans ecrire. N'importe rien si cette validation echoue."],
             ["Donnees incoherentes", "Ne corrige pas fiche par fiche: valide d'abord que la source CoachRx affiche les memes signaux."]
           ].map(([title, detail]) => `
             <div class="diagnostic-metric">
@@ -4390,6 +4396,10 @@ function renderCoachRxExtensionAdminSetup() {
   const setup = coachRxExtensionSetup();
   const secretState = setup.syncSecret ? `Secret deja enregistre (${maskedSecretSummary(setup.syncSecret)})` : "Aucun secret enregistre";
   const setupUpdated = setup.updatedAt ? formatDateTime(setup.updatedAt) : "jamais";
+  const legacyPackageConfigured = Boolean(
+    (setup.extensionDownloadUrl && setup.extensionDownloadUrl !== COACHRX_EXTENSION_PUBLIC_DOWNLOAD)
+    || (setup.extensionVersion && setup.extensionVersion !== COACHRX_EXTENSION_VERSION)
+  );
   const adminItems = [
     ["Fichier extension", `ZIP public sans secret: version ${COACHRX_EXTENSION_VERSION}. Les coachs le telechargent depuis le Guide.`],
     ["URL Apps Script", "Enregistrer ici l'URL Web App utilisee par l'extension. Elle est visible seulement aux utilisateurs actifs connectes."],
@@ -4422,16 +4432,16 @@ function renderCoachRxExtensionAdminSetup() {
           </div>
           <span class="pill ${setup.syncSecret && setup.webAppUrl ? "green" : "amber"}">${setup.syncSecret && setup.webAppUrl ? "Pret" : "A completer"}</span>
         </div>
-        <div class="form-grid">
-          <label>
-            Lien de telechargement ZIP
-            <input class="input" name="extensionDownloadUrl" value="${escapeAttr(setup.extensionDownloadUrl || COACHRX_EXTENSION_PUBLIC_DOWNLOAD)}" autocomplete="off">
-          </label>
-          <label>
-            Version extension
-            <input class="input" name="extensionVersion" value="${escapeAttr(setup.extensionVersion || COACHRX_EXTENSION_VERSION)}" autocomplete="off">
-          </label>
+        <div class="notice compact">
+          <strong>Paquet distribue</strong>
+          <span>Version ${escapeHtml(COACHRX_EXTENSION_VERSION)} verrouillee. Le Guide distribue toujours le ZIP officiel valide; ce lien ne se modifie plus ici.</span>
         </div>
+        ${legacyPackageConfigured ? `
+          <div class="notice compact amber">
+            <strong>Ancienne configuration ignoree</strong>
+            <span>Un ancien lien ou numero de version reste enregistre. Il ne sera plus distribue. Enregistre cette configuration pour le normaliser.</span>
+          </div>
+        ` : ""}
         <label>
           URL Apps Script Web App
           <input class="input" name="webAppUrl" value="${escapeAttr(setup.webAppUrl || "")}" autocomplete="off" placeholder="Coller l'URL Web App Apps Script">
@@ -6783,6 +6793,7 @@ function renderModal() {
   if (state.modal.type === "clientPhoneFix") return renderClientPhoneFixModal();
   if (state.modal.type === "quickNote") return renderQuickNoteModal();
   if (state.modal.type === "taskEdit") return renderTaskEditModal();
+  if (state.modal.type === "questionnaireLibrary") return renderQuestionnaireLibraryModal();
   if (state.modal.type === "questionnaireSend") return renderQuestionnaireSendModal();
   if (state.modal.type === "questionnaireSchedule") return renderQuestionnaireScheduleModal();
   if (state.modal.type === "questionnaireDetail") return renderQuestionnaireDetailModal();
@@ -7380,9 +7391,9 @@ function renderQuickNoteModal() {
     : null;
   const selectedClientId = state.modal.clientId || rebooking?.clientId || "";
   const client = selectedClientId
-    ? selectableClientForCoach(selectedClientId)
+    ? operationalClientForCoach(selectedClientId)
     : null;
-  const clientOptions = selectableClientsForCoach()
+  const clientOptions = operationalClientsForCoach()
     .slice()
     .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")))
     .map((item) => `<option value="${escapeAttr(item.id)}" ${item.id === selectedClientId ? "selected" : ""}>${escapeHtml(item.name || "Client")}</option>`)
@@ -7542,7 +7553,7 @@ function renderAssistantMissionStep({ voiceRequest = null, request = null, propo
         <label>Client
           <select class="input" name="clientId">
             <option value="" ${proposedClientId ? "" : "selected"}>Aucun client · note coach</option>
-            ${selectableClientsForCoach()
+            ${operationalClientsForCoach()
               .slice()
               .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")))
               .map((item) => `<option value="${escapeAttr(item.id)}" ${item.id === proposedClientId ? "selected" : ""}>${escapeHtml(item.name || "Client")}</option>`)
@@ -7786,15 +7797,78 @@ function questionnaireTypeOptions(current = DEFAULT_QUESTIONNAIRE_TYPE) {
   `).join("");
 }
 
+function questionnaireLibraryLabel(type) {
+  const config = questionnaireTypeConfig(type);
+  return config?.libraryLabel || config?.label || "Questionnaire";
+}
+
+function questionnaireGenericUrl(type = DEFAULT_QUESTIONNAIRE_TYPE) {
+  const config = questionnaireTypeConfig(type);
+  return new URL(config.path || "/questionnaire/", QUESTIONNAIRE_BASE_URL).toString();
+}
+
+function renderQuestionnaireLibraryModal() {
+  return modal("Formulaires a partager", `
+    <section class="questionnaire-library">
+      <div class="notice compact questionnaire-library-notice">
+        <strong>Trois liens generiques, sans information personnelle</strong>
+        <span>La cliente entre elle-meme ses informations pour relier sa reponse a son dossier.</span>
+      </div>
+      <div class="questionnaire-library-grid">
+        ${QUESTIONNAIRE_TYPES.map((item) => {
+          const url = questionnaireGenericUrl(item.type);
+          const label = questionnaireLibraryLabel(item.type);
+          return `
+            <article class="questionnaire-library-card">
+              <header>
+                <div>
+                  <span class="pill green">Actif</span>
+                  <h4>${escapeHtml(label)}</h4>
+                </div>
+              </header>
+              <p>${escapeHtml(item.description || "")}</p>
+              <code class="questionnaire-library-url">${escapeHtml(url)}</code>
+              <div class="questionnaire-library-actions">
+                <a
+                  class="primary button-link"
+                  href="${escapeAttr(url)}"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="${escapeAttr(`Voir le formulaire ${label} dans un nouvel onglet`)}"
+                >Voir le formulaire</a>
+                <button
+                  class="secondary"
+                  type="button"
+                  data-action="copyQuestionnaireLink"
+                  data-questionnaire-type="${escapeAttr(item.type)}"
+                  aria-label="${escapeAttr(`Copier le lien du formulaire ${label}`)}"
+                >Copier le lien</button>
+                <button
+                  class="secondary"
+                  type="button"
+                  data-action="shareQuestionnaireLink"
+                  data-questionnaire-type="${escapeAttr(item.type)}"
+                  aria-label="${escapeAttr(`Partager le formulaire ${label}`)}"
+                >Partager</button>
+              </div>
+            </article>
+          `;
+        }).join("")}
+      </div>
+      <p class="questionnaire-library-footnote">Un lien partage manuellement n'apparait pas dans Relances et ne declenche aucune automatisation GHL. La reponse apparaitra dans A lire apres son enregistrement.</p>
+      <div class="modal-actions">
+        <button class="secondary" type="button" data-action="closeModal">Fermer</button>
+      </div>
+    </section>
+  `);
+}
+
 function questionnaireUrlForClient(client, type = DEFAULT_QUESTIONNAIRE_TYPE) {
   const config = questionnaireTypeConfig(type);
   const url = new URL(config.path || "/questionnaire/", QUESTIONNAIRE_BASE_URL);
   url.searchParams.set("phone", clientPhone(client));
   if (client.name) url.searchParams.set("client_name", client.name);
   if (client.email) url.searchParams.set("client_email", client.email);
-  const coachName = client.coachName || coachRecordById(client.coachId || state.selectedCoachId)?.name || activeCoachRecord()?.name || "";
-  if (coachName) url.searchParams.set("coach_name", coachName);
-  url.searchParams.set("lock_context", "1");
   return url.toString();
 }
 
@@ -8032,7 +8106,7 @@ function renderQuestionnaireLinkClientModal() {
 
 function renderRebookingFormModal() {
   const selectedClientId = state.modal.clientId || "";
-  const clients = selectableClientsForCoach();
+  const clients = operationalClientsForCoach();
   const selectedClient = clients.find((client) => String(client.id) === String(selectedClientId));
   const selectedCoach = activeCoachRecord();
   const selectedCoachId = selectedClient?.coachId || selectedCoach?.id || state.selectedCoachId || "";
@@ -8588,11 +8662,12 @@ function renderAlumniFormModal() {
 }
 
 function modal(title, content) {
+  const titleId = `modal-title-${state.modal?.instanceId || "active"}`;
   return `
     <div class="modal-backdrop" data-action="closeModal">
-      <section class="modal" role="dialog" aria-modal="true" aria-label="${escapeAttr(title)}" data-modal-stop>
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="${escapeAttr(titleId)}" tabindex="-1" data-modal-stop>
         <header class="modal-head">
-          <h3>${title}</h3>
+          <h3 id="${escapeAttr(titleId)}">${title}</h3>
           <button class="icon-button" type="button" data-action="closeModal" aria-label="Fermer">x</button>
         </header>
         ${content}
@@ -8760,6 +8835,9 @@ document.addEventListener("click", async (event) => {
     if (action === "openClientRebooking" && id) openModal({ type: "rebookingForm", clientId: id });
     if (action === "openClientForm") openModal({ type: "clientForm" });
     if (action === "openClientPhoneFix" && id) openModal({ type: "clientPhoneFix", id });
+    if (action === "openQuestionnaireLibrary") openModal({ type: "questionnaireLibrary" });
+    if (action === "copyQuestionnaireLink") await copyQuestionnaireLink(actionEl.dataset.questionnaireType);
+    if (action === "shareQuestionnaireLink") await shareQuestionnaireLink(actionEl.dataset.questionnaireType);
     if (action === "openQuestionnaireSend") openModal({ type: "questionnaireSend", clientId: id || "", questionnaireType: actionEl.dataset.questionnaireType || DEFAULT_QUESTIONNAIRE_TYPE });
     if (action === "openQuestionnaireSchedule" && id) openModal({ type: "questionnaireSchedule", clientId: id, questionnaireType: actionEl.dataset.questionnaireType || DEFAULT_QUESTIONNAIRE_TYPE });
     if (action === "openQuestionnaireDetail" && id) openModal({ type: "questionnaireDetail", id });
@@ -8828,6 +8906,39 @@ document.addEventListener("click", async (event) => {
     pushError(`${action}: ${humanizeFirebaseError(error)}`);
   } finally {
     if (lockAction) endActionFeedback(actionEl);
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (!state.modal) return;
+  const modalSurface = document.querySelector(".modal[role='dialog']");
+  if (!modalSurface) return;
+
+  if (event.key === "Escape") {
+    if (state.busy) return;
+    event.preventDefault();
+    closeModal();
+    return;
+  }
+
+  if (event.key !== "Tab") return;
+  const focusable = modalFocusableElements(modalSurface);
+  if (!focusable.length) {
+    event.preventDefault();
+    modalSurface.focus({ preventScroll: true });
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (!modalSurface.contains(document.activeElement)) {
+    event.preventDefault();
+    first.focus({ preventScroll: true });
+  } else if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus({ preventScroll: true });
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus({ preventScroll: true });
   }
 });
 
@@ -9114,7 +9225,7 @@ async function createAssistantTaskDraft(data = {}) {
   if (!voiceDraft && inputText.length < 3) throw new Error("Dicte ou ecris la mission a creer.");
   if (inputText.length > 1200) throw new Error("La demande doit contenir au maximum 1200 caracteres.");
   const clientId = cleanString(data.clientId || state.modal.clientId || "");
-  if (clientId) requireSelectableClientForCoach(clientId);
+  if (clientId) requireOperationalClientForCoach(clientId);
   const pendingTextRequest = (state.data.assistantRequests || []).find((request) =>
     request.targetCoachId === state.selectedCoachId
     && ["queued", "processing"].includes(cleanString(request.status))
@@ -9169,7 +9280,7 @@ async function createAssistantTaskDraft(data = {}) {
 async function createAssistantVoiceTaskDraft({ clientId = "" } = {}, draft) {
   if (!draft?.blob) throw new Error("Enregistre un vocal avant de continuer.");
   if (!state.user?.uid) throw new Error("Reconnecte-toi avant d'envoyer un vocal.");
-  if (clientId) requireSelectableClientForCoach(clientId);
+  if (clientId) requireOperationalClientForCoach(clientId);
   if (draft.blob.size > VOICE_NOTE_MAX_BYTES) {
     throw new Error("Le vocal est trop lourd. Recommence avec un message plus court.");
   }
@@ -9287,7 +9398,7 @@ async function confirmAssistantTaskProposal(proposalId, data = {}) {
     throw new Error("Le coach selectionne a change. Prepare une nouvelle mission.");
   }
   const clientId = cleanString(data.clientId || "");
-  if (clientId) requireSelectableClientForCoach(clientId);
+  if (clientId) requireOperationalClientForCoach(clientId);
   const title = String(data.title || "").replace(/\s+/g, " ").trim();
   const description = String(data.description || "").replace(/\s+/g, " ").trim();
   const priority = ["P1", "P2", "P3"].includes(data.priority) ? data.priority : "P2";
@@ -9354,8 +9465,8 @@ async function saveCoachRxExtensionSetup(data) {
   const existing = coachRxExtensionSetup();
   const syncSecret = String(data.syncSecret || "").trim();
   const patch = {
-    extensionDownloadUrl: String(data.extensionDownloadUrl || COACHRX_EXTENSION_PUBLIC_DOWNLOAD).trim(),
-    extensionVersion: String(data.extensionVersion || COACHRX_EXTENSION_VERSION).trim(),
+    extensionDownloadUrl: COACHRX_EXTENSION_PUBLIC_DOWNLOAD,
+    extensionVersion: COACHRX_EXTENSION_VERSION,
     webAppUrl: String(data.webAppUrl || "").trim(),
     installNote: String(data.installNote || "").trim(),
     updatedAt: serverTimestamp(),
@@ -9372,9 +9483,9 @@ async function saveCoachRxExtensionSetup(data) {
 
 async function copyCoachRxSetupValue(key) {
   const setup = coachRxExtensionSetup();
-  const allowed = new Set(["webAppUrl", "syncSecret", "extensionDownloadUrl"]);
+  const allowed = new Set(["webAppUrl", "syncSecret"]);
   if (!allowed.has(key)) throw new Error("Valeur extension inconnue.");
-  const value = String(setup[key] || (key === "extensionDownloadUrl" ? COACHRX_EXTENSION_PUBLIC_DOWNLOAD : "")).trim();
+  const value = String(setup[key] || "").trim();
   if (!value) throw new Error("Configuration extension incomplete.");
   try {
     await navigator.clipboard.writeText(value);
@@ -9384,14 +9495,38 @@ async function copyCoachRxSetupValue(key) {
   }
 }
 
-async function copyTextValue(value) {
+async function copyTextValue(value, successMessage = "Texte copie.") {
   const text = String(value || "").trim();
   if (!text) return;
   try {
     await navigator.clipboard.writeText(text);
-    showToast("Texte copie.");
+    showToast(successMessage);
   } catch (error) {
     window.prompt("Copie ce texte:", text);
+  }
+}
+
+async function copyQuestionnaireLink(type = DEFAULT_QUESTIONNAIRE_TYPE) {
+  const url = questionnaireGenericUrl(type);
+  await copyTextValue(url, "Lien copie. Tu peux maintenant le coller dans ton message.");
+}
+
+async function shareQuestionnaireLink(type = DEFAULT_QUESTIONNAIRE_TYPE) {
+  const label = questionnaireLibraryLabel(type);
+  const url = questionnaireGenericUrl(type);
+  if (typeof navigator.share !== "function") {
+    await copyTextValue(url, "Partage non disponible ici: le lien a ete copie.");
+    return;
+  }
+  try {
+    await navigator.share({
+      title: `${label} - CrossFit St-Basile`,
+      text: `Voici le lien du formulaire ${label} de CrossFit St-Basile.`,
+      url
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") return;
+    await copyTextValue(url, "Partage non disponible: le lien a ete copie.");
   }
 }
 
@@ -9904,7 +10039,7 @@ async function createManualTask(data) {
   if (data.rebookingId && !rebooking) throw new Error("Dossier rebooking introuvable.");
   const selectedClientId = String(data.clientId || "").trim();
   const client = selectedClientId
-    ? requireSelectableClientForCoach(selectedClientId)
+    ? requireOperationalClientForCoach(selectedClientId)
     : null;
   const coach = activeCoachRecord();
   const title = String(data.title || "").trim();
@@ -10066,7 +10201,7 @@ async function toggleTaskStar(id) {
 
 async function saveClient(id, data) {
   const phoneNormalized = normalizePhone(data.phoneNormalized);
-  const currentClient = requireSelectableClientForCoach(id);
+  const currentClient = requireOperationalClientForCoach(id);
   const requestedCoachId = data.coachId ? String(data.coachId) : String(currentClient.coachId || state.selectedCoachId || "");
   const targetCoach = coachRecordById(requestedCoachId);
   if (!targetCoach?.id) {
@@ -10125,7 +10260,7 @@ async function saveClient(id, data) {
 }
 
 async function saveClientTrainingTarget(id, data) {
-  const client = requireSelectableClientForCoach(id);
+  const client = requireOperationalClientForCoach(id);
   const raw = String(data.targetSessionsPerWeek || "").trim().replace(",", ".");
   const target = raw ? Number(raw) : null;
   if (target !== null && (!Number.isFinite(target) || target < 0.5 || target > 14)) {
@@ -10147,7 +10282,7 @@ async function saveClientTrainingTarget(id, data) {
 
 async function saveClientPhoneFix(id, data) {
   if (!id) throw new Error("Client introuvable.");
-  const currentClient = requireSelectableClientForCoach(id);
+  const currentClient = requireOperationalClientForCoach(id);
   const phoneNormalized = normalizePhone(data.phoneNormalized);
   if (!phoneNormalized || phoneNormalized.length !== 10) {
     throw new Error("Entre un telephone a 10 chiffres, ex.: 8192771825.");
@@ -10265,7 +10400,7 @@ async function createClient(data) {
 
 async function createRebooking(data) {
   const selectedClientId = String(data.clientId || "").trim();
-  const client = selectedClientId ? requireSelectableClientForCoach(selectedClientId) : null;
+  const client = selectedClientId ? requireOperationalClientForCoach(selectedClientId) : null;
   const manualName = String(data.clientName || "").trim();
   if (!client && !manualName) throw new Error("Selectionne un client ou entre un nom manuel.");
   const clientName = client?.name || manualName;
@@ -11008,7 +11143,7 @@ async function saveQuestionnaireSchedule(clientId, data) {
 async function toggleQuestionnaireSchedule(scheduleId) {
   const schedule = portfolioQuestionnaireSchedules().find((item) => item.id === scheduleId);
   if (!schedule) return;
-  requireSelectableClientForCoach(schedule.clientId);
+  requireOperationalClientForCoach(schedule.clientId);
   const nextStatus = (schedule.status || "active") === "active" ? "paused" : "active";
   await patchEntity("questionnaireSchedules", scheduleId, {
     status: nextStatus,
@@ -11019,7 +11154,7 @@ async function toggleQuestionnaireSchedule(scheduleId) {
 async function cancelQuestionnaireSend(sendId) {
   const send = portfolioQuestionnaireSends().find((item) => item.id === sendId);
   if (!send) throw new Error("Envoi questionnaire introuvable.");
-  requireSelectableClientForCoach(send.clientId);
+  requireOperationalClientForCoach(send.clientId);
   await patchEntity("questionnaireSends", sendId, { status: "cancelled" }, "Envoi archive");
 }
 
@@ -11045,7 +11180,7 @@ async function createQuestionnaireFollowupTask(sendId) {
     showToast("Une relance existe deja pour cet envoi.");
     return;
   }
-  const client = requireSelectableClientForCoach(send.clientId);
+  const client = requireOperationalClientForCoach(send.clientId);
   const ref = await addDoc(collection(db, "tasks"), {
     coachId: state.selectedCoachId,
     clientId: client.id,
@@ -11076,7 +11211,7 @@ async function createMissionFromQuestionnaireResponse(responseId) {
     showToast("Mission non creee: rattache d'abord la reponse a une fiche client.");
     return;
   }
-  const client = requireSelectableClientForCoach(response.clientId);
+  const client = requireOperationalClientForCoach(response.clientId);
   await markQuestionnaireResponseRead(responseId, { silent: true });
   const responseCoachId = state.selectedCoachId;
   const triageStatus = String(response.triageStatus || "").toLowerCase();
@@ -11115,6 +11250,8 @@ async function linkQuestionnaireResponseToClient(responseId, data) {
   requireAdmin();
   const response = questionnaireResponseForAdminLinking(responseId);
   if (!response) throw new Error("Reponse questionnaire introuvable.");
+  // A manual questionnaire match changes the client context. Keep the strict
+  // ownership requirement until the CoachRx repair has a fresh reference.
   const client = requireSelectableClientForCoach(data.clientId);
   const note = String(data.note || "").trim();
   await patchEntity("questionnaireResponses", responseId, {
@@ -11794,10 +11931,12 @@ function openModal(modal) {
   if (modal?.type === "quickNote" || modal?.type === "taskEdit") {
     safeResetVoiceRecorder();
   }
+  if (!state.modal) state.modalReturnFocus = modalReturnFocusDescriptor(document.activeElement);
   state.modal = {
     ...(modal || {}),
     instanceId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   };
+  state.modalFocusedInstanceId = "";
   void trackUsageEvent("modal_opened", {
     modalType: modal?.type || "",
     source: state.tab,
@@ -11809,6 +11948,7 @@ function openModal(modal) {
 
 function closeModal() {
   const closingModal = state.modal;
+  const returnFocus = state.modalReturnFocus;
   try {
     safeResetVoiceRecorder();
   } finally {
@@ -11816,12 +11956,63 @@ function closeModal() {
       state.announcementDismissedIds.add(closingModal.id);
     }
     state.modal = null;
+    state.modalFocusedInstanceId = "";
+    state.modalReturnFocus = null;
     render();
+    scheduleModalReturnFocus(returnFocus);
   }
 }
 
 function closeModalIfCurrent(instanceId) {
   if (!instanceId || state.modal?.instanceId === instanceId) closeModal();
+}
+
+function modalFocusableElements(modalSurface) {
+  if (!modalSurface) return [];
+  return [...modalSurface.querySelectorAll(
+    "a[href], button:not([disabled]), input:not([disabled]):not([type='hidden']), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
+  )].filter((element) => element.getAttribute("aria-hidden") !== "true");
+}
+
+function scheduleModalFocus() {
+  const instanceId = state.modal?.instanceId || "";
+  if (!instanceId || state.modalFocusedInstanceId === instanceId) return;
+  state.modalFocusedInstanceId = instanceId;
+  window.requestAnimationFrame(() => {
+    if (state.modal?.instanceId !== instanceId) return;
+    const modalSurface = document.querySelector(".modal[role='dialog']");
+    if (!modalSurface) return;
+    const preferred = modalSurface.querySelector(
+      "[autofocus], .modal-form input:not([type='hidden']):not([disabled]), .modal-form select:not([disabled]), .modal-form textarea:not([disabled]), .questionnaire-library a[href]"
+    );
+    (preferred || modalSurface).focus({ preventScroll: true });
+  });
+}
+
+function modalReturnFocusDescriptor(element) {
+  if (!(element instanceof Element)) return null;
+  const target = element.closest("[data-action], [data-tab]");
+  if (!target) return null;
+  return {
+    action: target.dataset.action || "",
+    tab: target.dataset.tab || "",
+    id: target.dataset.id || "",
+    questionnaireType: target.dataset.questionnaireType || ""
+  };
+}
+
+function scheduleModalReturnFocus(descriptor) {
+  if (!descriptor) return;
+  window.requestAnimationFrame(() => {
+    const candidates = [...document.querySelectorAll("[data-action], [data-tab]")];
+    const target = candidates.find((element) =>
+      (!descriptor.action || element.dataset.action === descriptor.action)
+      && (!descriptor.tab || element.dataset.tab === descriptor.tab)
+      && (!descriptor.id || element.dataset.id === descriptor.id)
+      && (!descriptor.questionnaireType || element.dataset.questionnaireType === descriptor.questionnaireType)
+    );
+    target?.focus({ preventScroll: true });
+  });
 }
 
 function renderErrors() {
@@ -11892,6 +12083,8 @@ function coachActionErrorLabel(action) {
     deleteClient: "Supprimer le faux client",
     questionnaireSend: "Envoyer le questionnaire",
     sendQuestionnaire: "Envoyer le questionnaire",
+    copyQuestionnaireLink: "Copier le lien du questionnaire",
+    shareQuestionnaireLink: "Partager le questionnaire",
     questionnaireSchedule: "Planifier le questionnaire",
     markResponseRead: "Marquer la reponse lue",
     createMissionFromQuestionnaireResponse: "Creer une mission depuis la reponse",
@@ -11944,6 +12137,7 @@ function shouldLockAction(action) {
     "resetAssistantTaskDraft",
     "openAssistantCreatedTask",
     "openClientForm",
+    "openQuestionnaireLibrary",
     "openQuestionnaireSend",
     "openQuestionnaireDetail",
     "openRebookingForm",
@@ -12140,14 +12334,50 @@ function requireSelectableClientForCoach(clientId, coachId = state.selectedCoach
   return client;
 }
 
+// A client under ownership review can still receive ordinary internal follow-up.
+// Only outreach and ownership-changing actions require the stricter confirmed state.
+function clientBlocksDailyWork(client = {}) {
+  const status = String(client.ownershipStatus || "").trim().toLowerCase();
+  return ["conflict", "quarantined", "excluded_staff", "excluded"].includes(status);
+}
+
+function clientSupportsDailyWorkForCoach(client = {}, coachId = state.selectedCoachId) {
+  return isActiveClient(client)
+    && clientEntityType(client) === "member"
+    && !clientBlocksDailyWork(client)
+    && firestoreItemBelongsToCoach(client, coachId);
+}
+
+function operationalClientsForCoach(coachId = state.selectedCoachId, clients = state.data.clients) {
+  const ownedMembers = clients.filter((client) => clientSupportsDailyWorkForCoach(client, coachId));
+  return dedupeClients(ownedMembers)
+    .sort((a, b) => String(a.lastNameSort || a.name || "").localeCompare(String(b.lastNameSort || b.name || "")));
+}
+
+function operationalClientForCoach(clientId, coachId = state.selectedCoachId) {
+  const cleanClientId = String(clientId || "").trim();
+  if (!cleanClientId) return null;
+  return operationalClientsForCoach(coachId)
+    .find((client) => String(client.id || "") === cleanClientId)
+    || null;
+}
+
+function requireOperationalClientForCoach(clientId, coachId = state.selectedCoachId) {
+  const client = operationalClientForCoach(clientId, coachId);
+  if (!client) {
+    throw new Error("Cette fiche est inactive ou en conflit d'attribution. Choisis une autre fiche ou demande une verification.");
+  }
+  return client;
+}
+
 function activeClients() {
-  return selectableClientsForCoach();
+  return operationalClientsForCoach();
 }
 
 function operationalRecordClientLinkStatus(record = {}, coachId = state.selectedCoachId) {
   const clientId = String(record.clientId || "").trim();
   if (clientId) {
-    return selectableClientForCoach(clientId, coachId) ? "confirmed" : "blocked";
+    return operationalClientForCoach(clientId, coachId) ? "confirmed" : "blocked";
   }
   return "unlinked";
 }

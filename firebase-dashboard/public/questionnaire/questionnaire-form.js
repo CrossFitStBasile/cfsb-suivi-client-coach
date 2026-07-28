@@ -1,22 +1,12 @@
 const ENDPOINT_URL = "https://script.google.com/macros/s/AKfycbxnhlehsj_NQU73k3csMQPj0NAm3QSQrpjk0Ar6VYOjXYZO-m9_GSxtmEqYw9y_9DSQEA/exec";
-const SCHEMA_VERSION = "1.1";
+const SCHEMA_VERSION = "1.2";
 const SOURCE = "cfsb-client-coach-questionnaire";
-const APP_VERSION = "firebase-questionnaire-suite-v1";
+const APP_VERSION = "firebase-questionnaire-suite-phone-v2";
 const params = new URLSearchParams(window.location.search);
-
-const FALLBACK_COACHES = [
-  { name: "Camille Proulx", id: "17242" },
-  { name: "David Olivier", id: "15902" },
-  { name: "Gabriel Mayer Bedard", id: "15893" },
-  { name: "Hugo Lelievre", id: "15937" },
-  { name: "Iheb Yahyaoui", id: "15928" },
-  { name: "Marc-Andre Menard", id: "15935" },
-  { name: "Raphael Samson", id: "15936" }
-];
 
 const COMMON_IDENTITY = {
   title: "Tes informations",
-  intro: "Elles servent uniquement à relier cette réponse à ton dossier et à ton coach.",
+  intro: "Elles servent uniquement à relier cette réponse à ton dossier client.",
   identity: true,
   fields: [
     { name: "client_name", label: "Nom complet", type: "text", autocomplete: "name", required: true },
@@ -28,8 +18,7 @@ const COMMON_IDENTITY = {
       autocomplete: "tel",
       required: true,
       help: "Le téléphone permet de retrouver la bonne fiche client."
-    },
-    { name: "coach_name", label: "Coach principal", type: "coach", required: true }
+    }
   ]
 };
 
@@ -328,7 +317,6 @@ const successBox = document.getElementById("formSuccess");
 const RESPONSE_ID = window.crypto?.randomUUID?.() || `resp-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 let currentStep = 0;
 let isSubmitting = false;
-let coachOptions = [...FALLBACK_COACHES];
 
 title.textContent = config.label;
 intro.textContent = config.intro;
@@ -356,10 +344,6 @@ function fieldMarkup(field) {
 
   if (field.type === "select") {
     return `<div class="field">${label}${help}<select class="select" id="${id}" name="${field.name}" ${required}><option value="">Choisir...</option>${field.options.map((option) => `<option value="${escapeHtml(option)}">${escapeHtml(option)}</option>`).join("")}</select></div>`;
-  }
-
-  if (field.type === "coach") {
-    return `<div class="field">${label}${help}<select class="select" id="${id}" name="${field.name}" ${required}><option value="">Choisir...</option>${coachOptions.map((coach) => `<option value="${escapeHtml(coach.name)}" data-coach-id="${escapeHtml(coach.id)}">${escapeHtml(coach.name)}</option>`).join("")}<option value="Je ne suis pas certain">Je ne suis pas certain</option></select></div>`;
   }
 
   if (field.type === "choice" || field.type === "scale") {
@@ -400,25 +384,6 @@ function applyPrefill() {
   setNamedValue("client_name", paramValue("client_name", "name"));
   setNamedValue("client_email", paramValue("client_email", "email"));
   setNamedValue("client_phone", paramValue("phone", "client_phone"));
-  const coachName = paramValue("coach_name", "coach");
-  if (coachName) setNamedValue("coach_name", coachName);
-}
-
-async function loadCoaches() {
-  try {
-    const response = await fetch("/questionnaire/coaches.json", { cache: "no-store" });
-    if (!response.ok) return;
-    const payload = await response.json();
-    const merged = new Map(coachOptions.map((coach) => [coach.name, coach]));
-    (payload.coaches || []).forEach((coach) => {
-      const name = coach.coach_name || coach.name || "";
-      const id = coach.coach_rx_id || coach.coach_id || "";
-      if (name) merged.set(name, { name, id });
-    });
-    coachOptions = [...merged.values()];
-  } catch (error) {
-    console.warn("La liste des coachs n'a pas pu être actualisée.", error);
-  }
 }
 
 function normalizedPhone(value) {
@@ -548,11 +513,6 @@ function validateCurrentStep() {
   return true;
 }
 
-function selectedCoachId() {
-  const field = form.elements.namedItem("coach_name");
-  return field?.selectedOptions?.[0]?.dataset?.coachId || "";
-}
-
 function contactRequest(values) {
   if (config.type === "habitudes_quotidiennes") return values.habits_support || "";
   return values.eval_contact || "";
@@ -573,8 +533,6 @@ function buildPayload() {
     client_email_entered: values.client_email,
     client_phone_entered: values.client_phone,
     client_phone_normalized: phoneNormalized,
-    coach_name_entered: values.coach_name,
-    coach_id_entered: selectedCoachId(),
     followup_type: config.followupType
   };
   config.steps.slice(1).forEach((step) => {
@@ -594,8 +552,6 @@ function buildPayload() {
     client_email: values.client_email,
     client_phone: values.client_phone,
     client_phone_normalized: phoneNormalized,
-    coach_name: values.coach_name,
-    coach_id: selectedCoachId(),
     followup_type: config.followupType,
     triage_status: triage.status,
     coach_action_type: triage.action,
@@ -614,8 +570,6 @@ function buildPayload() {
       source_url: sourceUrl(),
       questionnaire_type: config.type,
       client_phone_normalized: phoneNormalized,
-      coach_name: values.coach_name,
-      coach_id: selectedCoachId(),
       user_agent: window.navigator.userAgent
     }
   };
@@ -641,11 +595,12 @@ async function submitQuestionnaire() {
 
   try {
     const payload = buildPayload();
-    await fetch(ENDPOINT_URL, {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(payload)
+    if (!window.CFSBQuestionnaireSubmission) {
+      throw new Error("questionnaire_submission_helper_unavailable");
+    }
+    await window.CFSBQuestionnaireSubmission.submit({
+      endpointUrl: ENDPOINT_URL,
+      payload
     });
     successBox.textContent = "Merci. Ta réponse a été envoyée à ton coach.";
     successBox.classList.add("is-visible");
@@ -677,8 +632,6 @@ form.addEventListener("submit", (event) => {
   submitQuestionnaire();
 });
 
-loadCoaches().finally(() => {
-  renderSteps();
-  applyPrefill();
-  updateStep();
-});
+renderSteps();
+applyPrefill();
+updateStep();

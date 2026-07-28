@@ -2704,6 +2704,96 @@ button.client-info-pill:focus-visible {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.questionnaire-library {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.questionnaire-library-notice {
+  display: grid;
+  gap: 4px;
+}
+
+.questionnaire-library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+.questionnaire-library-card {
+  display: grid;
+  grid-template-rows: auto auto auto 1fr;
+  gap: 11px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+}
+
+.questionnaire-library-card header,
+.questionnaire-library-card header > div {
+  display: grid;
+  gap: 7px;
+}
+
+.questionnaire-library-card h4,
+.questionnaire-library-card p {
+  margin: 0;
+}
+
+.questionnaire-library-card h4 {
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.questionnaire-library-card p {
+  color: #3f4b58;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.questionnaire-library-card .pill {
+  justify-self: start;
+}
+
+.questionnaire-library-url {
+  display: block;
+  min-width: 0;
+  padding: 8px 9px;
+  overflow-wrap: anywhere;
+  color: #334155;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.questionnaire-library-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 7px;
+  margin-top: auto;
+}
+
+.questionnaire-library-actions > * {
+  flex: 1 1 92px;
+  min-width: 0;
+  text-align: center;
+}
+
+.questionnaire-library-footnote {
+  margin: 0;
+  color: #52606d;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .questionnaire-priority-strip {
   display: flex;
   flex-wrap: wrap;
@@ -6943,6 +7033,19 @@ button.client-info-pill:focus-visible {
     min-width: 0;
     max-width: 100%;
     overflow-wrap: anywhere;
+  }
+
+  .questionnaire-library-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .questionnaire-library-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .questionnaire-library-actions > * {
+    width: 100%;
   }
 
   .task-modal-compact .form-grid {

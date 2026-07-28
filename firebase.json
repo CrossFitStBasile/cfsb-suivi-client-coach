@@ -2,7 +2,9 @@
   "hosting": {
     "site": "cfsb-dashboard-coach-aa9a4",
     "predeploy": [
-      "node tools/verify-hosting-deploy-provenance.cjs"
+      "node tools/verify-hosting-deploy-provenance.cjs",
+      "node --test tests/questionnaire-hotfix.test.mjs",
+      "node --test tests/questionnaire-library.test.mjs"
     ],
     "public": "firebase-dashboard/public",
     "ignore": [
@@ -25,12 +27,42 @@
     "redirects": [
       {
         "source": "/downloads/coachrx-sync-extension-0.6.2-dashboard-signals.zip",
-        "destination": "/downloads/coachrx-sync-extension-0.6.4-dashboard-signals.zip",
+        "destination": "/downloads/coachrx-sync-extension-0.7.0-live.zip",
         "type": 302
       },
       {
         "source": "/downloads/coachrx-sync-extension-0.6.3-dashboard-signals.zip",
-        "destination": "/downloads/coachrx-sync-extension-0.6.4-dashboard-signals.zip",
+        "destination": "/downloads/coachrx-sync-extension-0.7.0-live.zip",
+        "type": 302
+      },
+      {
+        "source": "/downloads/coachrx-sync-extension-0.6.4-dashboard-signals.zip",
+        "destination": "/downloads/coachrx-sync-extension-0.7.0-live.zip",
+        "type": 302
+      },
+      {
+        "source": "/downloads/coachrx-sync-extension-0.6.5-identity-guard.zip",
+        "destination": "/downloads/coachrx-sync-extension-0.7.0-live.zip",
+        "type": 302
+      },
+      {
+        "source": "/downloads/coachrx-sync-extension-0.6.6-identity-contact-guard.zip",
+        "destination": "/downloads/coachrx-sync-extension-0.7.0-live.zip",
+        "type": 302
+      },
+      {
+        "source": "/downloads/coachrx-sync-extension-0.6.7-route-guard.zip",
+        "destination": "/downloads/coachrx-sync-extension-0.7.0-live.zip",
+        "type": 302
+      },
+      {
+        "source": "/downloads/coachrx-sync-extension-0.6.8-main-world-api.zip",
+        "destination": "/downloads/coachrx-sync-extension-0.7.0-live.zip",
+        "type": 302
+      },
+      {
+        "source": "/downloads/coachrx-sync-extension-0.6.10-live.zip",
+        "destination": "/downloads/coachrx-sync-extension-0.7.0-live.zip",
         "type": 302
       }
     ],
