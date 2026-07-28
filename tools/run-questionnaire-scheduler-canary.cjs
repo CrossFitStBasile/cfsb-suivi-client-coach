@@ -64,6 +64,8 @@ const EXPECTED_JOB_TIME_ZONE = "America/Toronto";
 const EXPECTED_JOB_ATTEMPT_DEADLINE = "180s";
 const EXPECTED_SCHEDULER_SERVICE_ACCOUNT =
   "129233025317-compute@developer.gserviceaccount.com";
+const EXPECTED_SCHEDULER_TARGET_URI =
+  `https://${REGION}-${PROJECT_ID}.cloudfunctions.net/${FUNCTION_ID}`;
 const MINIMUM_CONTROL_TTL_MS = 2 * 60 * 1000;
 const RECOVERY_QUIESCENCE_TIMEOUT_MS = 45_000;
 const UNCERTAIN_EFFECT_SETTLEMENT_MS = 20_000;
@@ -419,10 +421,10 @@ async function getAndValidateSchedulerJob(context) {
   ]);
   const expectedFunctionName =
     `projects/${PROJECT_ID}/locations/${REGION}/functions/${FUNCTION_ID}`;
-  const functionUri = String(liveFunction.serviceConfig?.uri || "").trim();
+  const functionServiceUri = String(liveFunction.serviceConfig?.uri || "").trim();
   let parsedFunctionUri;
   try {
-    parsedFunctionUri = new URL(functionUri);
+    parsedFunctionUri = new URL(functionServiceUri);
   } catch (_) {
     throw new CanaryError("scheduler_function_uri_invalid");
   }
@@ -433,6 +435,8 @@ async function getAndValidateSchedulerJob(context) {
     || liveFunction.serviceConfig?.allTrafficOnLatestRevision !== true
     || !String(liveFunction.serviceConfig?.revision || "").trim()
     || parsedFunctionUri.protocol !== "https:"
+    || !parsedFunctionUri.hostname.endsWith(".a.run.app")
+    || parsedFunctionUri.pathname !== "/"
     || parsedFunctionUri.search
     || parsedFunctionUri.hash
   ) {
@@ -460,19 +464,20 @@ async function getAndValidateSchedulerJob(context) {
   if (job.httpTarget?.httpMethod !== "POST") throw new CanaryError("scheduler_http_method_mismatch");
   if (job.pubsubTarget || job.appEngineHttpTarget) throw new CanaryError("scheduler_target_type_mismatch");
   const targetUri = String(job.httpTarget?.uri || "").trim();
-  if (targetUri !== functionUri) {
+  if (targetUri !== EXPECTED_SCHEDULER_TARGET_URI) {
     throw new CanaryError("scheduler_target_mismatch");
   }
   const oidc = job.httpTarget?.oidcToken || {};
   if (String(oidc.serviceAccountEmail || "") !== EXPECTED_SCHEDULER_SERVICE_ACCOUNT) {
     throw new CanaryError("scheduler_oidc_service_account_mismatch");
   }
-  if (oidc.audience && String(oidc.audience) !== functionUri) {
+  if (String(oidc.audience || "") !== EXPECTED_SCHEDULER_TARGET_URI) {
     throw new CanaryError("scheduler_oidc_audience_mismatch");
   }
   Object.defineProperty(job, "__validatedFunction", {
     value: Object.freeze({
-      uri: functionUri,
+      serviceUri: functionServiceUri,
+      schedulerTargetUri: EXPECTED_SCHEDULER_TARGET_URI,
       revision: String(liveFunction.serviceConfig.revision),
       updateTime: String(liveFunction.updateTime || "")
     }),
@@ -490,7 +495,8 @@ function schedulerJobFingerprint(job = {}) {
     attemptDeadline: job.attemptDeadline,
     retryConfig: job.retryConfig || {},
     httpTarget: job.httpTarget || {},
-    functionUri: job.__validatedFunction?.uri || "",
+    functionServiceUri: job.__validatedFunction?.serviceUri || "",
+    schedulerTargetUri: job.__validatedFunction?.schedulerTargetUri || "",
     functionRevision: job.__validatedFunction?.revision || ""
   }), "utf8").digest("hex");
 }

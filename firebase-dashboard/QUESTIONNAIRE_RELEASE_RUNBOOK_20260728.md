@@ -89,6 +89,12 @@ dernière exécution; il ne décrit pas la configuration courante et ne bloque p
 à lui seul. Chaque canari exige plutôt un nouveau `syncRun` exact, lié au nonce
 et au SHA, après son propre déclenchement.
 
+Pour une Function Firebase Gen 2 planifiée, le job doit cibler exactement son
+URL Firebase canonique `cloudfunctions.net`, avec la même audience OIDC. L'API
+Cloud Functions expose séparément l'URL du service sous-jacent `a.run.app`; le
+canari valide aussi ce service actif et sa révision, sans exiger que ces deux
+URL Firebase/Cloud Run soient textuellement identiques.
+
 Les scripts refusent un worktree modifié ou un `HEAD` différent du SHA scellé.
 Toutes les autorisations et preuves ci-dessous doivent être égales à ce SHA.
 Un nouveau commit de candidat invalide donc automatiquement les anciens GO,

@@ -344,7 +344,17 @@ test("runner preserves only aggregate evidence and exact synthetic cleanup", () 
   assert.match(runnerSource, /scheduler_job_status_invalid/);
   assert.match(runnerSource, /lastExecutionStatusCode/);
   assert.doesNotMatch(runnerSource, /scheduler_job_status_error/);
-  assert.match(runnerSource, /targetUri !== functionUri/);
+  assert.match(
+    runnerSource,
+    /EXPECTED_SCHEDULER_TARGET_URI =[\s\S]*cloudfunctions\.net\/\$\{FUNCTION_ID\}/
+  );
+  assert.match(runnerSource, /targetUri !== EXPECTED_SCHEDULER_TARGET_URI/);
+  assert.match(
+    runnerSource,
+    /String\(oidc\.audience \|\| ""\) !== EXPECTED_SCHEDULER_TARGET_URI/
+  );
+  assert.match(runnerSource, /\.hostname\.endsWith\("\.a\.run\.app"\)/);
+  assert.doesNotMatch(runnerSource, /targetUri !== functionServiceUri/);
   assert.match(runnerSource, /minimumTtlMs: MINIMUM_CONTROL_TTL_MS/);
   assert.match(runnerSource, /targetTagObserved: tagCleanup\.tagObserved/);
   assert.doesNotMatch(runnerSource, /targetTagApiConfirmed: true/);
