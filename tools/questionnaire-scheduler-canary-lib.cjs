@@ -176,32 +176,175 @@ async function acquireSharedContactProvisionClaim({
   }
 }
 
-function completeGhlContactSearch(data) {
+function parseGhlContactSearchPage(data) {
   const contacts = Array.isArray(data?.contacts) ? data.contacts : null;
   const declaredTotals = [
     data?.meta?.total,
     data?.total,
     data?.count
-  ].filter((value) => value !== undefined && value !== null && value !== "");
-  const totals = declaredTotals.map(Number);
-  const nextPage = String(data?.meta?.nextPage || data?.nextPage || "").trim();
-  const nextPageUrl = String(
-    data?.meta?.nextPageUrl || data?.nextPageUrl || ""
-  ).trim();
+  ].filter((value) => value !== undefined);
+  const totals = declaredTotals.map((value) =>
+    typeof value === "number" ? value : Number.NaN
+  );
+  const rawPagePointers = [data?.meta?.nextPage, data?.nextPage]
+    .filter((value) => value !== undefined)
+    .map((value) => value === null ? "" : value);
+  const rawPageUrls = [data?.meta?.nextPageUrl, data?.nextPageUrl]
+    .filter((value) => value !== undefined)
+    .map((value) => value === null ? "" : value);
+  const pagePointers = rawPagePointers.filter(Boolean);
+  const pageUrls = rawPageUrls.filter(Boolean);
   if (
     !contacts
     || totals.length === 0
-    || totals.some((value) => !Number.isInteger(value) || value < 0)
+    || totals.some((value) => !Number.isSafeInteger(value) || value < 0)
     || totals.some((value) => value !== totals[0])
     || totals[0] > 100
-    || contacts.length !== totals[0]
     || contacts.length > 100
-    || nextPage
-    || nextPageUrl
+    || rawPagePointers.some(
+      (value) => typeof value !== "string" || value !== value.trim()
+    )
+    || rawPageUrls.some(
+      (value) => typeof value !== "string" || value !== value.trim()
+    )
+    || new Set(rawPagePointers).size > 1
+    || new Set(rawPageUrls).size > 1
+    || pageUrls.some((value) => value.length > 2_048)
   ) {
     throw new CanaryError("synthetic_contact_search_incomplete");
   }
-  return contacts;
+  return Object.freeze({
+    contacts,
+    total: totals[0],
+    nextPage: pagePointers[0] || "",
+    nextPageUrl: pageUrls[0] || ""
+  });
+}
+
+function validateGhlContactNextPageUrl(value, {
+  searchParams,
+  lastContactId
+} = {}) {
+  const expectedSearchParams = searchParams && typeof searchParams === "object"
+    ? Object.fromEntries(
+      Object.entries(searchParams).map(([key, item]) => [key, String(item)])
+    )
+    : null;
+  const expectedKeys = expectedSearchParams
+    ? Object.keys(expectedSearchParams).sort()
+    : [];
+  if (
+    expectedKeys.join(",") !== "limit,locationId,query"
+    || expectedSearchParams.limit !== "100"
+    || Object.values(expectedSearchParams).some((item) => !item)
+    || !/^[A-Za-z0-9]{20}$/.test(String(lastContactId || ""))
+  ) {
+    throw new CanaryError("synthetic_contact_search_incomplete");
+  }
+
+  const rawUrl = String(value || "");
+  if (!rawUrl.startsWith(
+    "https://services.leadconnectorhq.com/contacts/?"
+  )) {
+    throw new CanaryError("synthetic_contact_search_incomplete");
+  }
+  let url;
+  try {
+    url = new URL(rawUrl);
+  } catch (_) {
+    throw new CanaryError("synthetic_contact_search_incomplete");
+  }
+  const entries = [...url.searchParams.entries()];
+  const keys = entries.map(([key]) => key);
+  const requiredKeys = [
+    "limit",
+    "locationId",
+    "query",
+    "startAfter",
+    "startAfterId"
+  ];
+  if (
+    url.protocol !== "https:"
+    || url.origin !== "https://services.leadconnectorhq.com"
+    || url.pathname !== "/contacts/"
+    || url.username
+    || url.password
+    || url.hash
+    || entries.length !== requiredKeys.length
+    || requiredKeys.some((key) => keys.filter((item) => item === key).length !== 1)
+    || keys.some((key) => !requiredKeys.includes(key))
+    || Object.entries(expectedSearchParams).some(
+      ([key, expected]) => url.searchParams.get(key) !== expected
+    )
+    || !/^[1-9]\d{12}$/.test(url.searchParams.get("startAfter") || "")
+    || url.searchParams.get("startAfterId") !== String(lastContactId)
+  ) {
+    throw new CanaryError("synthetic_contact_search_incomplete");
+  }
+  return Object.freeze({
+    pathname: "/contacts/",
+    searchParams: Object.freeze(Object.fromEntries(entries))
+  });
+}
+
+function completeGhlContactSearch(data, { terminalPage } = {}) {
+  const first = parseGhlContactSearchPage(data);
+  const hasTerminalPage = terminalPage !== undefined;
+  if (
+    first.contacts.length !== first.total
+    || first.nextPage
+    || Boolean(first.nextPageUrl) !== hasTerminalPage
+  ) {
+    throw new CanaryError("synthetic_contact_search_incomplete");
+  }
+  if (hasTerminalPage) {
+    const terminal = parseGhlContactSearchPage(terminalPage);
+    if (
+      terminal.contacts.length !== 0
+      || terminal.total !== first.total
+      || terminal.nextPage
+      || terminal.nextPageUrl
+    ) {
+      throw new CanaryError("synthetic_contact_search_incomplete");
+    }
+  }
+  return first.contacts;
+}
+
+async function collectCompleteGhlContactSearch(data, {
+  searchParams,
+  fetchTerminalPage
+} = {}) {
+  const first = parseGhlContactSearchPage(data);
+  if (
+    first.contacts.length !== first.total
+    || first.nextPage
+  ) {
+    throw new CanaryError("synthetic_contact_search_incomplete");
+  }
+  const expectedLocationId = String(searchParams?.locationId || "");
+  const contactIds = first.contacts.map((contact) => String(contact?.id || ""));
+  if (
+    !expectedLocationId
+    || contactIds.some((id) => !/^[A-Za-z0-9]{20}$/.test(id))
+    || new Set(contactIds).size !== contactIds.length
+    || first.contacts.some(
+      (contact) => String(contact?.locationId || "") !== expectedLocationId
+    )
+  ) {
+    throw new CanaryError("synthetic_contact_search_incomplete");
+  }
+  if (!first.nextPageUrl) return completeGhlContactSearch(data);
+  if (typeof fetchTerminalPage !== "function") {
+    throw new CanaryError("synthetic_contact_search_incomplete");
+  }
+  const lastContactId = String(first.contacts.at(-1)?.id || "");
+  const request = validateGhlContactNextPageUrl(first.nextPageUrl, {
+    searchParams,
+    lastContactId
+  });
+  const terminalPage = await fetchTerminalPage(request);
+  return completeGhlContactSearch(data, { terminalPage });
 }
 
 function dashboardClientMatchesSyntheticIdentity(value = {}, {
@@ -655,6 +798,8 @@ module.exports = {
   validContactProvisionClaim,
   acquireSharedContactProvisionClaim,
   completeGhlContactSearch,
+  validateGhlContactNextPageUrl,
+  collectCompleteGhlContactSearch,
   dashboardClientMatchesSyntheticIdentity,
   contactName,
   contactTags,

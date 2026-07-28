@@ -24,7 +24,7 @@ const {
   normalizePhone,
   buildContactProvisionClaim,
   acquireSharedContactProvisionClaim,
-  completeGhlContactSearch,
+  collectCompleteGhlContactSearch,
   dashboardClientMatchesSyntheticIdentity,
   contactTags,
   historicalGhlTagsAbsent,
@@ -508,7 +508,8 @@ async function limitedJsonRequest(url, {
   method = "GET",
   body,
   headers = {},
-  allowNotFound = false
+  allowNotFound = false,
+  redirect = "follow"
 } = {}) {
   const response = await fetch(url, {
     method,
@@ -519,6 +520,7 @@ async function limitedJsonRequest(url, {
       ...headers
     },
     body: body === undefined ? undefined : JSON.stringify(body),
+    redirect,
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
   });
   if (allowNotFound && response.status === 404) return null;
@@ -1151,16 +1153,26 @@ async function ghlRequest(
   token,
   pathname,
   searchParams = {},
-  { allowNotFound = false } = {}
+  { allowNotFound = false, redirect = "follow" } = {}
 ) {
   const url = new URL(`${GHL_BASE}${pathname}`);
   for (const [key, value] of Object.entries(searchParams)) url.searchParams.set(key, value);
   return limitedJsonRequest(url.toString(), {
     allowNotFound,
+    redirect,
     headers: {
       Authorization: `Bearer ${token}`,
       Version: GHL_API_VERSION
     }
+  });
+}
+
+async function searchCompleteGhlContacts(token, searchParams) {
+  const firstPage = await ghlRequest(token, "/contacts/", searchParams);
+  return collectCompleteGhlContactSearch(firstPage, {
+    searchParams,
+    fetchTerminalPage: ({ pathname, searchParams: terminalSearchParams }) =>
+      ghlRequest(token, pathname, terminalSearchParams, { redirect: "error" })
   });
 }
 
@@ -1316,12 +1328,12 @@ function selectDiscoveredSyntheticContact(contactSets, {
 async function searchSyntheticContactSets(token) {
   const byId = new Map();
   for (const query of ["canary", "questionnaire test", "dashboard test", "qa"]) {
-    const data = await ghlRequest(token, "/contacts/", {
+    const contacts = await searchCompleteGhlContacts(token, {
       locationId: GHL_LOCATION_ID,
       query,
       limit: "100"
     });
-    for (const contact of completeGhlContactSearch(data)) {
+    for (const contact of contacts) {
       const id = String(contact?.id || "").trim();
       if (id) byId.set(id, contact);
     }
@@ -1364,12 +1376,12 @@ async function searchReservedPhoneMatches(token) {
     `+1${SYNTHETIC_CONTACT_PHONE}`,
     "514-555-0100"
   ]) {
-    const data = await ghlRequest(token, "/contacts/", {
+    const contacts = await searchCompleteGhlContacts(token, {
       locationId: GHL_LOCATION_ID,
       query,
       limit: "100"
     });
-    for (const contact of completeGhlContactSearch(data)) {
+    for (const contact of contacts) {
       if (
         contact?.id
         && normalizePhone(contact.phone) === SYNTHETIC_CONTACT_PHONE

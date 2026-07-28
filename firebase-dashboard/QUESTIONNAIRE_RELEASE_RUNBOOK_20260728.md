@@ -88,8 +88,13 @@ run-questionnaire-release-canary.cmd --pin-contact
 
 Le provisionnement vérifie d'abord l'absence exacte par téléphone avec l'API
 GHL de déduplication et l'absence de tout autre canari synthétique sur les
-numéros réservés. Les recherches GHL exigent un total complet non paginé égal
-au nombre de fiches retournées; une page tronquée bloque. Il n'utilise jamais
+numéros réservés. Les recherches GHL exigent un total complet égal au nombre de
+fiches retournées; une page tronquée bloque. Si GHL fournit malgré ce total
+complet un `nextPageUrl`, le runner reconstruit un seul GET sans redirection
+après validation stricte de l'origine, du chemin, des paramètres de recherche
+et du curseur lié au dernier contact. Seule une page terminale vide, au même
+total et sans autre pointeur, est acceptée; toute pagination réelle ou ambiguë
+reste un STOP. Il n'utilise jamais
 `upsert`, applique le tag interne et le DND, puis exige que la fiche créée soit
 relue comme unique et absente des clients Dashboard. Juste avant l'unique POST,
 un claim Firestore partagé, atomique et permanent, puis un verrou local

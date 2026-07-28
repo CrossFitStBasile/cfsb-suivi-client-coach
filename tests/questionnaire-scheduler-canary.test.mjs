@@ -202,6 +202,232 @@ test("GHL contact search completeness accepts live and documented totals only", 
     }),
     /synthetic_contact_search_incomplete/
   );
+  assert.throws(
+    () => lib.completeGhlContactSearch({
+      contacts,
+      meta: { total: "2", nextPage: "", nextPageUrl: "" }
+    }),
+    /synthetic_contact_search_incomplete/
+  );
+  for (const invalidDeclaredTotal of [null, "", "2"]) {
+    assert.throws(
+      () => lib.completeGhlContactSearch({
+        contacts,
+        meta: { total: 2, nextPage: "", nextPageUrl: "" },
+        count: invalidDeclaredTotal
+      }),
+      /synthetic_contact_search_incomplete/
+    );
+  }
+  assert.throws(
+    () => lib.completeGhlContactSearch({
+      contacts,
+      meta: { total: 2, nextPage: "", nextPageUrl: "https://example.test" },
+      nextPageUrl: ""
+    }),
+    /synthetic_contact_search_incomplete/
+  );
+  assert.throws(
+    () => lib.completeGhlContactSearch({
+      contacts,
+      meta: { total: 2, nextPage: "2", nextPageUrl: "" },
+      nextPage: ""
+    }),
+    /synthetic_contact_search_incomplete/
+  );
+});
+
+test("GHL contact search accepts only one validated empty terminal sentinel", async () => {
+  const locationId = "locationFixture";
+  const contacts = [
+    { id: "AAAAAAAAAAAAAAAAAAAA", locationId },
+    { id: "BBBBBBBBBBBBBBBBBBBB", locationId }
+  ];
+  const searchParams = { locationId, query: "qa", limit: "100" };
+  const validNextPageUrl =
+    "https://services.leadconnectorhq.com/contacts/"
+    + "?locationId=locationFixture&query=qa&limit=100"
+    + "&startAfter=1720000000000&startAfterId=BBBBBBBBBBBBBBBBBBBB";
+  const firstPage = {
+    contacts,
+    meta: { total: 2, nextPage: "", nextPageUrl: validNextPageUrl }
+  };
+  const terminalPage = {
+    contacts: [],
+    meta: { total: 2, nextPage: "", nextPageUrl: "" }
+  };
+  let terminalFetches = 0;
+  const result = await lib.collectCompleteGhlContactSearch(firstPage, {
+    searchParams,
+    fetchTerminalPage: async (request) => {
+      terminalFetches += 1;
+      assert.deepEqual(request, {
+        pathname: "/contacts/",
+        searchParams: {
+          locationId,
+          query: "qa",
+          limit: "100",
+          startAfter: "1720000000000",
+          startAfterId: "BBBBBBBBBBBBBBBBBBBB"
+        }
+      });
+      return terminalPage;
+    }
+  });
+  assert.equal(result, contacts);
+  assert.equal(terminalFetches, 1);
+
+  let unexpectedFetches = 0;
+  assert.equal(
+    await lib.collectCompleteGhlContactSearch({
+      contacts,
+      count: 2
+    }, {
+      searchParams,
+      fetchTerminalPage: async () => {
+        unexpectedFetches += 1;
+        return terminalPage;
+      }
+    }),
+    contacts
+  );
+  assert.equal(unexpectedFetches, 0);
+
+  const invalidUrls = [
+    validNextPageUrl.replace("https:", "http:"),
+    validNextPageUrl.replace(
+      "https://services.leadconnectorhq.com",
+      "https://user@services.leadconnectorhq.com"
+    ),
+    validNextPageUrl.replace(
+      "https://services.leadconnectorhq.com",
+      "https://services.leadconnectorhq.com:443"
+    ),
+    validNextPageUrl.replace(
+      "https://services.leadconnectorhq.com",
+      "https://services.leadconnectorhq.com:8443"
+    ),
+    validNextPageUrl.replace(
+      "services.leadconnectorhq.com",
+      "services.leadconnectorhq.com.example.test"
+    ),
+    validNextPageUrl.replace("/contacts/", "/contacts"),
+    validNextPageUrl.replace("query=qa", "query=canary"),
+    validNextPageUrl.replace("locationId=locationFixture&", ""),
+    validNextPageUrl.replace("&limit=100", ""),
+    validNextPageUrl.replace("&startAfterId=BBBBBBBBBBBBBBBBBBBB", ""),
+    `${validNextPageUrl}&unexpected=true`,
+    `${validNextPageUrl}&query=qa`,
+    validNextPageUrl.replace("1720000000000", "172000000000"),
+    validNextPageUrl.replace(
+      "BBBBBBBBBBBBBBBBBBBB",
+      "AAAAAAAAAAAAAAAAAAAA"
+    ),
+    ` ${validNextPageUrl}`,
+    `${validNextPageUrl} `,
+    `${validNextPageUrl}#fragment`
+  ];
+  for (const nextPageUrl of invalidUrls) {
+    let invalidFetches = 0;
+    await assert.rejects(
+      lib.collectCompleteGhlContactSearch({
+        ...firstPage,
+        meta: { ...firstPage.meta, nextPageUrl }
+      }, {
+        searchParams,
+        fetchTerminalPage: async () => {
+          invalidFetches += 1;
+          return terminalPage;
+        }
+      }),
+      /synthetic_contact_search_incomplete/
+    );
+    assert.equal(invalidFetches, 0);
+  }
+
+  const invalidTerminalPages = [
+    {
+      contacts: [{ id: "CCCCCCCCCCCCCCCCCCCC", locationId }],
+      meta: { total: 2, nextPage: "", nextPageUrl: "" }
+    },
+    { contacts: [], meta: { total: 3, nextPage: "", nextPageUrl: "" } },
+    { contacts: [], meta: { total: 2, nextPage: "3", nextPageUrl: "" } },
+    {
+      contacts: [],
+      meta: { total: 2, nextPage: "", nextPageUrl: validNextPageUrl }
+    }
+  ];
+  for (const invalidTerminalPage of invalidTerminalPages) {
+    let invalidTerminalFetches = 0;
+    await assert.rejects(
+      lib.collectCompleteGhlContactSearch(firstPage, {
+        searchParams,
+        fetchTerminalPage: async () => {
+          invalidTerminalFetches += 1;
+          return invalidTerminalPage;
+        }
+      }),
+      /synthetic_contact_search_incomplete/
+    );
+    assert.equal(invalidTerminalFetches, 1);
+  }
+
+  let partialFetches = 0;
+  await assert.rejects(
+    lib.collectCompleteGhlContactSearch({
+      ...firstPage,
+      contacts: contacts.slice(0, 1)
+    }, {
+      searchParams,
+      fetchTerminalPage: async () => {
+        partialFetches += 1;
+        return terminalPage;
+      }
+    }),
+    /synthetic_contact_search_incomplete/
+  );
+  assert.equal(partialFetches, 0);
+
+  const invalidIdentityPages = [
+    {
+      ...firstPage,
+      contacts: [contacts[0], contacts[0]]
+    },
+    {
+      ...firstPage,
+      contacts: [
+        contacts[0],
+        { ...contacts[1], locationId: "otherLocation" }
+      ]
+    }
+  ];
+  for (const invalidIdentityPage of invalidIdentityPages) {
+    let invalidIdentityFetches = 0;
+    await assert.rejects(
+      lib.collectCompleteGhlContactSearch(invalidIdentityPage, {
+        searchParams,
+        fetchTerminalPage: async () => {
+          invalidIdentityFetches += 1;
+          return terminalPage;
+        }
+      }),
+      /synthetic_contact_search_incomplete/
+    );
+    assert.equal(invalidIdentityFetches, 0);
+  }
+
+  let failedTerminalFetches = 0;
+  await assert.rejects(
+    lib.collectCompleteGhlContactSearch(firstPage, {
+      searchParams,
+      fetchTerminalPage: async () => {
+        failedTerminalFetches += 1;
+        throw new lib.CanaryError("request_timeout");
+      }
+    }),
+    /request_timeout/
+  );
+  assert.equal(failedTerminalFetches, 1);
 });
 
 test("Dashboard non-member proof covers canonical and legacy identity aliases", () => {
@@ -539,7 +765,11 @@ test("runner preserves only aggregate evidence and exact synthetic cleanup", () 
     runnerSource,
     /duplicateContactByReservedPhone[\s\S]*allowNotFound: true/
   );
-  assert.match(runnerSource, /completeGhlContactSearch/);
+  assert.match(runnerSource, /collectCompleteGhlContactSearch/);
+  assert.match(
+    runnerSource,
+    /fetchTerminalPage:[\s\S]*redirect: "error"/
+  );
   assert.match(runnerSource, /assertReservedPhoneNotDashboardMember/);
   assert.match(runnerSource, /coachRxLink\.sourceClientId/);
   assert.match(runnerSource, /historicalGhlTagsAbsent/);
