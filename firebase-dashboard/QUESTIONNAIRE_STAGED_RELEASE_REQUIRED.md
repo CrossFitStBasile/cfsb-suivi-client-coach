@@ -11,6 +11,16 @@ Tant qu'il existe :
 - la publication doit passer par
   `deploy-questionnaire-stage-a.cmd`, puis par les contrôles du runbook, puis
   par `deploy-questionnaire-stage-b.cmd`.
+- Stage A doit séparer strictement `firestore:rules` et
+  `firestore:indexes`; l'index du Scheduler arrive seulement après les
+  fonctions additives, le pont historique et leurs canaris;
+- chaque sous-étape doit réussir le prévol Firestore live en lecture seule;
+  l'index exige un second prévol immédiatement avant sa publication, puis une
+  preuve distincte `READY` et un canari Scheduler avant Stage B.
+- les GO, l'avis coach et toutes les preuves de canari doivent être liés au SHA
+  exact du candidat scellé; un nouveau commit invalide les valeurs précédentes.
+- le commit scellé et le worktree propre doivent être revérifiés après le
+  dry-run, immédiatement avant chaque mutation Firebase.
 
 Le but est d'empêcher qu'un frontend qui dépend de la nouvelle API soit publié
 avant le pont backend, ou que les règles et les fonctions existantes changent

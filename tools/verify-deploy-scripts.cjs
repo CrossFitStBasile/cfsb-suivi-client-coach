@@ -9,18 +9,43 @@ const files = {
   deployHosting: path.join(root, "deploy-hosting-dashboard.cmd"),
   deployQuestionnaireStageA: path.join(root, "deploy-questionnaire-stage-a.cmd"),
   deployQuestionnaireStageB: path.join(root, "deploy-questionnaire-stage-b.cmd"),
+  verifyQuestionnaireStageAIndexReady: path.join(
+    root,
+    "verify-questionnaire-stage-a-index-ready.cmd"
+  ),
+  questionnaireStageAPreflight: path.join(
+    root,
+    "tools",
+    "preflight-questionnaire-stage-a-live.cjs"
+  ),
+  questionnaireStageAPreflightLib: path.join(
+    root,
+    "tools",
+    "questionnaire-stage-a-preflight-lib.cjs"
+  ),
+  sealedWorktreeVerifier: path.join(
+    root,
+    "tools",
+    "verify-sealed-questionnaire-release-worktree.cjs"
+  ),
+  firestoreIndexes: path.join(root, "firestore.indexes.json"),
   questionnaireStagedReleaseGuard: path.join(
     root,
     "firebase-dashboard",
     "QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md"
+  ),
+  questionnaireReleaseRunbook: path.join(
+    root,
+    "firebase-dashboard",
+    "QUESTIONNAIRE_RELEASE_RUNBOOK_20260728.md"
   ),
   openFirebaseConsole: path.join(root, "ouvrir-console-firebase.cmd"),
   login: path.join(root, "firebase-login-dashboard.cmd"),
   loginCi: path.join(root, "firebase-login-ci-token.cmd"),
   validateTeam: path.join(root, "valider-dashboard-equipe.cmd"),
   validation: path.join(root, "verify-dashboard-before-deploy.cmd"),
-  liveValidation: path.join(root, "verify-dashboard-live.cmd")
-  , liveFirestoreAudit: path.join(root, "audit-live-firestore.cmd"),
+  liveValidation: path.join(root, "verify-dashboard-live.cmd"),
+  liveFirestoreAudit: path.join(root, "audit-live-firestore.cmd"),
   firebaseAuthReady: path.join(root, "tools", "verify-firebase-auth-ready.cjs")
 };
 
@@ -29,9 +54,16 @@ const source = Object.fromEntries(
 );
 
 const firebaseConfig = JSON.parse(source.firebaseJson);
+const firestoreIndexes = JSON.parse(source.firestoreIndexes);
+const questionnaireStageAPreflightLib = require(
+  files.questionnaireStageAPreflightLib
+);
 const checks = [];
 const completeDeployCommand = "deploy --project cfsb-dashboard-coach-aa9a4 --only hosting,functions,firestore:rules,firestore:indexes,storage";
-const hostingDeployCommand = "deploy --project cfsb-dashboard-coach-aa9a4 --only hosting";
+const hostingDryRunCommand =
+  'call "%FIREBASE_BIN%" deploy --dry-run --project cfsb-dashboard-coach-aa9a4 --only hosting --non-interactive %FIREBASE_AUTH_ARGS% > "%DRY_RUN_LOG%" 2>&1';
+const hostingDeployCommand =
+  'call "%FIREBASE_BIN%" deploy --project cfsb-dashboard-coach-aa9a4 --only hosting --non-interactive %FIREBASE_AUTH_ARGS% > "%DEPLOY_LOG%" 2>&1';
 const questionnaireAdditiveFunctionTargets = [
   "functions:listQuestionnaireForms",
   "functions:saveQuestionnaireDraft",
@@ -46,6 +78,45 @@ const questionnaireLegacyFunctionTargets = [
   "functions:processQuestionnaireSendRequest",
   "functions:scheduledQuestionnaireSendPlans"
 ];
+const baselineFirestoreIndexes = [
+  {
+    collectionGroup: "tasks",
+    queryScope: "COLLECTION",
+    fields: [
+      { fieldPath: "coachId", order: "ASCENDING" },
+      { fieldPath: "status", order: "ASCENDING" },
+      { fieldPath: "priorityRank", order: "ASCENDING" },
+      { fieldPath: "dueAt", order: "ASCENDING" }
+    ]
+  },
+  {
+    collectionGroup: "questionnaireResponses",
+    queryScope: "COLLECTION",
+    fields: [
+      { fieldPath: "coachId", order: "ASCENDING" },
+      { fieldPath: "processingStatus", order: "ASCENDING" },
+      { fieldPath: "submittedAt", order: "DESCENDING" }
+    ]
+  },
+  {
+    collectionGroup: "clients",
+    queryScope: "COLLECTION",
+    fields: [
+      { fieldPath: "coachId", order: "ASCENDING" },
+      { fieldPath: "status", order: "ASCENDING" },
+      { fieldPath: "lastNameSort", order: "ASCENDING" }
+    ]
+  },
+  {
+    collectionGroup: "rebookings",
+    queryScope: "COLLECTION",
+    fields: [
+      { fieldPath: "coachId", order: "ASCENDING" },
+      { fieldPath: "status", order: "ASCENDING" },
+      { fieldPath: "detectedAt", order: "DESCENDING" }
+    ]
+  }
+];
 
 function check(name, passed, detail = "") {
   checks.push({ name, passed: Boolean(passed), detail });
@@ -54,6 +125,66 @@ function check(name, passed, detail = "") {
 function includesAll(text, values) {
   return values.every((value) => text.includes(value));
 }
+
+function hasShaBoundPredicate(text, variableName) {
+  return text.includes(
+    `if /I not "%${variableName}%"=="%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" (`
+  );
+}
+
+function guardedInvocationCount(text, invocationNeedle) {
+  const lines = text.split(/\r?\n/);
+  let count = 0;
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!lines[index].includes(invocationNeedle)) continue;
+    if (lines[index + 1]?.trim() !== "if errorlevel 1 (") return -1;
+    let cursor = index + 2;
+    let exitsNonZero = false;
+    while (cursor < lines.length && lines[cursor].trim() !== ")") {
+      if (lines[cursor].trim() === "exit /b 1") exitsNonZero = true;
+      cursor += 1;
+    }
+    if (cursor >= lines.length || !exitsNonZero) return -1;
+    count += 1;
+  }
+  return count;
+}
+
+function firebaseDeployInvocationLines(text) {
+  return text
+    .split(/\r?\n/)
+    .filter((line) => /\bdeploy\s+--(?:dry-run|project|only)\b/i.test(line))
+    .map((line) => line.trim());
+}
+
+function stageBlock(text, stage, nextStage = "") {
+  const marker = `if /I "%QUESTIONNAIRE_STAGE%"=="${stage}" (`;
+  const start = text.indexOf(marker);
+  if (start < 0) return "";
+  const endMarker = nextStage
+    ? `if /I "%QUESTIONNAIRE_STAGE%"=="${nextStage}" (`
+    : "echo STOP: sous-etape inconnue";
+  const end = text.indexOf(endMarker, start + marker.length);
+  return end < 0 ? "" : text.slice(start, end);
+}
+
+const questionnaireStageBlocks = {
+  rules: stageBlock(source.deployQuestionnaireStageA, "rules", "additive"),
+  additive: stageBlock(source.deployQuestionnaireStageA, "additive", "legacy"),
+  legacy: stageBlock(source.deployQuestionnaireStageA, "legacy", "indexes"),
+  indexes: stageBlock(source.deployQuestionnaireStageA, "indexes")
+};
+const expectedStageADeployOnlyAssignments = [
+  'set "DEPLOY_ONLY=firestore:rules"',
+  `set "DEPLOY_ONLY=${questionnaireAdditiveFunctionTargets.join(",")}"`,
+  `set "DEPLOY_ONLY=${questionnaireLegacyFunctionTargets.join(",")}"`,
+  'set "DEPLOY_ONLY=firestore:indexes"'
+];
+const actualStageADeployOnlyAssignments = (
+  source.deployQuestionnaireStageA.match(
+    /^\s*set "DEPLOY_ONLY=[^"]*"\r?$/gm
+  ) || []
+).map((line) => line.trim());
 
 check(
   "hosting targets firebase dashboard",
@@ -111,10 +242,14 @@ check(
     && source.deployComplete.indexOf("QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md")
       < source.deployComplete.indexOf(completeDeployCommand)
     && source.deployHosting.includes("QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md")
+    && source.deployHosting.includes("CFSB_QUESTIONNAIRE_INDEX_READY_OK")
+    && source.deployHosting.includes("CFSB_QUESTIONNAIRE_SCHEDULER_CANARY_OK")
     && source.deployHosting.includes("CFSB_QUESTIONNAIRE_STAGE_A_VERIFIED")
     && source.deployHosting.includes("CFSB_QUESTIONNAIRE_STAGE_B_GO")
     && source.deployHosting.includes("CFSB_QUESTIONNAIRE_RELEASE_COMMIT")
-    && source.deployHosting.includes("git status --porcelain")
+    && source.deployHosting.includes(
+      "verify-sealed-questionnaire-release-worktree.cjs"
+    )
     && source.deployHosting.indexOf("QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md")
       < source.deployHosting.indexOf(hostingDeployCommand)
     && source.questionnaireStagedReleaseGuard.includes("déploiement groupé")
@@ -123,45 +258,403 @@ check(
 );
 
 check(
-  "questionnaire staged scripts require explicit go notice and canaries",
+  "questionnaire staged scripts split rules functions and indexes",
   includesAll(source.deployQuestionnaireStageA, [
     "CFSB_QUESTIONNAIRE_RELEASE_GO",
     "CFSB_COACH_NOTICE_CONFIRMED",
     "CFSB_QUESTIONNAIRE_RELEASE_COMMIT",
-    "git status --porcelain",
+    "verify-sealed-questionnaire-release-worktree.cjs",
     "verify-firebase-auth-ready.cjs",
     "verify-questionnaire-reconciled-candidate.mjs",
     "verify-dashboard-before-deploy.cmd",
-    'set "DEPLOY_ONLY=firestore:rules,firestore:indexes"',
+    "preflight-questionnaire-stage-a-live.cjs",
     "CFSB_QUESTIONNAIRE_RULES_CANARY_OK",
     "CFSB_QUESTIONNAIRE_ADDITIVE_CANARY_OK",
-    "CFSB_QUESTIONNAIRE_STAGE_A_VERIFIED",
+    "CFSB_QUESTIONNAIRE_LEGACY_CANARY_OK",
+    "--protect-through-next-scheduler",
+    "--require-safe-scheduler-window",
     "deploy --dry-run",
     "ARRET HUMAIN OBLIGATOIRE"
   ])
+    && /set "DEPLOY_ONLY=firestore:rules"\r?$/m.test(
+      questionnaireStageBlocks.rules
+    )
+    && !questionnaireStageBlocks.rules.includes("firestore:indexes")
+    && questionnaireStageBlocks.additive.includes(
+      "CFSB_QUESTIONNAIRE_RULES_CANARY_OK"
+    )
+    && questionnaireStageBlocks.legacy.includes(
+      "CFSB_QUESTIONNAIRE_ADDITIVE_CANARY_OK"
+    )
+    && questionnaireStageBlocks.indexes.includes(
+      "CFSB_QUESTIONNAIRE_LEGACY_CANARY_OK"
+    )
+    && /set "DEPLOY_ONLY=firestore:indexes"\r?$/m.test(
+      questionnaireStageBlocks.indexes
+    )
+    && !questionnaireStageBlocks.indexes.includes(
+      "set CFSB_QUESTIONNAIRE_STAGE_A_VERIFIED="
+    )
     && questionnaireAdditiveFunctionTargets.every((target) =>
-      source.deployQuestionnaireStageA.includes(target)
+      questionnaireStageBlocks.additive.includes(target)
     )
+    && questionnaireStageBlocks.additive.includes(
+      `set "DEPLOY_ONLY=${questionnaireAdditiveFunctionTargets.join(",")}"`
+    )
+    && (
+      questionnaireStageBlocks.additive.match(
+        /^\s*set "DEPLOY_ONLY=[^"]+"\r?$/gm
+      ) || []
+    ).length === 1
     && questionnaireLegacyFunctionTargets.every((target) =>
-      source.deployQuestionnaireStageA.includes(target)
+      questionnaireStageBlocks.legacy.includes(target)
     )
-    && !source.deployQuestionnaireStageA.includes(
-      'set "DEPLOY_ONLY=functions,firestore:rules,firestore:indexes"'
+    && questionnaireStageBlocks.legacy.includes(
+      `set "DEPLOY_ONLY=${questionnaireLegacyFunctionTargets.join(",")}"`
     )
-    && source.deployQuestionnaireStageA.indexOf("deploy --dry-run")
-      < source.deployQuestionnaireStageA.indexOf("deploy --project")
+    && (
+      questionnaireStageBlocks.legacy.match(
+        /^\s*set "DEPLOY_ONLY=[^"]+"\r?$/gm
+      ) || []
+    ).length === 1
+    && !/set "DEPLOY_ONLY=[^"]*firestore:rules[^"]*firestore:indexes/m.test(
+      source.deployQuestionnaireStageA
+    )
+    && actualStageADeployOnlyAssignments.sort().join("\n")
+      === expectedStageADeployOnlyAssignments.sort().join("\n")
     && includesAll(source.deployQuestionnaireStageB, [
+      "CFSB_QUESTIONNAIRE_INDEX_READY_OK",
+      "CFSB_QUESTIONNAIRE_SCHEDULER_CANARY_OK",
       "CFSB_QUESTIONNAIRE_STAGE_A_VERIFIED",
       "CFSB_QUESTIONNAIRE_STAGE_B_GO",
       "CFSB_QUESTIONNAIRE_RELEASE_COMMIT",
-      "git status --porcelain",
+      "verify-sealed-questionnaire-release-worktree.cjs",
       "deploy-hosting-dashboard.cmd",
       "verify-questionnaire-live-continuity.mjs",
       "deliveryReady=false"
     ])
+    && hasShaBoundPredicate(
+      source.deployQuestionnaireStageA,
+      "CFSB_QUESTIONNAIRE_RELEASE_GO"
+    )
+    && hasShaBoundPredicate(
+      source.deployQuestionnaireStageA,
+      "CFSB_COACH_NOTICE_CONFIRMED"
+    )
+    && hasShaBoundPredicate(
+      questionnaireStageBlocks.additive,
+      "CFSB_QUESTIONNAIRE_RULES_CANARY_OK"
+    )
+    && hasShaBoundPredicate(
+      questionnaireStageBlocks.legacy,
+      "CFSB_QUESTIONNAIRE_ADDITIVE_CANARY_OK"
+    )
+    && hasShaBoundPredicate(
+      questionnaireStageBlocks.indexes,
+      "CFSB_QUESTIONNAIRE_LEGACY_CANARY_OK"
+    )
+    && hasShaBoundPredicate(
+      source.deployQuestionnaireStageB,
+      "CFSB_QUESTIONNAIRE_INDEX_READY_OK"
+    )
+    && hasShaBoundPredicate(
+      source.deployQuestionnaireStageB,
+      "CFSB_QUESTIONNAIRE_SCHEDULER_CANARY_OK"
+    )
+    && hasShaBoundPredicate(
+      source.deployQuestionnaireStageB,
+      "CFSB_QUESTIONNAIRE_STAGE_A_VERIFIED"
+    )
+    && hasShaBoundPredicate(
+      source.deployQuestionnaireStageB,
+      "CFSB_QUESTIONNAIRE_STAGE_B_GO"
+    )
+    && hasShaBoundPredicate(
+      source.deployHosting,
+      "CFSB_QUESTIONNAIRE_INDEX_READY_OK"
+    )
+    && hasShaBoundPredicate(
+      source.deployHosting,
+      "CFSB_QUESTIONNAIRE_SCHEDULER_CANARY_OK"
+    )
+    && hasShaBoundPredicate(
+      source.deployHosting,
+      "CFSB_QUESTIONNAIRE_STAGE_A_VERIFIED"
+    )
+    && hasShaBoundPredicate(
+      source.deployHosting,
+      "CFSB_QUESTIONNAIRE_STAGE_B_GO"
+    )
     && source.deployHosting.includes("deploy --dry-run")
     && source.deployHosting.indexOf("deploy --dry-run") < source.deployHosting.indexOf(hostingDeployCommand),
-  "Stage A doit exiger GO + avis coach et Stage B doit exiger la preuve des canaris avant Hosting."
+  "Stage A doit isoler rules, additive, legacy et indexes; Stage B exige les preuves READY et Scheduler."
+);
+
+const shaBoundReleaseVariables = [
+  "CFSB_QUESTIONNAIRE_RELEASE_GO",
+  "CFSB_COACH_NOTICE_CONFIRMED",
+  "CFSB_QUESTIONNAIRE_RULES_CANARY_OK",
+  "CFSB_QUESTIONNAIRE_ADDITIVE_CANARY_OK",
+  "CFSB_QUESTIONNAIRE_LEGACY_CANARY_OK",
+  "CFSB_QUESTIONNAIRE_INDEX_READY_OK",
+  "CFSB_QUESTIONNAIRE_SCHEDULER_CANARY_OK",
+  "CFSB_QUESTIONNAIRE_STAGE_A_VERIFIED",
+  "CFSB_QUESTIONNAIRE_STAGE_B_GO"
+];
+check(
+  "questionnaire release authorizations and proofs are bound to the sealed SHA",
+  shaBoundReleaseVariables.every((variableName) =>
+    source.questionnaireReleaseRunbook.includes(
+      `set ${variableName}=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%`
+    )
+    && !source.questionnaireReleaseRunbook.includes(
+      `set ${variableName}=YES`
+    )
+  )
+    && source.questionnaireStagedReleaseGuard.includes("liés au SHA")
+    && source.questionnaireStagedReleaseGuard.includes(
+      "un nouveau commit invalide"
+    ),
+  "Un nouveau commit doit invalider les anciens GO, avis coach et canaris."
+);
+
+const stageADryRunCall =
+  'call "%FIREBASE_BIN%" deploy --dry-run --project cfsb-dashboard-coach-aa9a4 --only "%DEPLOY_ONLY%" --non-interactive %FIREBASE_AUTH_ARGS% > "%DRY_RUN_LOG%" 2>&1';
+const stageADeployCall =
+  'call "%FIREBASE_BIN%" deploy --project cfsb-dashboard-coach-aa9a4 --only "%DEPLOY_ONLY%" --non-interactive %FIREBASE_AUTH_ARGS% > "%DEPLOY_LOG%" 2>&1';
+const stageAPreflightPositions = [
+  ...source.deployQuestionnaireStageA.matchAll(
+    /^\s*"%NODE_EXE%" "%~dp0tools\\preflight-questionnaire-stage-a-live\.cjs" %LIVE_PREFLIGHT_ARGS%\r?$/gm
+  )
+].map((match) => match.index);
+const stageAFirstPreflight = stageAPreflightPositions[0] ?? -1;
+const stageADryRun = source.deployQuestionnaireStageA.indexOf(stageADryRunCall);
+const stageASecondPreflight = stageAPreflightPositions[1] ?? -1;
+const stageADeploy = source.deployQuestionnaireStageA.indexOf(stageADeployCall);
+
+check(
+  "questionnaire Stage A runs the live guard before mutation",
+  stageAFirstPreflight >= 0
+    && stageAFirstPreflight < stageADryRun
+    && stageADryRun < stageASecondPreflight
+    && stageASecondPreflight < stageADeploy
+    && source.deployQuestionnaireStageA.includes(
+      'if /I "%QUESTIONNAIRE_STAGE%"=="indexes" ('
+    )
+    && source.deployQuestionnaireStageA.includes(
+      "--protect-through-next-scheduler"
+    )
+    && source.deployQuestionnaireStageA.includes(
+      "--require-safe-scheduler-window"
+    )
+    && !source.deployQuestionnaireStageA.includes(
+      "--scheduler-window-before-minutes="
+    )
+    && !source.verifyQuestionnaireStageAIndexReady.includes(
+      "--scheduler-window-before-minutes="
+    )
+    && [
+      ...firebaseDeployInvocationLines(source.deployQuestionnaireStageA)
+    ].sort().join("\n") ===
+      [stageADeployCall, stageADryRunCall].sort().join("\n")
+    && !source.deployQuestionnaireStageA.includes("--force")
+    && includesAll(source.verifyQuestionnaireStageAIndexReady, [
+      "CFSB_QUESTIONNAIRE_RELEASE_COMMIT",
+      "verify-sealed-questionnaire-release-worktree.cjs",
+      "preflight-questionnaire-stage-a-live.cjs",
+      "--protect-through-next-scheduler",
+      "--require-index-ready",
+      "--require-safe-scheduler-window"
+    ])
+    && !source.verifyQuestionnaireStageAIndexReady.includes("firebase deploy")
+    && source.deployQuestionnaireStageA.includes(
+      "La creation de l'index est demandee, mais Stage A N'EST PAS verifiee"
+    ),
+  "Le prévol read-only doit précéder chaque mutation et être répété après le dry-run de l'index."
+);
+
+const questionnaireReleaseWrappers = [
+  source.deployQuestionnaireStageA,
+  source.deployQuestionnaireStageB,
+  source.deployHosting,
+  source.verifyQuestionnaireStageAIndexReady
+];
+const sealedInvocation =
+  '"%NODE_EXE%" "%~dp0tools\\verify-sealed-questionnaire-release-worktree.cjs" "%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%"';
+const stageASealLast =
+  source.deployQuestionnaireStageA.lastIndexOf(sealedInvocation);
+const hostingDryRun =
+  source.deployHosting.indexOf(hostingDryRunCommand);
+const hostingDeploy =
+  source.deployHosting.indexOf(hostingDeployCommand);
+const hostingSealLast =
+  source.deployHosting.lastIndexOf(sealedInvocation);
+const stageAPreflightInvocation =
+  '"%NODE_EXE%" "%~dp0tools\\preflight-questionnaire-stage-a-live.cjs" %LIVE_PREFLIGHT_ARGS%';
+const indexReadyPreflightInvocation =
+  '"%NODE_EXE%" "%~dp0tools\\preflight-questionnaire-stage-a-live.cjs" --protect-through-next-scheduler --require-index-ready --require-safe-scheduler-window';
+check(
+  "questionnaire release worktree proof fails closed",
+  includesAll(source.sealedWorktreeVerifier, [
+    '["rev-parse", "--show-toplevel"]',
+    '["rev-parse", "--verify", "HEAD^{commit}"]',
+    '["status", "--porcelain=v1", "--untracked-files=all"]',
+    "result.status === 0",
+    "worktree_not_clean",
+    "git_status_unavailable"
+  ])
+    && questionnaireReleaseWrappers.every((wrapper) =>
+      wrapper.includes("verify-sealed-questionnaire-release-worktree.cjs")
+      && !wrapper.includes("for /f %%H in ('git rev-parse")
+      && !wrapper.includes("git status --porcelain")
+    )
+    && guardedInvocationCount(
+      source.deployQuestionnaireStageA,
+      sealedInvocation
+    ) === 2
+    && guardedInvocationCount(
+      source.deployQuestionnaireStageB,
+      sealedInvocation
+    ) === 1
+    && guardedInvocationCount(source.deployHosting, sealedInvocation) === 2
+    && guardedInvocationCount(
+      source.verifyQuestionnaireStageAIndexReady,
+      sealedInvocation
+    ) === 1
+    && guardedInvocationCount(
+      source.deployQuestionnaireStageA,
+      stageAPreflightInvocation
+    ) === 2
+    && guardedInvocationCount(
+      source.verifyQuestionnaireStageAIndexReady,
+      indexReadyPreflightInvocation
+    ) === 1
+    && stageADryRun < stageASealLast
+    && stageASealLast < stageADeploy
+    && hostingDryRun < hostingSealLast
+    && hostingSealLast < hostingDeploy,
+  "Les wrappers doivent déléguer la preuve HEAD/worktree à un contrôle qui vérifie chaque code de sortie Git."
+);
+
+const preflightHttpSource =
+  `${source.questionnaireStageAPreflight}\n`
+  + source.questionnaireStageAPreflightLib;
+const preflightHttpMethods = [
+  ...preflightHttpSource.matchAll(/method:\s*"([^"]+)"/g)
+].map((match) => match[1]);
+check(
+  "questionnaire live preflight is read-only fail-closed and PII-minimal",
+  includesAll(source.questionnaireStageAPreflight, [
+    "questionnaire_schedule_live_preflight",
+    "listQuestionnaireScheduleDocuments",
+    "summarizeSchedules",
+    "activeDue",
+    "activeInvalidDate",
+    "invalidStatus",
+    "requireAuth(authOptions, true)",
+    "Firebase CLI login with a refresh token is required",
+    "--protect-through-next-scheduler",
+    "--require-index-ready",
+    "process.exitCode = 1"
+  ])
+    && includesAll(source.questionnaireStageAPreflightLib, [
+      '"status"',
+      '"nextSendAt"',
+      'method: "GET"',
+      "nextPageToken",
+      "repeated pagination token",
+      "pagination exceeded the safety limit",
+      "https://firestore.googleapis.com/v1/projects/",
+      "/databases/(default)/documents/",
+      "/databases/(default)/collectionGroups/",
+      'hasOwn("density")',
+      'hasOwn("multikey")',
+      'hasOwn("shardCount")',
+      'hasOwn("unique")',
+      'hasOwn("searchIndexOptions")'
+    ])
+    && JSON.stringify(
+      questionnaireStageAPreflightLib.FIRESTORE_FIELD_PATHS
+    ) === JSON.stringify([
+      "status",
+      "nextSendAt"
+    ])
+    && preflightHttpMethods.length === 2
+    && preflightHttpMethods.every((method) => method === "GET")
+    && !/documents:commit|batchWrite|setDoc|updateDoc|deleteDoc/.test(
+      preflightHttpSource
+    )
+    && !/method:\s*"(?:POST|PATCH|PUT|DELETE)"/.test(preflightHttpSource)
+    && !/--force|--ignore-backlog|--allow-due|BYPASS|IGNORE_BACKLOG/.test(
+      preflightHttpSource
+    )
+    && !/clientId|clientName|clientPhone|requestedByUid|requestedByEmail/.test(
+      preflightHttpSource
+    )
+    && !source.questionnaireStageAPreflight.includes(
+      "scheduleSnapshotSha256"
+    )
+    && !source.questionnaireStageAPreflight.includes(
+      "--scheduler-window-before-minutes="
+    )
+    && source.questionnaireStageAPreflight.indexOf(
+      "const startedAt = new Date();"
+    ) < source.questionnaireStageAPreflight.indexOf(
+      "const result = await listQuestionnaireScheduleDocuments"
+    )
+    && source.questionnaireStageAPreflight.indexOf(
+      "const result = await listQuestionnaireScheduleDocuments"
+    ) < source.questionnaireStageAPreflight.indexOf(
+      "const checkedAt = new Date();"
+    )
+    && source.questionnaireStageAPreflight.includes(
+      "if (parsed.requireIndexReady)"
+    )
+    && source.questionnaireStageAPreflight.includes(
+      "parsed.requireSafeWindow = true"
+    )
+    && source.questionnaireStageAPreflight.includes(
+      "parsed.protectThroughNextScheduler = true"
+    )
+    && source.questionnaireStageAPreflight.includes(
+      "env: childEnvironmentWithoutSecrets()"
+    )
+    && source.questionnaireStageAPreflight.includes(
+      "variableName.toUpperCase()"
+    )
+    && source.questionnaireStageAPreflight.includes(
+      "scheduleIndex.indexes !== 1"
+    )
+    && source.questionnaireStageAPreflight.indexOf(
+      "const explicitCandidate = firstUsableFirebaseToolsRoot(candidates)"
+    ) < source.questionnaireStageAPreflight.indexOf(
+      'spawnSync("where", ["firebase"]'
+    ),
+  "Le prévol doit lire toutes les pages sans endpoint d'écriture, sans bypass et sans sortie membre."
+);
+
+const scheduleIndexes = (firestoreIndexes.indexes || []).filter(
+  (index) => index.collectionGroup === "questionnaireSchedules"
+);
+const historicalIndexes = (firestoreIndexes.indexes || []).filter(
+  (index) => index.collectionGroup !== "questionnaireSchedules"
+);
+check(
+  "questionnaire schedule composite index is exact and isolated",
+  scheduleIndexes.length === 1
+    && scheduleIndexes[0].queryScope === "COLLECTION"
+    && JSON.stringify(scheduleIndexes[0].fields) === JSON.stringify([
+      { fieldPath: "status", order: "ASCENDING" },
+      { fieldPath: "nextSendAt", order: "ASCENDING" }
+    ])
+    && JSON.stringify(historicalIndexes) === JSON.stringify(
+      baselineFirestoreIndexes
+    )
+    && JSON.stringify(firestoreIndexes.fieldOverrides) === "[]"
+    && !questionnaireStageBlocks.rules.includes("firestore:indexes")
+    && !questionnaireStageBlocks.additive.includes("firestore:indexes")
+    && !questionnaireStageBlocks.legacy.includes("firestore:indexes"),
+  "Un seul index status/nextSendAt doit exister et seule la sous-étape indexes peut le cibler."
 );
 
 check(
@@ -251,8 +744,13 @@ check(
 check(
   "hosting deploy is limited to hosting",
   source.deployHosting.includes('call "%~dp0verify-dashboard-before-deploy.cmd"')
+    && source.deployHosting.includes(hostingDryRunCommand)
     && source.deployHosting.includes(hostingDeployCommand)
-    && !source.deployHosting.includes("deploy --only functions")
+    && [
+      ...firebaseDeployInvocationLines(source.deployHosting)
+    ].sort().join("\n") ===
+      [hostingDeployCommand, hostingDryRunCommand].sort().join("\n")
+    && !source.deployHosting.includes("--force")
     && source.deployHosting.includes("FIREBASE_TOKEN")
     && source.deployHosting.includes("DASHBOARD_NO_PAUSE")
     && source.deployHosting.includes("Prevol Firebase auth/hosting")

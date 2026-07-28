@@ -15,6 +15,9 @@ const syntaxTargets = [
   "functions/index.js",
   "functions/questionnaire-studio.js",
   "functions/questionnaire-service.js",
+  "tools/questionnaire-stage-a-preflight-lib.cjs",
+  "tools/preflight-questionnaire-stage-a-live.cjs",
+  "tools/verify-sealed-questionnaire-release-worktree.cjs",
   "tools/verify-questionnaire-live-continuity.mjs"
 ];
 

@@ -40,8 +40,9 @@ Un GO local ne constitue pas un GO production. Avant l'étape A, il faut :
 - le SHA-256 de l'archive candidate et les preuves de tests;
 - une session Firebase valide et les secrets requis;
 - une personne responsable du GO/STOP et du rollback;
-- une fenêtre calme;
+- une fenêtre calme, hors de la fenêtre protégée du Scheduler;
 - l'avis aux coachs envoyé avant la première mutation.
+- zéro document `questionnaireSchedules` actif avec `nextSendAt` dû ou invalide.
 
 L'avis est obligatoire pour ce candidat : les règles n'ont pas pu être exécutées
 dans l'émulateur local faute de Java, et la sous-étape A3 redéploie trois
@@ -52,30 +53,39 @@ Variables à définir dans le même terminal après le GO production :
 
 ```cmd
 set CFSB_QUESTIONNAIRE_RELEASE_COMMIT=<SHA_CANDIDAT_SCELLE>
-set CFSB_QUESTIONNAIRE_RELEASE_GO=YES
-set CFSB_COACH_NOTICE_CONFIRMED=YES
+set CFSB_QUESTIONNAIRE_RELEASE_GO=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
+set CFSB_COACH_NOTICE_CONFIRMED=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
 ```
 
 Les scripts refusent un worktree modifié ou un `HEAD` différent du SHA scellé.
+Toutes les autorisations et preuves ci-dessous doivent être égales à ce SHA.
+Un nouveau commit de candidat invalide donc automatiquement les anciens GO,
+avis et canaris : il faut les reprendre pour le nouveau candidat.
 Chaque commande fait une passe `firebase deploy --dry-run` avant la mutation.
+Chaque sous-étape exécute aussi le prévol live en lecture seule avant les portes,
+puis une seconde fois après le dry-run et immédiatement avant la mutation. Il
+parcourt toutes les pages de `questionnaireSchedules`, sans requête composite,
+n'affiche que des agrégats et échoue fermé sur erreur d'authentification, de
+réseau, de pagination, de statut ou de date. Un suivi actif dû, à date invalide
+ou à statut inconnu bloque toute la Stage A.
 
 Ne lancer aucune commande `firebase deploy` manuelle depuis le candidat. Les
 hooks Firebase exécutent les tests, mais seuls les scripts Stage A/Stage B
 vérifient aussi l'ordre des sous-étapes, les GO, l'avis coach, le commit scellé
 et les preuves de canari.
 
-## Étape A — pont backend en trois arrêts
+## Étape A — pont backend en quatre arrêts
 
 Les sous-étapes sont volontairement séparées. Ne jamais les enchaîner dans un
 seul script ou une seule commande Firebase.
 
-### A1 — règles et index compatibles avec l'ancien Dashboard
+### A1 — règles compatibles avec l'ancien Dashboard
 
 ```cmd
 deploy-questionnaire-stage-a.cmd rules
 ```
 
-La commande ne publie que `firestore:rules,firestore:indexes`.
+La commande ne publie que `firestore:rules`. Elle ne crée aucun index.
 
 Contrôles obligatoires :
 
@@ -83,12 +93,13 @@ Contrôles obligatoires :
 - trois pages historiques ouvrables;
 - lecture et écriture historiques permises;
 - création, modification, pause et reprise d'une planification legacy permises;
-- aucune planification existante mise en pause par le système.
+- aucune planification existante mise en pause par le système;
+- aucun nouveau document `questionnaireSends`.
 
 Après conservation des preuves :
 
 ```cmd
-set CFSB_QUESTIONNAIRE_RULES_CANARY_OK=YES
+set CFSB_QUESTIONNAIRE_RULES_CANARY_OK=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
 ```
 
 STOP si une règle est refusée, si le Dashboard se vide, si une planification
@@ -129,7 +140,7 @@ Contrôles obligatoires :
 Après conservation des preuves :
 
 ```cmd
-set CFSB_QUESTIONNAIRE_ADDITIVE_CANARY_OK=YES
+set CFSB_QUESTIONNAIRE_ADDITIVE_CANARY_OK=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
 ```
 
 STOP si le catalogue est incomplet, si une réponse est absente, si un faux
@@ -159,18 +170,92 @@ Contrôles obligatoires avant et après :
 Après conservation des preuves :
 
 ```cmd
-set CFSB_QUESTIONNAIRE_STAGE_A_VERIFIED=YES
+set CFSB_QUESTIONNAIRE_LEGACY_CANARY_OK=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
 ```
 
-STOP et rollback backend si une fonction historique régresse. Ne pas publier
-Hosting.
+STOP et rollback backend si une fonction historique régresse. Ne pas déclencher
+le Scheduler, ne pas créer l'index et ne pas publier Hosting.
+
+### A4 — index du Scheduler, isolé en dernier
+
+Le Scheduler quotidien tourne à 07:15 `America/Toronto`. La sous-étape A4 est
+interdite dans les six heures précédant ce passage et pendant les dix minutes
+qui le suivent. La fenêtre recommandée est de 08:00 à 12:00.
+
+```cmd
+deploy-questionnaire-stage-a.cmd indexes
+```
+
+La commande exige que `CFSB_QUESTIONNAIRE_LEGACY_CANARY_OK` soit égal au SHA
+scellé, puis :
+
+1. exécute le prévol live à zéro suivi actif dû jusqu'au prochain passage de
+   07:15;
+2. exécute toutes les portes locales;
+3. fait le dry-run de `firestore:indexes` seulement;
+   STOP si ce dry-run annonce autre chose que la création de l'unique index
+   `questionnaireSchedules` attendu; un index historique manquant ou toute autre
+   création constitue un delta hors portée à examiner séparément;
+4. refait le prévol live immédiatement;
+5. publie uniquement `firestore:indexes`, en mode non interactif et sans
+   `--force` afin de ne supprimer aucun index existant;
+6. s'arrête sans déclarer Stage A réussie.
+
+Si le prévol échoue ou si l'état devient dangereux entre les deux lectures,
+aucun index n'est publié. Les sorties ne contiennent que des comptes agrégés,
+sans identifiant ni empreinte dérivée des données membre. La fenêtre protégée
+de six heures avant et dix minutes après est fixe; aucun argument de
+contournement n'existe.
+
+La CLI peut revenir avant la fin de construction. Attendre explicitement l'état
+`READY`, puis exécuter :
+
+```cmd
+verify-questionnaire-stage-a-index-ready.cmd
+```
+
+Ce contrôle post-index exige exactement un index `COLLECTION` composé de
+`status ASCENDING`, puis `nextSendAt ASCENDING`, dans l'état `READY`, ainsi que
+zéro suivi actif dû jusqu'au prochain passage de 07:15, à date invalide ou à
+statut inconnu. Le wrapper résout le runtime Node stable même quand `node` n'est
+pas présent dans le `PATH`. Il refuse aussi toute variante `unique`,
+`multikey`, de recherche, à densité autre que `SPARSE_ALL` ou avec un nombre de
+shards non standard.
+
+Contrôles obligatoires après `READY`, dans cet ordre :
+
+1. vérifier qu'aucun `questionnaireSends` inattendu n'a été créé et qu'aucun tag
+   GHL n'a été ajouté;
+2. exécuter un canari Scheduler à vide : `dueSchedules: 0`, `queued: 0`,
+   `skipped: 0`;
+3. vérifier qu'aucune planification réelle n'a changé;
+4. exécuter un seul canari positif sur un contact interne;
+5. confirmer un seul ID d'envoi déterministe, le tag historique attendu,
+   l'avancement de la cadence et l'absence de doublon au rejeu;
+6. confirmer la continuité publique, puis ouvrir le Dashboard avec un compte
+   admin et un compte coach.
+
+Après conservation de toutes les preuves :
+
+```cmd
+set CFSB_QUESTIONNAIRE_INDEX_READY_OK=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
+set CFSB_QUESTIONNAIRE_SCHEDULER_CANARY_OK=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
+set CFSB_QUESTIONNAIRE_STAGE_A_VERIFIED=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
+```
+
+STOP si l'index n'est pas `READY` avant la limite de la fenêtre, si un suivi
+actif dû réapparaît, si un envoi inattendu existe ou si un canari n'est pas
+retrouvé. Garder le gel des nouvelles planifications et ne pas publier Hosting.
 
 ## Étape B — Hosting additif seulement
 
 Exige un nouveau GO production :
 
 ```cmd
-set CFSB_QUESTIONNAIRE_STAGE_B_GO=YES
+set CFSB_QUESTIONNAIRE_INDEX_READY_OK=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
+set CFSB_QUESTIONNAIRE_SCHEDULER_CANARY_OK=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
+set CFSB_QUESTIONNAIRE_STAGE_A_VERIFIED=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
+set CFSB_QUESTIONNAIRE_STAGE_B_GO=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
 deploy-questionnaire-stage-b.cmd
 ```
 
@@ -283,8 +368,7 @@ call "%FIREBASE_BIN%" deploy --dry-run --project cfsb-dashboard-coach-aa9a4 --on
 call "%FIREBASE_BIN%" deploy --project cfsb-dashboard-coach-aa9a4 --only firestore:rules
 ```
 
-Les index additifs restent en place; les supprimer serait une migration
-destructive distincte.
+Aucun index n'est créé en A1.
 
 ### Rollback A2 — fonctions additives seulement
 
@@ -312,6 +396,22 @@ call "%FIREBASE_BIN%" deploy --project cfsb-dashboard-coach-aa9a4 --only "functi
 Appliquer seulement les rollbacks des sous-étapes réellement publiées. Si Stage
 B a aussi été publié, restaurer Hosting en premier pour retirer immédiatement
 les nouveaux parcours de la circulation.
+
+### STOP opérationnel A4 — index
+
+La présence d'un index additif ne modifie pas les règles ni les documents. Le
+risque vient du prochain passage Scheduler. Si A4 échoue :
+
+- ne pas lever le gel des nouvelles planifications;
+- garder ou remettre à `paused` toute planification réelle due;
+- ne pas définir les preuves `INDEX_READY`, `SCHEDULER_CANARY` ou `STAGE_A`;
+- ne pas publier Hosting;
+- conserver le relevé des `questionnaireSends` avant/après.
+
+Supprimer un index ou désactiver un job Scheduler est une mutation de production
+distincte. Ne pas l'automatiser depuis ce candidat : obtenir un GO explicite,
+identifier la ressource exacte en lecture seule, puis conserver la preuve de la
+suppression ou de la désactivation avant de lever le gel.
 
 ## Communication aux coachs
 

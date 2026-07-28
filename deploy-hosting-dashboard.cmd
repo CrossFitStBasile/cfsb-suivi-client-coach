@@ -6,7 +6,26 @@ echo Publication du Dashboard Coach sur Firebase...
 echo Dossier: %cd%
 echo.
 
-if exist "%~dp0firebase-dashboard\QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md" if /I not "%CFSB_QUESTIONNAIRE_STAGE_A_VERIFIED%"=="YES" (
+if defined CFSB_NODE_EXE (
+  set "NODE_EXE=%CFSB_NODE_EXE%"
+) else (
+  set "NODE_EXE=C:\Users\micha\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe"
+)
+if not exist "%NODE_EXE%" set "NODE_EXE=node"
+
+if exist "%~dp0firebase-dashboard\QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md" if /I not "%CFSB_QUESTIONNAIRE_INDEX_READY_OK%"=="%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" (
+  echo STOP: la preuve que l'index Questionnaire est READY manque.
+  echo Utilise deploy-questionnaire-stage-b.cmd apres le controle post-index.
+  call :maybe_pause
+  exit /b 1
+)
+if exist "%~dp0firebase-dashboard\QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md" if /I not "%CFSB_QUESTIONNAIRE_SCHEDULER_CANARY_OK%"=="%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" (
+  echo STOP: le canari Scheduler apres index n'est pas confirme.
+  echo Utilise deploy-questionnaire-stage-b.cmd apres les canaris du runbook.
+  call :maybe_pause
+  exit /b 1
+)
+if exist "%~dp0firebase-dashboard\QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md" if /I not "%CFSB_QUESTIONNAIRE_STAGE_A_VERIFIED%"=="%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" (
   echo STOP: ce candidat ne peut pas publier Hosting avant le canari backend.
   echo.
   echo Utilise deploy-questionnaire-stage-a.cmd, complete les controles du
@@ -15,7 +34,7 @@ if exist "%~dp0firebase-dashboard\QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md" if /
   call :maybe_pause
   exit /b 1
 )
-if exist "%~dp0firebase-dashboard\QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md" if /I not "%CFSB_QUESTIONNAIRE_STAGE_B_GO%"=="YES" (
+if exist "%~dp0firebase-dashboard\QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md" if /I not "%CFSB_QUESTIONNAIRE_STAGE_B_GO%"=="%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" (
   echo STOP: ce candidat exige aussi un GO Stage B explicite.
   echo.
   echo Utilise deploy-questionnaire-stage-b.cmd apres le canari backend.
@@ -29,16 +48,9 @@ if "%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%"=="" (
   call :maybe_pause
   exit /b 1
 )
-for /f %%H in ('git rev-parse HEAD 2^>nul') do set "CURRENT_RELEASE_COMMIT=%%H"
-if /I not "%CURRENT_RELEASE_COMMIT%"=="%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" (
-  echo STOP: HEAD %CURRENT_RELEASE_COMMIT% ne correspond pas au candidat scelle
-  echo %CFSB_QUESTIONNAIRE_RELEASE_COMMIT%.
-  call :maybe_pause
-  exit /b 1
-)
-for /f "delims=" %%S in ('git status --porcelain --untracked-files^=all') do (
-  echo STOP: le worktree contient des changements apres le scellement.
-  git status --short
+"%NODE_EXE%" "%~dp0tools\verify-sealed-questionnaire-release-worktree.cjs" "%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%"
+if errorlevel 1 (
+  echo STOP: impossible de confirmer le commit scelle et le worktree propre.
   call :maybe_pause
   exit /b 1
 )
@@ -90,9 +102,6 @@ if errorlevel 1 (
   echo Firebase CLI: commande firebase detectee dans ce terminal.
 )
 
-set "NODE_EXE=C:\Users\micha\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe"
-if not exist "%NODE_EXE%" set "NODE_EXE=node"
-
 echo.
 echo Prevol Firebase auth/hosting...
 "%NODE_EXE%" "%~dp0tools\verify-firebase-auth-ready.cjs" --hosting-only
@@ -130,7 +139,7 @@ if not "%FIREBASE_TOKEN%"=="" (
 ) else (
   echo Auth Firebase: session interactive Firebase CLI.
 )
-call "%FIREBASE_BIN%" deploy --dry-run --project cfsb-dashboard-coach-aa9a4 --only hosting %FIREBASE_AUTH_ARGS% > "%DRY_RUN_LOG%" 2>&1
+call "%FIREBASE_BIN%" deploy --dry-run --project cfsb-dashboard-coach-aa9a4 --only hosting --non-interactive %FIREBASE_AUTH_ARGS% > "%DRY_RUN_LOG%" 2>&1
 set "DRY_RUN_CODE=%ERRORLEVEL%"
 if exist "%DRY_RUN_LOG%" type "%DRY_RUN_LOG%"
 if not "%DRY_RUN_CODE%"=="0" (
@@ -139,7 +148,17 @@ if not "%DRY_RUN_CODE%"=="0" (
   call :maybe_pause
   exit /b 1
 )
-call "%FIREBASE_BIN%" deploy --project cfsb-dashboard-coach-aa9a4 --only hosting %FIREBASE_AUTH_ARGS% > "%DEPLOY_LOG%" 2>&1
+if exist "%~dp0firebase-dashboard\QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md" (
+  echo.
+  echo Confirmation finale du candidat scelle avant mutation Hosting...
+  "%NODE_EXE%" "%~dp0tools\verify-sealed-questionnaire-release-worktree.cjs" "%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%"
+  if errorlevel 1 (
+    echo STOP: le candidat a change depuis le dry-run. Aucun deploy Hosting lance.
+    call :maybe_pause
+    exit /b 1
+  )
+)
+call "%FIREBASE_BIN%" deploy --project cfsb-dashboard-coach-aa9a4 --only hosting --non-interactive %FIREBASE_AUTH_ARGS% > "%DEPLOY_LOG%" 2>&1
 set "DEPLOY_CODE=%ERRORLEVEL%"
 type "%DEPLOY_LOG%"
 if not "%DEPLOY_CODE%"=="0" goto :deploy_failed
