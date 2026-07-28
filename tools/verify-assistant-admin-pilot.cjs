@@ -90,7 +90,9 @@ const checks = {
   rulesConstrainRequestShape: rules.includes("request.resource.data.inputText.size() <= 1200") && rules.includes("request.resource.data.requestKind in ['general', 'task_create']"),
   rulesRequireExplicitConfirmation: rules.includes("match /assistantActionRequests/{actionRequestId}") && rules.includes("request.resource.data.confirmedParameters") && rules.includes("get(/databases/$(database)/documents/assistantProposals/$(request.resource.data.proposalId)).data.confirmationRequired == true"),
   rulesDenyClientActionUpdates: rules.includes("allow update, delete: if false;"),
-  frontendTabIsAdminOnly: app.includes('["assistant", "Assistant"]') && app.includes('["admin", "assistant"].includes(id) || isInfoAdmin()'),
+  frontendTabIsAdminOnly: app.includes('["assistant", "Assistant"]')
+    && app.includes('["studio", "Studio questionnaires"]')
+    && app.includes('!["admin", "assistant", "studio"].includes(id) || isInfoAdmin()'),
   frontendCreatesPrivateRequest: app.includes('source: "assistant_admin_private_pilot"') && app.includes('requestKind: "task_create"'),
   frontendQuickMissionUsesConfirmation: app.includes('data-form="assistantTaskDraft"') && app.includes('data-form="assistantTaskConfirm"') && app.includes("confirmAssistantTaskProposal"),
   frontendKeepsManualFallback: app.includes('data-mode="manual"') && app.includes('data-form="quickNote"'),

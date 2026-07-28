@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f3f6f8">
+  <meta name="description" content="Questionnaire membre CFSB">
+  <title>Questionnaire | CFSB</title>
+  <link rel="canonical" id="canonicalLink" href="/questionnaire/f/">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/questionnaire/f/questionnaire-public.css">
+</head>
+<body>
+  <main class="page-shell">
+    <header class="brand-header">
+      <a class="brand" href="/" aria-label="CrossFit St-Basile">
+        <span class="brand-mark" aria-hidden="true">CFSB</span>
+        <span>
+          <strong>CrossFit St-Basile</strong>
+          <small>Suivi membre</small>
+        </span>
+      </a>
+    </header>
+
+    <section class="state-card loading-state" id="loadingState" role="status" aria-live="polite">
+      <span class="spinner" aria-hidden="true"></span>
+      <div>
+        <h1>Chargement du questionnaire</h1>
+        <p>Un instant, on prépare le formulaire.</p>
+      </div>
+    </section>
+
+    <section class="state-card" id="errorState" hidden>
+      <p class="state-eyebrow">Impossible de continuer</p>
+      <h1 id="errorTitle">Le questionnaire n’a pas pu être chargé.</h1>
+      <p id="errorMessage">Vérifie ta connexion, puis réessaie.</p>
+      <button class="button button-secondary state-action" id="retryButton" type="button">Réessayer</button>
+    </section>
+
+    <section class="state-card" id="inactiveState" hidden>
+      <p class="state-eyebrow">Questionnaire non disponible</p>
+      <h1>Ce questionnaire n’est plus actif.</h1>
+      <p>Le lien est valide, mais le formulaire n’accepte présentement plus de réponses. Communique avec ton coach ou avec l’équipe CFSB si tu crois qu’il s’agit d’une erreur.</p>
+    </section>
+
+    <section class="questionnaire-shell" id="questionnaireView" hidden aria-labelledby="questionnaireTitle">
+      <header class="questionnaire-header">
+        <p class="eyebrow">Questionnaire CFSB</p>
+        <h1 id="questionnaireTitle"></h1>
+        <p class="questionnaire-intro" id="questionnaireDescription"></p>
+      </header>
+
+      <div class="progress-wrap" id="progressWrap" aria-live="polite">
+        <div class="progress-meta">
+          <span id="progressText"></span>
+          <span id="progressSection"></span>
+        </div>
+        <div class="progress-track" aria-hidden="true">
+          <div class="progress-bar" id="progressBar"></div>
+        </div>
+      </div>
+
+      <form id="questionnaireForm" class="questionnaire-form">
+        <div class="honeypot-field" aria-hidden="true">
+          <label for="companyWebsite">Laisse ce champ vide</label>
+          <input id="companyWebsite" name="company_website" type="text" tabindex="-1" autocomplete="off">
+        </div>
+
+        <div id="formPages"></div>
+
+        <div class="form-message form-error" id="formError" role="alert" tabindex="-1" hidden></div>
+      </form>
+    </section>
+
+    <section class="state-card success-state" id="successState" role="status" aria-live="polite" hidden>
+      <span class="success-icon" aria-hidden="true">✓</span>
+      <p class="state-eyebrow">Réponse reçue</p>
+      <h1 id="successTitle">Merci d’avoir pris le temps.</h1>
+      <p id="successMessage">Ta réponse a bien été transmise à l’équipe CFSB.</p>
+    </section>
+
+    <noscript>
+      <section class="state-card">
+        <h1>JavaScript est requis</h1>
+        <p>Active JavaScript dans ton navigateur pour remplir ce questionnaire.</p>
+      </section>
+    </noscript>
+  </main>
+
+  <footer class="form-actions" id="formActions" hidden>
+    <div class="form-actions-inner">
+      <button class="button button-secondary" id="previousButton" type="button">Retour</button>
+      <button class="button button-primary" id="nextButton" type="button">Continuer</button>
+      <button class="button button-primary" id="submitButton" type="submit" form="questionnaireForm" hidden>Envoyer mes réponses</button>
+    </div>
+  </footer>
+
+  <script type="module" src="/questionnaire/f/questionnaire-public.js"></script>
+</body>
+</html>

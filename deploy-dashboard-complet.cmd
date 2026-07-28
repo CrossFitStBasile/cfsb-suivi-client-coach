@@ -6,6 +6,18 @@ echo Publication COMPLETE du Dashboard Coach sur Firebase...
 echo Dossier: %cd%
 echo.
 
+if exist "%~dp0firebase-dashboard\QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md" (
+  echo STOP: ce candidat exige une publication Questionnaire Studio par etapes.
+  echo.
+  echo Utilise d'abord deploy-questionnaire-stage-a.cmd, execute les canaris du
+  echo runbook, puis utilise deploy-questionnaire-stage-b.cmd.
+  echo.
+  echo Le deploy complet reste bloque tant que le garde
+  echo firebase-dashboard\QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md est present.
+  call :maybe_pause
+  exit /b 1
+)
+
 set "FIREBASE_BIN=firebase"
 set "FIREBASE_CACHE=%USERPROFILE%\.cache\cfsb-dashboard-tools"
 set "FIREBASE_LOCAL_CMD=%FIREBASE_CACHE%\firebase-tools-clean\node_modules\.bin\firebase.cmd"

@@ -24,6 +24,10 @@ const {
   isTerminalTaskStatus,
   preserveImportedTaskLifecycle
 } = require("./task-import");
+const {
+  QuestionnaireServiceError,
+  createQuestionnaireService
+} = require("./questionnaire-service");
 
 admin.initializeApp();
 
@@ -61,26 +65,30 @@ const TERMINAL_SYNC_REQUEST_STATUSES = new Set(["done", "error", "failed", "canc
 const GHL_API_BASE = "https://services.leadconnectorhq.com";
 const GHL_API_VERSION = "2021-07-28";
 const GHL_LOCATION_ID = "hWM7E7ZXB88LWDmjezKU";
-const QUESTIONNAIRE_URL = "https://cfsb-dashboard-coach-aa9a4.web.app/questionnaire/";
+const GHL_REQUEST_TIMEOUT_MS = 8 * 1000;
+const QUESTIONNAIRE_URL = "https://cfsb-dashboard-coach-aa9a4.web.app/";
 const DEFAULT_QUESTIONNAIRE_TYPE = "suivi_global";
 const QUESTIONNAIRE_TYPES = {
   suivi_global: {
     type: "suivi_global",
     label: "Globale check",
     ghlTag: "dashboardcoach",
-    path: "/questionnaire/"
+    path: "/questionnaire/",
+    settings: { kind: "quarterly", cadenceDays: [90] }
   },
   habitudes_quotidiennes: {
     type: "habitudes_quotidiennes",
     label: "Check-in",
     ghlTag: "suiviregulier",
-    path: "/questionnaire/check-in/"
+    path: "/questionnaire/check-in/",
+    settings: { kind: "check_in", cadenceDays: [14, 28] }
   },
   evaluation_habitudes_vie: {
     type: "evaluation_habitudes_vie",
     label: "Evaluation habitudes de vie",
     ghlTag: "evaluationnutrition",
-    path: "/questionnaire/evaluation-habitudes-vie/"
+    path: "/questionnaire/evaluation-habitudes-vie/",
+    settings: { kind: "assessment", cadenceDays: [] }
   }
 };
 const QUESTIONNAIRE_TAG = QUESTIONNAIRE_TYPES[DEFAULT_QUESTIONNAIRE_TYPE].ghlTag;
@@ -137,6 +145,13 @@ const PILOT_COACHES = [
   { id: "15937", coachRxId: "15937", name: "Hugo Lelievre", email: "hugolelievre34@gmail.com", aliases: ["Hugo Lelievre", "Hugo Lelièvre"] },
   { id: "15936", coachRxId: "15936", name: "Raphael Samson", email: "raphael.samson@usherbrooke.ca", aliases: ["Raphael Samson", "Raphaël Samson"] }
 ];
+const questionnaireService = createQuestionnaireService({
+  db,
+  admin,
+  clientRecordAvailableForMatching,
+  clientPhone,
+  coachDirectory: PILOT_COACHES
+});
 
 // Client ownership is a security boundary: an imported roster must never be
 // assigned to a coach from a weak name guess or an unverified browser payload.
@@ -857,6 +872,239 @@ exports.processVoiceMissionRequest = onDocumentCreated(
   }
 );
 
+function questionnaireAdminActor(request) {
+  return {
+    uid: cleanString(request.auth?.uid),
+    email: cleanString(request.auth?.token?.email)
+  };
+}
+
+function questionnaireCallableError(error) {
+  if (error instanceof HttpsError) return error;
+  const status = Number(error?.status || 500);
+  let code = "internal";
+  if (status === 400 || status === 413) code = "invalid-argument";
+  if (status === 401) code = "unauthenticated";
+  if (status === 403) code = "permission-denied";
+  if (status === 404) code = "not-found";
+  if (status === 409) code = "aborted";
+  if (status === 429) code = "resource-exhausted";
+  return new HttpsError(
+    code,
+    cleanString(error?.message || "Erreur du Studio de questionnaires."),
+    { questionnaireCode: cleanString(error?.code || "QUESTIONNAIRE_ERROR") }
+  );
+}
+
+exports.listQuestionnaireForms = onCall(
+  { region: "us-central1", invoker: "public", timeoutSeconds: 60 },
+  async (request) => {
+    await requireAdminProfile(request);
+    try {
+      const forms = await questionnaireService.listForms(
+        questionnaireAdminActor(request),
+        {
+          initialize:
+            request.data?.initialize !== false &&
+            request.data?.initializeTemplates !== false
+        }
+      );
+      return { ok: true, forms };
+    } catch (error) {
+      throw questionnaireCallableError(error);
+    }
+  }
+);
+
+exports.saveQuestionnaireDraft = onCall(
+  { region: "us-central1", invoker: "public", timeoutSeconds: 60 },
+  async (request) => {
+    await requireAdminProfile(request);
+    try {
+      const form = await questionnaireService.saveDraft(
+        questionnaireAdminActor(request),
+        request.data || {}
+      );
+      return { ok: true, form };
+    } catch (error) {
+      throw questionnaireCallableError(error);
+    }
+  }
+);
+
+exports.publishQuestionnaireForm = onCall(
+  { region: "us-central1", invoker: "public", timeoutSeconds: 60 },
+  async (request) => {
+    await requireAdminProfile(request);
+    try {
+      const form = await questionnaireService.publishForm(
+        questionnaireAdminActor(request),
+        request.data || {}
+      );
+      return { ok: true, form };
+    } catch (error) {
+      throw questionnaireCallableError(error);
+    }
+  }
+);
+
+exports.setQuestionnaireDeliveryReady = onCall(
+  { region: "us-central1", invoker: "public", timeoutSeconds: 60 },
+  async (request) => {
+    await requireAdminProfile(request);
+    try {
+      const form = await questionnaireService.setDeliveryReady(
+        questionnaireAdminActor(request),
+        request.data || {}
+      );
+      return { ok: true, form };
+    } catch (error) {
+      throw questionnaireCallableError(error);
+    }
+  }
+);
+
+exports.archiveQuestionnaireForm = onCall(
+  { region: "us-central1", invoker: "public", timeoutSeconds: 60 },
+  async (request) => {
+    await requireAdminProfile(request);
+    try {
+      const form = await questionnaireService.archiveForm(
+        questionnaireAdminActor(request),
+        request.data || {}
+      );
+      return { ok: true, form };
+    } catch (error) {
+      throw questionnaireCallableError(error);
+    }
+  }
+);
+
+exports.duplicateQuestionnaireForm = onCall(
+  { region: "us-central1", invoker: "public", timeoutSeconds: 60 },
+  async (request) => {
+    await requireAdminProfile(request);
+    try {
+      const form = await questionnaireService.duplicateForm(
+        questionnaireAdminActor(request),
+        request.data || {}
+      );
+      return { ok: true, form };
+    } catch (error) {
+      throw questionnaireCallableError(error);
+    }
+  }
+);
+
+function allowedQuestionnaireOrigin(origin) {
+  const value = cleanString(origin);
+  if (!value) return "";
+  if ([
+    "https://cfsb-dashboard-coach-aa9a4.web.app",
+    "https://cfsb-dashboard-coach-aa9a4.firebaseapp.com"
+  ].includes(value)) return value;
+  if (/^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d{2,5})?$/.test(value)) return value;
+  return "";
+}
+
+function writeQuestionnaireApiError(response, error) {
+  const serviceError = error instanceof QuestionnaireServiceError
+    ? error
+    : new QuestionnaireServiceError(
+      cleanString(error?.code || "INTERNAL_ERROR").toUpperCase(),
+      error?.status && Number(error.status) < 500
+        ? cleanString(error.message)
+        : "Le questionnaire ne peut pas etre traite pour le moment.",
+      { status: Number(error?.status || 500) }
+    );
+  response.status(serviceError.status || 500).json({
+    ok: false,
+    error: {
+      code: cleanString(serviceError.code || "QUESTIONNAIRE_ERROR").toUpperCase(),
+      message: cleanString(serviceError.message || "La demande a echoue.")
+    }
+  });
+}
+
+exports.questionnairePublicApi = onRequest(
+  {
+    region: "us-central1",
+    invoker: "public",
+    timeoutSeconds: 60,
+    memory: "256MiB"
+  },
+  async (request, response) => {
+    response.set("Cache-Control", "no-store");
+    response.set("Content-Type", "application/json; charset=utf-8");
+    response.set("X-Content-Type-Options", "nosniff");
+    response.set("Referrer-Policy", "no-referrer");
+    const allowedOrigin = allowedQuestionnaireOrigin(request.get("origin"));
+    if (allowedOrigin) {
+      response.set("Access-Control-Allow-Origin", allowedOrigin);
+      response.set("Vary", "Origin");
+    } else if (request.get("origin")) {
+      response.status(403).json({
+        ok: false,
+        error: { code: "ORIGIN_NOT_ALLOWED", message: "Origine non permise." }
+      });
+      return;
+    }
+    if (request.method === "OPTIONS") {
+      response.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+      response.set("Access-Control-Allow-Headers", "Content-Type,Accept");
+      response.status(204).send("");
+      return;
+    }
+    if (!["GET", "POST"].includes(request.method)) {
+      response.set("Allow", "GET, POST, OPTIONS");
+      response.status(405).json({
+        ok: false,
+        error: { code: "METHOD_NOT_ALLOWED", message: "Methode non permise." }
+      });
+      return;
+    }
+    const slug = cleanString(request.query?.slug);
+    if (!slug) {
+      response.status(400).json({
+        ok: false,
+        error: { code: "SLUG_REQUIRED", message: "Adresse de questionnaire incomplete." }
+      });
+      return;
+    }
+    try {
+      if (request.method === "GET") {
+        response.status(200).json(await questionnaireService.getPublicForm(slug));
+        return;
+      }
+      let body = request.body;
+      try {
+        if (Buffer.isBuffer(body)) body = JSON.parse(body.toString("utf8"));
+        if (typeof body === "string") body = JSON.parse(body);
+      } catch (_error) {
+        throw new QuestionnaireServiceError(
+          "INVALID_JSON",
+          "Le contenu JSON de la reponse est invalide.",
+          { status: 400 }
+        );
+      }
+      if (!body || typeof body !== "object" || Array.isArray(body)) {
+        throw new QuestionnaireServiceError(
+          "INVALID_BODY",
+          "Le contenu de la reponse est invalide.",
+          { status: 400 }
+        );
+      }
+      const result = await questionnaireService.submitPublicForm(slug, body, {
+        ip: request.ip || request.get("x-forwarded-for") || "",
+        userAgent: request.get("user-agent") || ""
+      });
+      response.status(200).json(result);
+    } catch (error) {
+      writeQuestionnaireApiError(response, error);
+    }
+  }
+);
+
 exports.sendQuestionnaire = onCall(
   {
     region: "us-central1",
@@ -912,8 +1160,17 @@ exports.sendQuestionnaire = onCall(
       );
     }
 
-    const phoneNormalized = clientPhone(client);
-    const questionnaire = questionnaireConfig(request.data?.questionnaireType);
+    const phoneNormalized = validQuestionnairePhone(clientPhone(client));
+    const questionnaire = await resolveQuestionnaireConfig({
+      formId: request.data?.formId,
+      type: request.data?.questionnaireType
+    });
+    if (!questionnaireDeliveryIsReady(questionnaire)) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Le workflow GHL de ce questionnaire n'a pas encore ete verifie."
+      );
+    }
     const requestedSendId = cleanString(request.data?.sendId);
     const sendRef = requestedSendId && /^[A-Za-z0-9_-]{8,80}$/.test(requestedSendId)
       ? db.collection("questionnaireSends").doc(requestedSendId)
@@ -923,6 +1180,30 @@ exports.sendQuestionnaire = onCall(
       const existingSend = existingSendSnap.data() || {};
       if (cleanString(existingSend.coachId) !== coachId || cleanString(existingSend.clientId) !== clientId) {
         throw new HttpsError("permission-denied", "Cette tentative questionnaire ne correspond pas au client.");
+      }
+      if (
+        cleanString(existingSend.status) === "sent" ||
+        cleanString(existingSend.deliveryStatus) === "tag_added"
+      ) {
+        return {
+          ok: true,
+          duplicate: true,
+          sendId: sendRef.id,
+          status: "sent",
+          message: `${questionnaire.label} avait deja ete transmis pour cette tentative.`
+        };
+      }
+      if (
+        cleanString(existingSend.status) === "pending" &&
+        ["backend_processing", "ghl_pending"].includes(cleanString(existingSend.deliveryStatus))
+      ) {
+        return {
+          ok: true,
+          duplicate: true,
+          sendId: sendRef.id,
+          status: "pending",
+          message: "Cette tentative d'envoi est deja en traitement."
+        };
       }
     }
     const baseAttempt = {
@@ -935,8 +1216,10 @@ exports.sendQuestionnaire = onCall(
       deliveryStatus: "ghl_pending",
       questionnaireType: questionnaire.type,
       questionnaireLabel: questionnaire.label,
+      formId: questionnaire.formId || "",
+      formVersionId: questionnaire.activeVersionId || "",
       ghlTag: questionnaire.ghlTag,
-      questionnaireUrl: buildQuestionnaireUrl(phoneNormalized, client.name, client.email, coachName, questionnaire),
+      questionnaireUrl: questionnairePublicUrl(questionnaire),
       requestedByUid: request.auth.uid,
       requestedByEmail: request.auth.token.email || "",
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -946,7 +1229,7 @@ exports.sendQuestionnaire = onCall(
     await sendRef.set(baseAttempt, { merge: true });
 
     if (!phoneNormalized) {
-      const message = "Telephone manquant. L'envoi et le matching se font par telephone.";
+      const message = "Telephone invalide. Un numero a 10 chiffres est requis pour l'envoi.";
       await markSend(sendRef, {
         status: "error",
         deliveryStatus: "missing_phone",
@@ -969,7 +1252,7 @@ exports.sendQuestionnaire = onCall(
     try {
       const contact = await findGhlContactByPhone({ token, locationId: GHL_LOCATION_ID, phoneNormalized });
       if (!contact?.id) {
-        const message = `Contact GHL introuvable pour le telephone ${phoneNormalized}.`;
+        const message = "Contact GHL introuvable pour le numero confirme dans la fiche client.";
         await markSend(sendRef, {
           status: "error",
           deliveryStatus: "contact_not_found",
@@ -1027,12 +1310,19 @@ exports.processQuestionnaireSendRequest = onDocumentCreated(
     await processQuestionnaireSendFromQueue({
       sendRef: snap.ref,
       sendId: event.params.sendId,
-      send
+      send,
+      eventId: cleanString(event.id || event.params.sendId)
     });
   }
 );
 
-async function processQuestionnaireSendFromQueue({ sendRef, send }) {
+async function processQuestionnaireSendFromQueue({ sendRef, send, eventId }) {
+  const claimedSend = await claimQueuedQuestionnaireSend(sendRef, {
+    eventId,
+    allowedSources: ["dashboard_questionnaire_send_click", "dashboard_questionnaire_scheduled"]
+  });
+  if (!claimedSend) return;
+  send = claimedSend;
   const clientId = cleanString(send.clientId);
   const requestedByUid = cleanString(send.requestedByUid);
   if (!clientId) {
@@ -1043,12 +1333,6 @@ async function processQuestionnaireSendFromQueue({ sendRef, send }) {
     });
     return;
   }
-
-  await markSend(sendRef, {
-    status: "pending",
-    deliveryStatus: "backend_processing",
-    processedBy: "processQuestionnaireSendRequest"
-  });
 
   const [clientSnap, profileSnap] = await Promise.all([
     db.doc(`clients/${clientId}`).get(),
@@ -1116,8 +1400,29 @@ async function processQuestionnaireSendFromQueue({ sendRef, send }) {
   const coachSnap = coachId ? await db.doc(`coaches/${coachId}`).get() : null;
   const pilotCoach = PILOT_COACHES.find((coach) => coach.id === coachId || coach.coachRxId === coachId);
   const coachName = cleanString(client.coachName || coachSnap?.data()?.name || pilotCoach?.name || "");
-  const phoneNormalized = clientPhone(client) || normalizePhone(send.clientPhoneNormalized);
-  const questionnaire = questionnaireConfig(send.questionnaireType);
+  const phoneNormalized = validQuestionnairePhone(clientPhone(client));
+  let questionnaire;
+  try {
+    questionnaire = await resolveQuestionnaireConfig({
+      formId: send.formId,
+      type: send.questionnaireType
+    });
+  } catch (error) {
+    await markSend(sendRef, {
+      status: "error",
+      deliveryStatus: "questionnaire_not_published",
+      errorMessage: cleanString(error?.message || "Questionnaire publie introuvable.").slice(0, 240)
+    });
+    return;
+  }
+  if (!questionnaireDeliveryIsReady(questionnaire)) {
+    await markSend(sendRef, {
+      status: "error",
+      deliveryStatus: "workflow_not_verified",
+      errorMessage: "Le workflow GHL de ce questionnaire n'a pas encore ete verifie."
+    });
+    return;
+  }
 
   await sendRef.set({
     coachId,
@@ -1129,14 +1434,16 @@ async function processQuestionnaireSendFromQueue({ sendRef, send }) {
     deliveryStatus: "ghl_pending",
     questionnaireType: questionnaire.type,
     questionnaireLabel: questionnaire.label,
+    formId: questionnaire.formId || "",
+    formVersionId: questionnaire.activeVersionId || "",
     ghlTag: questionnaire.ghlTag,
-    questionnaireUrl: buildQuestionnaireUrl(phoneNormalized, client.name, client.email, coachName, questionnaire),
+    questionnaireUrl: questionnairePublicUrl(questionnaire),
     processedBy: "processQuestionnaireSendRequest",
     updatedAt: admin.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
 
   if (!phoneNormalized) {
-    const message = "Telephone manquant. L'envoi et le matching se font par telephone.";
+    const message = "Telephone invalide. Un numero a 10 chiffres est requis pour l'envoi.";
     await markSend(sendRef, {
       status: "error",
       deliveryStatus: "missing_phone",
@@ -1159,7 +1466,7 @@ async function processQuestionnaireSendFromQueue({ sendRef, send }) {
   try {
     const contact = await findGhlContactByPhone({ token, locationId: GHL_LOCATION_ID, phoneNormalized });
     if (!contact?.id) {
-      const message = `Contact GHL introuvable pour le telephone ${phoneNormalized}.`;
+      const message = "Contact GHL introuvable pour le numero confirme dans la fiche client.";
       await markSend(sendRef, {
         status: "error",
         deliveryStatus: "contact_not_found",
@@ -1290,42 +1597,89 @@ exports.scheduledQuestionnaireSendPlans = onSchedule(
         continue;
       }
 
-      const sendRef = db.collection("questionnaireSends").doc(`scheduled_${docSnap.id}_${today}`);
-      const sendSnap = await sendRef.get();
-      if (sendSnap.exists) {
-        const nextSendAt = nextQuestionnaireScheduleDate(schedule.frequency, today);
+      let questionnaire;
+      try {
+        questionnaire = await resolveQuestionnaireConfig({
+          formId: schedule.formId,
+          type: schedule.questionnaireType
+        });
+      } catch (error) {
         skipped += 1;
         batch.set(docSnap.ref, {
-          nextSendAt,
-          status: schedule.frequency === "once" ? "paused" : "active",
+          status: "paused",
+          lastError: cleanString(error?.message || "Questionnaire publie introuvable.").slice(0, 240),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+        continue;
+      }
+      if (!questionnaireDeliveryIsReady(questionnaire)) {
+        skipped += 1;
+        batch.set(docSnap.ref, {
+          status: "paused",
+          lastError: "Planification suspendue: workflow GHL non verifie pour ce questionnaire.",
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+        continue;
+      }
+      const usesLegacyScheduleBridge = !cleanString(schedule.formId)
+        && Object.prototype.hasOwnProperty.call(
+          QUESTIONNAIRE_TYPES,
+          cleanString(schedule.questionnaireType)
+        );
+      const scheduledClientPhone = validQuestionnairePhone(
+        usesLegacyScheduleBridge
+          ? schedule.clientPhoneNormalized
+          : clientPhone(client)
+      );
+      if (!scheduledClientPhone) {
+        skipped += 1;
+        batch.set(docSnap.ref, {
+          status: "paused",
+          lastError: "Planification suspendue: telephone client invalide ou incomplet.",
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+        continue;
+      }
+      if (!questionnaireScheduleFrequencyIsAllowed(questionnaire, schedule.frequency)) {
+        skipped += 1;
+        batch.set(docSnap.ref, {
+          status: "paused",
+          lastError: "Planification suspendue: cadence incompatible avec ce questionnaire.",
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         }, { merge: true });
         continue;
       }
 
+      const sendRef = db.collection("questionnaireSends").doc(`scheduled_${docSnap.id}_${today}`);
+      const sendSnap = await sendRef.get();
       const nextSendAt = nextQuestionnaireScheduleDate(schedule.frequency, today);
       const nextStatus = schedule.frequency === "once" ? "paused" : "active";
-      const questionnaire = questionnaireConfig(schedule.questionnaireType);
+      if (sendSnap.exists) {
+        skipped += 1;
+        batch.set(docSnap.ref, {
+          nextSendAt,
+          status: nextStatus,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+        continue;
+      }
+
       batch.set(sendRef, {
         coachId,
         coachRxId: cleanString(schedule.coachRxId),
         coachName: cleanString(schedule.coachName),
         clientId,
         clientName: cleanString(schedule.clientName),
-        clientPhoneNormalized: normalizePhone(schedule.clientPhoneNormalized),
+        clientPhoneNormalized: scheduledClientPhone,
         status: "pending",
         deliveryStatus: "firestore_queue_pending",
         errorMessage: "",
         questionnaireType: questionnaire.type,
         questionnaireLabel: questionnaire.label,
+        formId: questionnaire.formId || "",
+        formVersionId: questionnaire.activeVersionId || "",
         ghlTag: questionnaire.ghlTag,
-        questionnaireUrl: buildQuestionnaireUrl(
-          normalizePhone(schedule.clientPhoneNormalized),
-          schedule.clientName,
-          "",
-          schedule.coachName,
-          questionnaire
-        ),
+        questionnaireUrl: questionnairePublicUrl(questionnaire),
         requestedByUid: cleanString(schedule.requestedByUid),
         requestedByEmail: cleanString(schedule.requestedByEmail),
         questionnaireScheduleId: docSnap.id,
@@ -8414,48 +8768,83 @@ function questionnaireActionType(triageStatus) {
 }
 
 async function findGhlContactByPhone({ token, locationId, phoneNormalized }) {
-  const phoneCandidates = phoneSearchCandidates(phoneNormalized);
-  let lastError = null;
+  const expectedPhone = validQuestionnairePhone(phoneNormalized);
+  if (!expectedPhone) return null;
+  const phoneCandidates = phoneSearchCandidates(expectedPhone);
+  const searchErrors = [];
+  const exactById = new Map();
+  const collectExact = (contacts) => {
+    exactGhlContactsByPhone(contacts, expectedPhone)
+      .forEach((contact) => exactById.set(cleanString(contact.id), contact));
+  };
 
-  for (const phone of phoneCandidates) {
-    try {
-      const duplicateUrl = new URL(`${GHL_API_BASE}/contacts/search/duplicate`);
-      duplicateUrl.searchParams.set("locationId", locationId);
-      duplicateUrl.searchParams.set("phone", phone);
-      const duplicate = await ghlFetch(token, duplicateUrl, { method: "GET" });
-      const contact = exactGhlContactByPhone(
-        [duplicate?.contact, ...(duplicate?.contacts || []), duplicate],
-        phoneNormalized
-      );
-      if (contact?.id) return contact;
-    } catch (error) {
-      lastError = error;
-    }
+  await Promise.all(phoneCandidates.flatMap((phone) => [
+    (async () => {
+      try {
+        const duplicateUrl = new URL(`${GHL_API_BASE}/contacts/search/duplicate`);
+        duplicateUrl.searchParams.set("locationId", locationId);
+        duplicateUrl.searchParams.set("phone", phone);
+        const duplicate = await ghlFetch(token, duplicateUrl, { method: "GET" });
+        collectExact(
+          [duplicate?.contact, ...(duplicate?.contacts || []), duplicate],
+        );
+      } catch (error) {
+        // The duplicate endpoint uses 404 to mean "no matching contact".
+        // Any other failure makes uniqueness unverifiable and must fail closed.
+        if (error?.status !== 404) searchErrors.push(error);
+      }
+    })(),
+    (async () => {
+      try {
+        const contactsUrl = new URL(`${GHL_API_BASE}/contacts/`);
+        contactsUrl.searchParams.set("locationId", locationId);
+        contactsUrl.searchParams.set("query", phone);
+        contactsUrl.searchParams.set("limit", "100");
+        const result = await ghlFetch(token, contactsUrl, { method: "GET" });
+        const contacts = result?.contacts || result?.data || [];
+        const total = Number(result?.meta?.total ?? result?.total ?? contacts.length);
+        if (Number.isFinite(total) && total > contacts.length) {
+          const error = new Error(
+            "La recherche GHL est tronquee; l'unicite du telephone est impossible a prouver."
+          );
+          error.status = 409;
+          throw error;
+        }
+        collectExact(contacts);
+      } catch (error) {
+        // The list endpoint is required to detect duplicate exact matches.
+        searchErrors.push(error);
+      }
+    })()
+  ]));
 
-    try {
-      const contactsUrl = new URL(`${GHL_API_BASE}/contacts/`);
-      contactsUrl.searchParams.set("locationId", locationId);
-      contactsUrl.searchParams.set("query", phone);
-      contactsUrl.searchParams.set("limit", "10");
-      const result = await ghlFetch(token, contactsUrl, { method: "GET" });
-      const contacts = result?.contacts || result?.data || [];
-      const exact = exactGhlContactByPhone(contacts, phoneNormalized);
-      if (exact?.id) return exact;
-    } catch (error) {
-      lastError = error;
-    }
+  if (searchErrors.length) {
+    throw searchErrors.find((error) => error?.status === 401)
+      || searchErrors.find((error) => error?.status === 429)
+      || searchErrors[0];
   }
-
-  if (lastError?.status === 401) throw lastError;
+  if (exactById.size === 1) return [...exactById.values()][0];
+  if (exactById.size > 1) return null;
   return null;
 }
 
-function exactGhlContactByPhone(contacts, phoneNormalized) {
+function exactGhlContactsByPhone(contacts, phoneNormalized) {
   const expected = normalizePhone(phoneNormalized);
-  if (!expected) return null;
-  return (contacts || [])
+  if (!expected) return [];
+  const exactById = new Map();
+  (contacts || [])
     .filter(Boolean)
-    .find((contact) => contact?.id && ghlContactPhones(contact).includes(expected)) || null;
+    .filter((contact) =>
+      cleanString(contact?.id) &&
+      ghlContactPhones(contact).includes(expected)
+    )
+    .forEach((contact) => exactById.set(cleanString(contact.id), contact));
+  return [...exactById.values()];
+}
+
+function exactGhlContactByPhone(contacts, phoneNormalized) {
+  const matches = exactGhlContactsByPhone(contacts, phoneNormalized);
+  return matches.length === 1 ? matches[0] : null;
 }
 
 function ghlContactPhones(contact) {
@@ -8509,6 +8898,7 @@ async function addGhlTag({ token, contactId, tag }) {
 async function ghlFetch(token, url, options = {}) {
   const response = await fetch(url, {
     ...options,
+    signal: options.signal || AbortSignal.timeout(GHL_REQUEST_TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${token}`,
       Version: GHL_API_VERSION,
@@ -8544,28 +8934,163 @@ async function markSend(ref, patch) {
   });
 }
 
+async function claimQueuedQuestionnaireSend(ref, {
+  eventId = "",
+  allowedSources = []
+} = {}) {
+  const normalizedEventId = cleanString(eventId);
+  return db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(ref);
+    if (!snap.exists) return null;
+    const current = snap.data() || {};
+    const status = cleanString(current.status);
+    const deliveryStatus = cleanString(current.deliveryStatus);
+    const source = cleanString(current.source);
+    if (allowedSources.length && !allowedSources.includes(source)) return null;
+    if (
+      ["sent", "cancelled"].includes(status) ||
+      ["tag_added", "cancelled"].includes(deliveryStatus)
+    ) {
+      return null;
+    }
+    if (
+      deliveryStatus === "backend_processing" &&
+      cleanString(current.processingEventId) &&
+      cleanString(current.processingEventId) !== normalizedEventId
+    ) {
+      return null;
+    }
+    if (
+      deliveryStatus &&
+      ![
+        "firestore_queue_pending",
+        "firebase_function_pending",
+        "backend_processing"
+      ].includes(deliveryStatus)
+    ) {
+      return null;
+    }
+    transaction.update(ref, {
+      status: "pending",
+      deliveryStatus: "backend_processing",
+      processedBy: "processQuestionnaireSendRequest",
+      processingEventId: normalizedEventId,
+      processingStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    return current;
+  });
+}
+
 function questionnaireConfig(type) {
   const clean = cleanString(type);
   return QUESTIONNAIRE_TYPES[clean] || QUESTIONNAIRE_TYPES[DEFAULT_QUESTIONNAIRE_TYPE];
 }
 
-function buildQuestionnaireUrl(phoneNormalized, clientName, clientEmail, coachName, questionnaire = null) {
+async function resolveQuestionnaireConfig({ formId = "", type = "" } = {}) {
+  const cleanFormId = cleanString(formId)
+    || (cleanString(type).startsWith("studio:") ? cleanString(type).slice("studio:".length) : "");
+  let catalogSnap = null;
+  if (cleanFormId) {
+    catalogSnap = await db.collection("questionnaireCatalog").doc(cleanFormId).get();
+  }
+
+  if (catalogSnap?.exists) {
+    const catalog = catalogSnap.data() || {};
+    if (catalog.status !== "published") {
+      throw new HttpsError("failed-precondition", "Ce questionnaire n'est pas publie.");
+    }
+    const catalogFormId = cleanString(catalog.formId || catalogSnap.id);
+    const legacyType = cleanString(catalog.legacyType);
+    const publicUrl = questionnairePublicUrl({
+      publicUrl: cleanString(catalog.publicUrl),
+      path: cleanString(catalog.publicPath)
+    });
+    const resolved = {
+      type: legacyType || `studio:${catalogFormId}`,
+      label: cleanString(catalog.label || catalog.title) || "Questionnaire",
+      ghlTag: cleanString(catalog.ghlTag),
+      publicUrl,
+      path: cleanString(catalog.publicPath),
+      formId: catalogFormId,
+      activeVersionId: cleanString(catalog.activeVersionId),
+      deliveryReady: catalog.deliveryReady === true,
+      settings: catalog.settings && typeof catalog.settings === "object"
+        ? catalog.settings
+        : {}
+    };
+    if (!resolved.ghlTag || !resolved.publicUrl || !resolved.activeVersionId) {
+      throw new HttpsError("failed-precondition", "Publication questionnaire incomplete: tag, URL ou version manquante.");
+    }
+    return resolved;
+  }
+
+  const requestedType = cleanString(type);
+  if (
+    cleanFormId ||
+    (requestedType && !Object.prototype.hasOwnProperty.call(QUESTIONNAIRE_TYPES, requestedType))
+  ) {
+    throw new HttpsError(
+      "failed-precondition",
+      "Ce questionnaire est introuvable ou n'est plus publié."
+    );
+  }
+  const legacy = questionnaireConfig(requestedType);
+  return {
+    ...legacy,
+    publicUrl: questionnairePublicUrl(legacy),
+    formId: "",
+    activeVersionId: "",
+    deliveryReady: true
+  };
+}
+
+function questionnaireDeliveryIsReady(questionnaire = {}) {
+  return !cleanString(questionnaire.formId) || questionnaire.deliveryReady === true;
+}
+
+function questionnairePublicUrl(questionnaire = null) {
   const config = questionnaire || questionnaireConfig();
-  const url = new URL(config.path || "/questionnaire/", QUESTIONNAIRE_URL);
-  url.searchParams.set("phone", phoneNormalized);
-  if (clientName) url.searchParams.set("client_name", clientName);
-  if (clientEmail) url.searchParams.set("client_email", clientEmail);
+  const url = new URL(config.publicUrl || config.path || "/questionnaire/", QUESTIONNAIRE_URL);
+  url.search = "";
+  url.hash = "";
   return url.toString();
 }
 
+function questionnaireScheduleAllowedFrequencies(questionnaire = {}) {
+  const formId = cleanString(questionnaire.formId);
+  const kind = cleanString(questionnaire.settings?.kind).toLowerCase();
+  // A record without formId was created by the live pre-Studio Dashboard.
+  // Preserve its historical cadence until a coach explicitly saves it from
+  // the Studio-aware UI, which adds a formId and activates the tighter rules.
+  if (!formId) {
+    return ["once", "weekly", "every_2_weeks", "monthly", "every_4_weeks", "quarterly"];
+  }
+  if (kind === "check_in") {
+    return ["every_2_weeks", "every_4_weeks"];
+  }
+  if (kind === "quarterly") {
+    return ["quarterly"];
+  }
+  return ["once", "weekly", "every_2_weeks", "monthly", "every_4_weeks", "quarterly"];
+}
+
+function questionnaireScheduleFrequencyIsAllowed(questionnaire, frequency) {
+  return questionnaireScheduleAllowedFrequencies(questionnaire)
+    .includes(cleanString(frequency));
+}
+
+function buildQuestionnaireUrl(phoneNormalized, clientName, clientEmail, coachName, questionnaire = null) {
+  const config = questionnaire || questionnaireConfig();
+  return questionnairePublicUrl(config);
+}
+
 function phoneSearchCandidates(phoneNormalized) {
-  const digits = normalizePhone(phoneNormalized);
+  const digits = validQuestionnairePhone(phoneNormalized);
+  if (!digits) return [];
   const candidates = new Set([digits]);
   if (digits.length === 10) {
     candidates.add(`+1${digits}`);
-    candidates.add(`1${digits}`);
-    candidates.add(`(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`);
-    candidates.add(`${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`);
   }
   return [...candidates];
 }
@@ -8587,6 +9112,11 @@ function normalizePhone(value) {
   const digits = String(value || "").replace(/\D/g, "");
   if (digits.length === 11 && digits.startsWith("1")) return digits.slice(1);
   return digits;
+}
+
+function validQuestionnairePhone(value) {
+  const phone = normalizePhone(value);
+  return /^\d{10}$/.test(phone) ? phone : "";
 }
 
 function cleanString(value) {

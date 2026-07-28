@@ -6,6 +6,44 @@ echo Publication du Dashboard Coach sur Firebase...
 echo Dossier: %cd%
 echo.
 
+if exist "%~dp0firebase-dashboard\QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md" if /I not "%CFSB_QUESTIONNAIRE_STAGE_A_VERIFIED%"=="YES" (
+  echo STOP: ce candidat ne peut pas publier Hosting avant le canari backend.
+  echo.
+  echo Utilise deploy-questionnaire-stage-a.cmd, complete les controles du
+  echo runbook, puis lance deploy-questionnaire-stage-b.cmd.
+  echo.
+  call :maybe_pause
+  exit /b 1
+)
+if exist "%~dp0firebase-dashboard\QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md" if /I not "%CFSB_QUESTIONNAIRE_STAGE_B_GO%"=="YES" (
+  echo STOP: ce candidat exige aussi un GO Stage B explicite.
+  echo.
+  echo Utilise deploy-questionnaire-stage-b.cmd apres le canari backend.
+  echo.
+  call :maybe_pause
+  exit /b 1
+)
+if not exist "%~dp0firebase-dashboard\QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md" goto :questionnaire_guard_complete
+if "%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%"=="" (
+  echo STOP: commit Questionnaire Studio scelle manquant.
+  call :maybe_pause
+  exit /b 1
+)
+for /f %%H in ('git rev-parse HEAD 2^>nul') do set "CURRENT_RELEASE_COMMIT=%%H"
+if /I not "%CURRENT_RELEASE_COMMIT%"=="%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" (
+  echo STOP: HEAD %CURRENT_RELEASE_COMMIT% ne correspond pas au candidat scelle
+  echo %CFSB_QUESTIONNAIRE_RELEASE_COMMIT%.
+  call :maybe_pause
+  exit /b 1
+)
+for /f "delims=" %%S in ('git status --porcelain --untracked-files^=all') do (
+  echo STOP: le worktree contient des changements apres le scellement.
+  git status --short
+  call :maybe_pause
+  exit /b 1
+)
+:questionnaire_guard_complete
+
 set "FIREBASE_BIN=firebase"
 set "FIREBASE_CACHE=%USERPROFILE%\.cache\cfsb-dashboard-tools"
 set "FIREBASE_LOCAL_CMD=%FIREBASE_CACHE%\firebase-tools-clean\node_modules\.bin\firebase.cmd"
@@ -84,12 +122,22 @@ if errorlevel 1 (
 )
 
 set "DEPLOY_LOG=%~dp0firebase-hosting-deploy-last.log"
+set "DRY_RUN_LOG=%~dp0firebase-hosting-dry-run-last.log"
 set "FIREBASE_AUTH_ARGS="
 if not "%FIREBASE_TOKEN%"=="" (
   set "FIREBASE_AUTH_ARGS=--token %FIREBASE_TOKEN%"
   echo Auth Firebase: FIREBASE_TOKEN detecte.
 ) else (
   echo Auth Firebase: session interactive Firebase CLI.
+)
+call "%FIREBASE_BIN%" deploy --dry-run --project cfsb-dashboard-coach-aa9a4 --only hosting %FIREBASE_AUTH_ARGS% > "%DRY_RUN_LOG%" 2>&1
+set "DRY_RUN_CODE=%ERRORLEVEL%"
+if exist "%DRY_RUN_LOG%" type "%DRY_RUN_LOG%"
+if not "%DRY_RUN_CODE%"=="0" (
+  echo.
+  echo ECHEC DU DRY-RUN HOSTING. Aucun deploy Hosting lance.
+  call :maybe_pause
+  exit /b 1
 )
 call "%FIREBASE_BIN%" deploy --project cfsb-dashboard-coach-aa9a4 --only hosting %FIREBASE_AUTH_ARGS% > "%DEPLOY_LOG%" 2>&1
 set "DEPLOY_CODE=%ERRORLEVEL%"

@@ -7,7 +7,7 @@
     "node": "22"
   },
   "scripts": {
-    "lint": "node --check index.js && node --check sync-status.js && node --check task-import.js",
+    "lint": "node --check index.js && node --check sync-status.js && node --check task-import.js && node --check questionnaire-studio.js && node --check questionnaire-service.js",
     "test": "node --test"
   },
   "dependencies": {

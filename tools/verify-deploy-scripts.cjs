@@ -7,6 +7,13 @@ const files = {
   publishMvp: path.join(root, "publier-dashboard-mvp.cmd"),
   deployComplete: path.join(root, "deploy-dashboard-complet.cmd"),
   deployHosting: path.join(root, "deploy-hosting-dashboard.cmd"),
+  deployQuestionnaireStageA: path.join(root, "deploy-questionnaire-stage-a.cmd"),
+  deployQuestionnaireStageB: path.join(root, "deploy-questionnaire-stage-b.cmd"),
+  questionnaireStagedReleaseGuard: path.join(
+    root,
+    "firebase-dashboard",
+    "QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md"
+  ),
   openFirebaseConsole: path.join(root, "ouvrir-console-firebase.cmd"),
   login: path.join(root, "firebase-login-dashboard.cmd"),
   loginCi: path.join(root, "firebase-login-ci-token.cmd"),
@@ -25,6 +32,20 @@ const firebaseConfig = JSON.parse(source.firebaseJson);
 const checks = [];
 const completeDeployCommand = "deploy --project cfsb-dashboard-coach-aa9a4 --only hosting,functions,firestore:rules,firestore:indexes,storage";
 const hostingDeployCommand = "deploy --project cfsb-dashboard-coach-aa9a4 --only hosting";
+const questionnaireAdditiveFunctionTargets = [
+  "functions:listQuestionnaireForms",
+  "functions:saveQuestionnaireDraft",
+  "functions:publishQuestionnaireForm",
+  "functions:setQuestionnaireDeliveryReady",
+  "functions:archiveQuestionnaireForm",
+  "functions:duplicateQuestionnaireForm",
+  "functions:questionnairePublicApi"
+];
+const questionnaireLegacyFunctionTargets = [
+  "functions:sendQuestionnaire",
+  "functions:processQuestionnaireSendRequest",
+  "functions:scheduledQuestionnaireSendPlans"
+];
 
 function check(name, passed, detail = "") {
   checks.push({ name, passed: Boolean(passed), detail });
@@ -47,6 +68,20 @@ check(
 );
 
 check(
+  "questionnaire gate protects hosting functions and firestore targets",
+  firebaseConfig.hosting?.predeploy?.includes(
+    "node tools/verify-questionnaire-reconciled-candidate.mjs"
+  )
+    && firebaseConfig.functions?.predeploy?.includes(
+      "node tools/verify-questionnaire-reconciled-candidate.mjs"
+    )
+    && firebaseConfig.firestore?.predeploy?.includes(
+      "node tools/verify-questionnaire-reconciled-candidate.mjs"
+    ),
+  "La gate Questionnaire Studio doit s'executer pour chaque cible Firebase mutable du candidat."
+);
+
+check(
   "MVP publish wrapper chains login hosting validation and audit",
   source.publishMvp.includes("firebase-login-dashboard.cmd")
     && source.publishMvp.includes("deploy-hosting-dashboard.cmd")
@@ -66,6 +101,67 @@ check(
   source.deployComplete.includes('call "%~dp0verify-dashboard-before-deploy.cmd"')
     && source.deployComplete.indexOf('call "%~dp0verify-dashboard-before-deploy.cmd"') < source.deployComplete.indexOf(completeDeployCommand),
   "Le deploy complet doit lancer le pipeline local avant Firebase deploy."
+);
+
+check(
+  "questionnaire candidate blocks unsafe aggregate deploys",
+  source.deployComplete.includes("QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md")
+    && source.deployComplete.includes("deploy-questionnaire-stage-a.cmd")
+    && source.deployComplete.includes("deploy-questionnaire-stage-b.cmd")
+    && source.deployComplete.indexOf("QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md")
+      < source.deployComplete.indexOf(completeDeployCommand)
+    && source.deployHosting.includes("QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md")
+    && source.deployHosting.includes("CFSB_QUESTIONNAIRE_STAGE_A_VERIFIED")
+    && source.deployHosting.includes("CFSB_QUESTIONNAIRE_STAGE_B_GO")
+    && source.deployHosting.includes("CFSB_QUESTIONNAIRE_RELEASE_COMMIT")
+    && source.deployHosting.includes("git status --porcelain")
+    && source.deployHosting.indexOf("QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md")
+      < source.deployHosting.indexOf(hostingDeployCommand)
+    && source.questionnaireStagedReleaseGuard.includes("déploiement groupé")
+    && source.questionnaireStagedReleaseGuard.includes("canari backend"),
+  "Le candidat questionnaire doit interdire le deploy complet et tout Hosting publie avant son backend canari."
+);
+
+check(
+  "questionnaire staged scripts require explicit go notice and canaries",
+  includesAll(source.deployQuestionnaireStageA, [
+    "CFSB_QUESTIONNAIRE_RELEASE_GO",
+    "CFSB_COACH_NOTICE_CONFIRMED",
+    "CFSB_QUESTIONNAIRE_RELEASE_COMMIT",
+    "git status --porcelain",
+    "verify-firebase-auth-ready.cjs",
+    "verify-questionnaire-reconciled-candidate.mjs",
+    "verify-dashboard-before-deploy.cmd",
+    'set "DEPLOY_ONLY=firestore:rules,firestore:indexes"',
+    "CFSB_QUESTIONNAIRE_RULES_CANARY_OK",
+    "CFSB_QUESTIONNAIRE_ADDITIVE_CANARY_OK",
+    "CFSB_QUESTIONNAIRE_STAGE_A_VERIFIED",
+    "deploy --dry-run",
+    "ARRET HUMAIN OBLIGATOIRE"
+  ])
+    && questionnaireAdditiveFunctionTargets.every((target) =>
+      source.deployQuestionnaireStageA.includes(target)
+    )
+    && questionnaireLegacyFunctionTargets.every((target) =>
+      source.deployQuestionnaireStageA.includes(target)
+    )
+    && !source.deployQuestionnaireStageA.includes(
+      'set "DEPLOY_ONLY=functions,firestore:rules,firestore:indexes"'
+    )
+    && source.deployQuestionnaireStageA.indexOf("deploy --dry-run")
+      < source.deployQuestionnaireStageA.indexOf("deploy --project")
+    && includesAll(source.deployQuestionnaireStageB, [
+      "CFSB_QUESTIONNAIRE_STAGE_A_VERIFIED",
+      "CFSB_QUESTIONNAIRE_STAGE_B_GO",
+      "CFSB_QUESTIONNAIRE_RELEASE_COMMIT",
+      "git status --porcelain",
+      "deploy-hosting-dashboard.cmd",
+      "verify-questionnaire-live-continuity.mjs",
+      "deliveryReady=false"
+    ])
+    && source.deployHosting.includes("deploy --dry-run")
+    && source.deployHosting.indexOf("deploy --dry-run") < source.deployHosting.indexOf(hostingDeployCommand),
+  "Stage A doit exiger GO + avis coach et Stage B doit exiger la preuve des canaris avant Hosting."
 );
 
 check(
@@ -231,8 +327,11 @@ check(
     "verify-firebase-deploy-contract.cjs",
     "verify-dashboard-product-audit.cjs",
     "verify-dashboard-mvp-readiness.cjs",
-    "verify-dashboard-docs-current-state.cjs"
-  ]),
+    "verify-dashboard-docs-current-state.cjs",
+    "verify-questionnaire-reconciled-candidate.mjs"
+  ])
+    && source.validation.includes("DEPENDANCES FUNCTIONS MANQUANTES")
+    && source.validation.includes("npm ci --prefix functions"),
   "Le script de validation doit executer tous les verificateurs critiques."
 );
 
@@ -262,4 +361,3 @@ const result = {
 
 console.log(JSON.stringify(result, null, 2));
 if (failures.length) process.exit(1);
-

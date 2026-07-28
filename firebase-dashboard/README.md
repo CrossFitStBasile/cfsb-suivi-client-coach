@@ -34,7 +34,13 @@ Cette base contient:
 
 La V1 Firebase remplace le prototype lent Apps Script pour l'interface quotidienne: les clics, les fiches clients, les to-do, les questionnaires, le rebooking, les impacts et les alumni vivent maintenant dans Firestore.
 
-Les actions qui exigent un secret serveur restent volontairement non exposees dans le front-end. L'envoi SMS GoHighLevel du questionnaire passe par la Cloud Function `sendQuestionnaire`, qui utilise le secret Firebase `GHL_PRIVATE_TOKEN` pour ajouter le tag GHL `dashboardcoach` sans publier de token dans l'application.
+Les actions qui exigent un secret serveur restent volontairement non exposees
+dans le front-end. Les trois parcours historiques utilisent encore leurs tags
+GHL existants (`dashboardcoach`, `suiviregulier`, `evaluationnutrition`). Les
+formulaires Studio utilisent des tags uniques, sans donnee client dans l'URL, et
+restent interdits d'envoi tant que `deliveryReady` n'a pas ete confirme apres
+deux canaris. La Cloud Function `sendQuestionnaire` utilise le secret Firebase
+`GHL_PRIVATE_TOKEN` sans publier de token dans l'application.
 
 Le pilote IA suit la meme regle: le navigateur ne contient aucune cle de modele. Il cree une demande privee dans Firestore; une Function verifie de nouveau l'identite admin, construit un contexte minimal et appelle Vertex AI cote serveur. Une demande generale reste en lecture seule. Depuis `+ Mission`, l'admin peut ecrire ou dicter sa demande. Le vocal est transporte temporairement par morceaux prives, transcrit cote serveur, puis supprime. L'IA prepare une proposition `task.create`, mais seul le backend peut creer la mission apres une confirmation explicite et une seconde validation des droits. Voir `ASSISTANT_ADMIN_PILOT.md`.
 
@@ -50,6 +56,8 @@ Le pilote IA suit la meme regle: le navigateur ne contient aucune cle de modele.
 - `APPS_SCRIPT_FIREBASE_BRIDGE.md` : contrat technique pour envoyer des donnees Apps Script directement dans Firestore via Cloud Function securisee.
 - `apps-script/dashboard-import-bridge-template.gs` : template a copier dans les Apps Script prives pour pousser CoachRx, CSM, GHL, questionnaires, rebooking ou check-ups vers Firestore.
 - `DEPLOY_RUNBOOK.md` : procedure de publication Firebase et commandes Windows fiables.
+- `QUESTIONNAIRE_RELEASE_RUNBOOK_20260728.md` : publication Stage A/Stage B,
+  canaris, avis coach et rollback exacts pour le candidat Questionnaire Studio.
 - `PILOT_VALIDATION_CHECKLIST.md` : preuves a obtenir pour declarer la version pilote utilisable.
 - `PILOT_HANDOFF.md` : etat courant, blocage de publication, tests post-deploiement et prochaine passe recommandee.
 
@@ -101,7 +109,17 @@ Depuis la racine du repo, utiliser de preference les scripts Windows:
 
 Voir aussi `DEPLOY_RUNBOOK.md` pour la procedure detaillee et les commandes `cmd` a utiliser.
 
-Le deploiement complet est requis quand on modifie l'envoi questionnaire, les regles Firestore, les index ou les synchronisations backend. Le deploiement hosting seul suffit pour les changements visuels.
+Exception obligatoire pour le candidat Questionnaire Studio du 2026-07-28 :
+`deploy-dashboard-complet.cmd` et le Hosting direct sont bloques. Utiliser
+`deploy-questionnaire-stage-a.cmd rules`, puis `additive`, puis `legacy`, avec
+un canari et un arret humain entre chaque sous-etape; utiliser ensuite
+`deploy-questionnaire-stage-b.cmd` avec un GO distinct. Le garde reste en place
+jusqu'a une decision de generalisation separee.
+
+En dehors de ce candidat garde, le deploiement complet est requis quand on
+modifie l'envoi questionnaire, les regles Firestore, les index ou les
+synchronisations backend. Le deploiement Hosting seul suffit pour les changements
+visuels.
 
 Si Firebase refuse la publication avec une erreur d'authentification, lancer d'abord `firebase-login-dashboard.cmd`, puis relancer le script de deploiement voulu.
 

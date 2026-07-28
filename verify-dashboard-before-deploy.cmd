@@ -6,6 +6,10 @@ echo Validation locale du Dashboard Coach avant publication...
 echo Dossier: %cd%
 echo.
 
+if not exist "functions\node_modules\firebase-admin\package.json" goto missing_functions_dependencies
+if not exist "functions\node_modules\firebase-functions\package.json" goto missing_functions_dependencies
+if not exist "functions\node_modules\@google\genai\package.json" goto missing_functions_dependencies
+
 if defined CFSB_NODE_EXE (
   set "NODE_EXE=%CFSB_NODE_EXE%"
 ) else (
@@ -237,8 +241,21 @@ echo 35/35 Dependances Google-only et liens formulaires stables...
 if errorlevel 1 goto fail
 
 echo.
+echo 36/36 Porte complete de reconciliation Questionnaire Studio...
+"%NODE_EXE%" "tools\verify-questionnaire-reconciled-candidate.mjs"
+if errorlevel 1 goto fail
+
+echo.
 echo Validation locale reussie.
 exit /b 0
+
+:missing_functions_dependencies
+echo.
+echo DEPENDANCES FUNCTIONS MANQUANTES.
+echo Installe exactement functions\package-lock.json avec Node/npm 22:
+echo   npm ci --prefix functions
+echo Puis relance verify-dashboard-before-deploy.cmd.
+goto fail
 
 :fail
 echo.

@@ -44,7 +44,7 @@ test("the library exposes exactly the three canonical generic questionnaire URLs
 
 test("the manual library never introduces client personalization or send tracking", () => {
   const libraryStart = app.indexOf("function renderQuestionnaireLibraryModal()");
-  const libraryEnd = app.indexOf("function questionnaireUrlForClient", libraryStart);
+  const libraryEnd = app.indexOf("function renderQuestionnaireSendModal()", libraryStart);
   assert.ok(libraryStart >= 0 && libraryEnd > libraryStart);
   const librarySource = app.slice(libraryStart, libraryEnd);
 
@@ -77,11 +77,139 @@ test("the library is visible, versioned and responsive", () => {
     app,
     /data-action="openQuestionnaireLibrary" aria-haspopup="dialog">Formulaires a partager<\/button>/
   );
-  assert.match(index, /styles\.css\?v=20260728-questionnaire-library/);
-  assert.match(index, /app\.js\?v=20260728-questionnaire-library/);
+  assert.match(index, /styles\.css\?v=20260728-questionnaire-studio-library/);
+  assert.match(index, /app\.js\?v=20260728-questionnaire-studio-library/);
   assert.match(styles, /\.questionnaire-library-grid/);
   assert.match(styles, /\.questionnaire-library-actions/);
   assert.match(styles, /@media \(max-width: 680px\)/);
+});
+
+test("the dynamic catalog adds published forms and removes archived tombstones", () => {
+  const functionStart = app.indexOf("function availableQuestionnaireTypes()");
+  const functionEnd = app.indexOf("function deliverableQuestionnaireTypes(", functionStart);
+  assert.ok(functionStart >= 0 && functionEnd > functionStart);
+  const availableQuestionnaireTypes = vm.runInNewContext(
+    `(${app.slice(functionStart, functionEnd)})`,
+    {
+      QUESTIONNAIRE_TYPES: questionnaireTypes,
+      state: { data: { questionnaireCatalog: [] } }
+    }
+  );
+
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(availableQuestionnaireTypes().map((item) => item.type))),
+    ["suivi_global", "habitudes_quotidiennes", "evaluation_habitudes_vie"]
+  );
+
+  const publishedCatalog = [
+    ...questionnaireTypes.map((item, index) => ({
+      id: `form_legacy_${index}`,
+      formId: `form_legacy_${index}`,
+      legacyType: item.type,
+      status: "published",
+      label: item.label,
+      libraryLabel: item.libraryLabel,
+      ghlTag: item.ghlTag,
+      publicUrl: `https://cfsb-dashboard-coach-aa9a4.web.app/questionnaire/f/legacy-${index}`,
+      activeVersionId: `version_legacy_${index}`
+    })),
+    {
+      id: "form_reperes",
+      formId: "form_reperes",
+      status: "published",
+      label: "Repères CFSB",
+      libraryLabel: "Repères CFSB",
+      ghlTag: "reperescfsb",
+      publicUrl: "https://cfsb-dashboard-coach-aa9a4.web.app/questionnaire/f/reperes-cfsb",
+      activeVersionId: "version_reperes"
+    },
+    {
+      id: "form_fifth",
+      formId: "form_fifth",
+      status: "published",
+      label: "Formulaire cinq",
+      libraryLabel: "Formulaire cinq",
+      ghlTag: "formulairecinq",
+      publicUrl: "https://cfsb-dashboard-coach-aa9a4.web.app/questionnaire/f/formulaire-cinq",
+      activeVersionId: "version_fifth"
+    }
+  ];
+  const publishedTypes = vm.runInNewContext(
+    `(${app.slice(functionStart, functionEnd)})`,
+    {
+      QUESTIONNAIRE_TYPES: questionnaireTypes,
+      state: { data: { questionnaireCatalog: publishedCatalog } }
+    }
+  )();
+  assert.equal(publishedTypes.some((item) => item.type === "studio:form_fifth"), true);
+
+  const archivedCatalog = publishedCatalog.map((item) => (
+    item.formId === "form_fifth" ? { ...item, status: "archived" } : item
+  ));
+  const withoutArchived = vm.runInNewContext(
+    `(${app.slice(functionStart, functionEnd)})`,
+    {
+      QUESTIONNAIRE_TYPES: questionnaireTypes,
+      state: { data: { questionnaireCatalog: archivedCatalog } }
+    }
+  )();
+  assert.equal(withoutArchived.some((item) => item.type === "studio:form_fifth"), false);
+});
+
+test("automated delivery keeps legacy workflows until a Studio canary is verified", () => {
+  const availableStart = app.indexOf("function availableQuestionnaireTypes()");
+  const deliveryStart = app.indexOf("function deliverableQuestionnaireTypes(", availableStart);
+  const deliveryEnd = app.indexOf("function questionnaireTypeConfig(", deliveryStart);
+  assert.ok(availableStart >= 0 && deliveryStart > availableStart && deliveryEnd > deliveryStart);
+  const functionsSource = app.slice(availableStart, deliveryEnd);
+  const baseCatalog = [
+    {
+      id: "check_in_express",
+      formId: "check_in_express",
+      legacyType: "habitudes_quotidiennes",
+      status: "published",
+      label: "Check-in express",
+      ghlTag: "cfsb-check-in-express-v1",
+      publicUrl: "https://cfsb-dashboard-coach-aa9a4.web.app/questionnaire/f/check-in-express",
+      activeVersionId: "check_in_express_v1",
+      deliveryReady: false
+    },
+    {
+      id: "reperes_cfsb",
+      formId: "reperes_cfsb",
+      status: "published",
+      label: "Repères CFSB",
+      ghlTag: "cfsb-reperes-v1",
+      publicUrl: "https://cfsb-dashboard-coach-aa9a4.web.app/questionnaire/f/reperes-cfsb",
+      activeVersionId: "reperes_cfsb_v1",
+      deliveryReady: false
+    }
+  ];
+  const evaluate = (questionnaireCatalog) => vm.runInNewContext(
+    `${functionsSource}\ndeliverableQuestionnaireTypes()`,
+    {
+      QUESTIONNAIRE_TYPES: questionnaireTypes,
+      state: { data: { questionnaireCatalog } }
+    }
+  );
+
+  const beforeCanary = JSON.parse(JSON.stringify(evaluate(baseCatalog)));
+  assert.equal(beforeCanary.length, 3);
+  assert.equal(
+    beforeCanary.find((item) => item.type === "habitudes_quotidiennes").formId,
+    ""
+  );
+  assert.equal(beforeCanary.some((item) => item.type === "studio:reperes_cfsb"), false);
+
+  const afterCanary = JSON.parse(JSON.stringify(evaluate(baseCatalog.map((item) => ({
+    ...item,
+    deliveryReady: true
+  })))));
+  assert.equal(
+    afterCanary.find((item) => item.type === "habitudes_quotidiennes").formId,
+    "check_in_express"
+  );
+  assert.equal(afterCanary.some((item) => item.type === "studio:reperes_cfsb"), true);
 });
 
 test("dashboard dialogs manage keyboard focus", () => {

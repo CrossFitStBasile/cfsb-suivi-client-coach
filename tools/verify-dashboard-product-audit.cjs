@@ -198,7 +198,7 @@ check(
     && app.includes('return "Tache";')
     && app.includes("source-review")
     && app.includes("isNonActionableLegacyTask(task)")
-    && app.includes('state.tab === "todo" ? "" : renderCoachSyncStatus()')
+    && app.includes('["todo", "studio"].includes(state.tab) ? "" : renderCoachSyncStatus()')
     && !app.includes("${renderTodoImportDiagnostic(tasks)}")
     && !app.includes("sourceReview ?")
     && functions.includes("normalizeImportedTaskTitle")
@@ -256,7 +256,7 @@ check(
     && app.includes('if (!isInfoAdmin()) return "";')
     && app.includes("Derniere sync")
     && !app.includes("warnings.map(escapeHtml).join")
-    && app.includes('state.tab === "todo" ? "" : renderCoachSyncStatus()'),
+    && app.includes('["todo", "studio"].includes(state.tab) ? "" : renderCoachSyncStatus()'),
   "Une sync terminee avec avertissements de donnees ne doit pas etre presentee comme un echec; les diagnostics detailles restent dans Admin/Guide."
 );
 
@@ -339,9 +339,10 @@ check(
   "envoi questionnaire sans jargon GHL pour coach",
   app.includes("const sendExplanation = isAdminView")
     && app.includes("Le questionnaire sera envoye au client selectionne si son telephone est confirme dans sa fiche.")
-    && app.includes("Le dashboard ajoute le tag GHL dashboardcoach")
+    && app.includes("Le dashboard ajoute uniquement le tag GHL du formulaire.")
     && app.includes("${escapeHtml(sendExplanation)}")
-    && !app.includes("Le dashboard ajoute le tag GHL dashboardcoach au contact trouve par telephone. Le workflow GHL envoie ensuite le SMS.\n        ${clientsMissingPhone"),
+    && !app.includes("Le dashboard ajoute le tag GHL dashboardcoach au contact trouve par telephone. Le workflow GHL envoie ensuite le SMS.\n        ${clientsMissingPhone")
+    && !app.includes("Le dashboard ajoute le tag GHL dashboardcoach"),
   "La modale d'envoi questionnaire doit parler en action coach; le tag/workflow GHL reste une information admin."
 );
 

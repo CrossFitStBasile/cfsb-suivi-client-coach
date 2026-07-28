@@ -60,6 +60,11 @@ const helperNames = [
   "selectableClientsForCoach",
   "selectableClientForCoach",
   "requireSelectableClientForCoach",
+  "clientBlocksDailyWork",
+  "clientSupportsDailyWorkForCoach",
+  "operationalClientsForCoach",
+  "operationalClientForCoach",
+  "requireOperationalClientForCoach",
   "activeClients",
   "isInfoAdmin",
   "uniqueById",
@@ -144,6 +149,16 @@ const marcNeedsReview = {
   ownershipStatus: "needs_review",
   clientSelectable: false
 };
+const marcConflict = {
+  id: "marc-conflict",
+  coachId: "15935",
+  name: "Membre en conflit",
+  phoneNormalized: "5145554000",
+  status: "active",
+  entityType: "member",
+  ownershipStatus: "conflict",
+  clientSelectable: false
+};
 const marcLegacyUnknown = {
   id: "marc-legacy",
   coachId: "15935",
@@ -166,6 +181,7 @@ const sandbox = {
         marcSecondMember,
         marcStaff,
         marcNeedsReview,
+        marcConflict,
         marcLegacyUnknown
       ]
     }
@@ -178,6 +194,9 @@ vm.runInNewContext(`${helpers}\nglobalThis.__clientIntegrity = {
   selectableClientsForCoach,
   selectableClientForCoach,
   requireSelectableClientForCoach,
+  operationalClientsForCoach,
+  operationalClientForCoach,
+  requireOperationalClientForCoach,
   activeClients,
   isActiveClient,
   operationalRecordClientLinkStatus,
@@ -202,16 +221,18 @@ const clientsSubscription = source.slice(
   source.indexOf('subscribeCollection("clients"'),
   source.indexOf('subscribeCollection("questionnaireResponses"')
 );
-const selectorFunctions = [
+const operationalSelectorFunctions = [
   "renderQuickNoteModal",
   "renderAssistantMissionStep",
+  "renderRebookingFormModal"
+];
+const strictSelectorFunctions = [
   "renderQuestionnaireSendModal",
   "questionnaireSendClientOptions",
   "renderQuestionnaireLinkClientModal",
-  "renderRebookingFormModal",
   "renderRebookingLinkClientModal"
 ];
-const guardedSubmissionFunctions = [
+const operationalSubmissionFunctions = [
   "createAssistantTaskDraft",
   "createAssistantVoiceTaskDraft",
   "confirmAssistantTaskProposal",
@@ -220,15 +241,17 @@ const guardedSubmissionFunctions = [
   "saveClientTrainingTarget",
   "saveClientPhoneFix",
   "createRebooking",
+  "toggleQuestionnaireSchedule",
+  "cancelQuestionnaireSend",
+  "createMissionFromQuestionnaireResponse"
+];
+const strictSubmissionFunctions = [
   "excludePerformanceNewClient",
   "moveClientToAlumni",
   "deleteClient",
   "journalQuestionnaireSend",
   "saveQuestionnaireSchedule",
-  "toggleQuestionnaireSchedule",
-  "cancelQuestionnaireSend",
   "createQuestionnaireFollowupTask",
-  "createMissionFromQuestionnaireResponse",
   "linkQuestionnaireResponseToClient",
   "linkRebookingToClient"
 ];
@@ -245,7 +268,8 @@ const taskSubscription = source.slice(
   source.indexOf('subscribeCollection("tasks"'),
   source.indexOf('subscribeCollection("clients"')
 );
-const blockedTask = { id: "task-blocked", clientId: "marc-review", status: "open", title: "Action bloquee" };
+const reviewTask = { id: "task-review", clientId: "marc-review", status: "open", title: "Suivi interne permis" };
+const blockedTask = { id: "task-blocked", clientId: "marc-conflict", status: "open", title: "Action bloquee" };
 const validTask = { id: "task-valid", clientId: "marc-member", status: "open", title: "Action valide" };
 const unlinkedTask = { id: "task-unlinked", status: "open", title: "Action generale" };
 const results = {
@@ -284,9 +308,11 @@ const results = {
     "deleted"
   ].every((status) => !h.isActiveClient({ status })
     && !h.selectableClientsForCoach("15935", [{ ...marcMember, id: `inactive-${status}`, status }]).length),
-  activeClientsUsesStrictPortfolio: JSON.stringify(h.activeClients().map((client) => client.id).sort()) === JSON.stringify(["marc-member", "marc-member-2"]),
+  activeClientsPreserveInternalFollowupDuringReview: JSON.stringify(h.activeClients().map((client) => client.id).sort())
+    === JSON.stringify(["marc-member", "marc-member-2", "marc-review"]),
   requireSelectableRejectsStaff: invalidClientRejected,
-  linkedOperationalRecordsFailClosed: !h.operationalRecordHasSafeClientLink(blockedTask)
+  linkedOperationalRecordsBlockConflictsButPermitReview: !h.operationalRecordHasSafeClientLink(blockedTask)
+    && h.operationalRecordHasSafeClientLink(reviewTask)
     && h.operationalRecordHasSafeClientLink(validTask)
     && h.operationalRecordHasSafeClientLink(unlinkedTask),
   unlinkedClassificationIsRoleIndependentAndIdOnly: h.operationalRecordClientLinkStatus({
@@ -299,11 +325,13 @@ const results = {
     && h.isOpenTask(validTask)
     && taskSubscription.includes(".filter(isOpenTaskLifecycle)")
     && !taskSubscription.includes(".filter(isOpenTask)"),
-  blockedTasksAreNotOperational: !h.isOpenTask(blockedTask)
+  conflictedTasksAreNotOperationalButReviewTasksRemainVisible: !h.isOpenTask(blockedTask)
+    && h.isOpenTask(reviewTask)
     && h.isOpenTask(validTask)
     && h.isOpenTask(unlinkedTask),
-  portfolioRecordsExcludeBlockedLinks: JSON.stringify(h.portfolioOperationalRecords([blockedTask, validTask, unlinkedTask]).map((item) => item.id))
-    === JSON.stringify(["task-valid", "task-unlinked"]),
+  portfolioRecordsExcludeConflictsAndKeepReviewFollowup: JSON.stringify(
+    h.portfolioOperationalRecords([blockedTask, reviewTask, validTask, unlinkedTask]).map((item) => item.id)
+  ) === JSON.stringify(["task-review", "task-valid", "task-unlinked"]),
   subscriptionFiltersBeforeMerge: subscribeCollectionSource.indexOf("firestoreItemBelongsToCoach") >= 0
     && subscribeCollectionSource.indexOf("firestoreItemBelongsToCoach") < subscribeCollectionSource.indexOf("merged.set"),
   clientOwnershipPrecedesDedupe: clientsSubscription.indexOf("items.filter") >= 0
@@ -314,8 +342,14 @@ const results = {
     && subscribeCollectionSource.includes("rejectedSetter([...rejected.values()])")
     && renderAdminSource.includes("state.data.rejectedClients")
     && renderAdminSource.includes("uniqueById(["),
-  allSelectorsUseSharedPortfolio: selectorFunctions.every((name) => functionIncludes(name, "selectableClient")),
-  allClientBoundSubmissionsFailClosed: guardedSubmissionFunctions.every((name) => functionIncludes(name, "requireSelectableClientForCoach")),
+  ordinaryInternalSelectorsUseOperationalPortfolio: operationalSelectorFunctions
+    .every((name) => functionIncludes(name, "operationalClient")),
+  outreachAndLinkingSelectorsRequireConfirmedPortfolio: strictSelectorFunctions
+    .every((name) => functionIncludes(name, "selectableClient")),
+  ordinaryInternalSubmissionsUseOperationalGuard: operationalSubmissionFunctions
+    .every((name) => functionIncludes(name, "requireOperationalClientForCoach")),
+  outreachOwnershipAndLinkingSubmissionsRequireConfirmedGuard: strictSubmissionFunctions
+    .every((name) => functionIncludes(name, "requireSelectableClientForCoach")),
   manualCreationWritesEntityAndOwnership: createClientSource.includes('entityType: "member"')
     && createClientSource.includes('ownershipStatus: "confirmed"')
     && createClientSource.includes('clientSelectable: true')

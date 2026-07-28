@@ -10,11 +10,14 @@ firebase-debug*.txt
 firebase-deploy*.log
 firebase-deploy*.txt
 firebase-hosting*.log
+firebase-questionnaire-stage-*.log
 ff-*.txt
 functions/functions.yaml
 work/
 .google-source/
 google-source-snapshots/
 firebase-login-*.cmd
+!firebase-login-dashboard.cmd
+!firebase-login-ci-token.cmd
 *.source-snapshot.tar.gz
 *.source-snapshot.zip

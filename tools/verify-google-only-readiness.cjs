@@ -30,7 +30,8 @@ check(
 );
 check(
   "Le formulaire Firebase Hosting existe",
-  hostedForm.includes('const APP_VERSION = "firebase-hosting-v1-google-only";'),
+  hostedForm.includes('const QUESTIONNAIRE_TYPE = "suivi_global";')
+    && hostedForm.includes("/questionnaire/questionnaire-submission.js"),
   "firebase-dashboard/public/questionnaire/index.html"
 );
 check(
@@ -55,7 +56,9 @@ check(
 );
 check(
   "Les Functions generent les liens Firebase",
-  functions.includes(`const QUESTIONNAIRE_URL = "${expectedQuestionnaireUrl}";`),
+  functions.includes('const QUESTIONNAIRE_URL = "https://cfsb-dashboard-coach-aa9a4.web.app/";')
+    && functions.includes('path: "/questionnaire/"')
+    && functions.includes("function questionnairePublicUrl("),
   expectedQuestionnaireUrl
 );
 check(

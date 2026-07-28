@@ -2,6 +2,12 @@ Etat Hosting confirme le 2026-07-19: le bundle live porte `20260717-client-owner
 
 Version live de reference: `app.js?v=20260717-client-ownership-integrity`.
 
+Candidat local Questionnaire Studio du 2026-07-28:
+`app.js?v=20260728-questionnaire-studio-library`. Cette version n'est pas live;
+elle reste protegee par une publication Stage A/Stage B, des canaris et un GO
+production distincts. Le Dashboard live et ses trois formulaires historiques ne
+sont pas modifies par la preparation locale.
+
 Mise a jour de provenance du 2026-07-17: le bundle Hosting actuellement servi porte `app.js?v=20260717-client-ownership-integrity`. Le correctif Functions de synchronisation du 2026-07-20 reste un deploiement backend cible et ne modifie pas ce bundle Hosting.
 
 La version Google-only deplace l'hebergement du questionnaire de GitHub Pages vers Firebase Hosting sans changer son traitement Apps Script. Les routes live `/questionnaire/` et `/questionnaire/coaches.json` ont ete validees. Le Hosting de production a ete publie depuis un instantane Cloud Storage prive par Cloud Build et le compte de service dedie `dashboard-deployer@...`; verification live stricte 9/9 et contrat Google-only 7/7. Un instantane de cloture contenant le pipeline reproductible a ensuite passe Cloud Build (`bbb56d5a-0a05-4777-8428-f07d8bca02f4`). GitHub reste uniquement un retour arriere pendant la migration du backend et du plan de reprise.

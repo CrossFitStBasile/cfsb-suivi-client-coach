@@ -2,9 +2,7 @@
   "hosting": {
     "site": "cfsb-dashboard-coach-aa9a4",
     "predeploy": [
-      "node tools/verify-hosting-deploy-provenance.cjs",
-      "node --test tests/questionnaire-hotfix.test.mjs",
-      "node --test tests/questionnaire-library.test.mjs"
+      "node tools/verify-questionnaire-reconciled-candidate.mjs"
     ],
     "public": "firebase-dashboard/public",
     "ignore": [
@@ -68,17 +66,34 @@
     ],
     "rewrites": [
       {
+        "source": "/api/questionnaires",
+        "function": {
+          "functionId": "questionnairePublicApi",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/questionnaire/f/**",
+        "destination": "/questionnaire/f/index.html"
+      },
+      {
         "source": "**",
         "destination": "/index.html"
       }
     ]
   },
   "functions": {
-    "source": "functions"
+    "source": "functions",
+    "predeploy": [
+      "node tools/verify-questionnaire-reconciled-candidate.mjs"
+    ]
   },
   "firestore": {
     "rules": "firestore.rules",
-    "indexes": "firestore.indexes.json"
+    "indexes": "firestore.indexes.json",
+    "predeploy": [
+      "node tools/verify-questionnaire-reconciled-candidate.mjs"
+    ]
   },
   "storage": {
     "rules": "storage.rules"

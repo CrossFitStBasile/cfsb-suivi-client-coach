@@ -98,6 +98,254 @@ service cloud.firestore {
         && request.resource.data.coachId == resource.data.coachId;
     }
 
+    function questionnaireLegacyTypeIsKnown() {
+      return request.resource.data.questionnaireType in [
+        'suivi_global',
+        'habitudes_quotidiennes',
+        'evaluation_habitudes_vie'
+      ];
+    }
+
+    function questionnaireCatalogReferenceIsValid() {
+      let formId = request.resource.data.formId;
+      let catalogPath = /databases/$(database)/documents/questionnaireCatalog/$(formId);
+      return request.resource.data.keys().hasAll(['formId'])
+        && formId is string
+        && formId.matches('^[A-Za-z0-9_-]{8,80}$')
+        && exists(catalogPath)
+        && get(catalogPath).data.status == 'published'
+        && (
+          request.resource.data.questionnaireType == 'studio:' + formId
+          || get(catalogPath).data.legacyType == request.resource.data.questionnaireType
+        );
+    }
+
+    function questionnaireCatalogDeliveryIsReady() {
+      let formId = request.resource.data.formId;
+      let catalogPath = /databases/$(database)/documents/questionnaireCatalog/$(formId);
+      return questionnaireCatalogReferenceIsValid()
+        && get(catalogPath).data.deliveryReady == true;
+    }
+
+    // Compatibility bridge: legacy coach payloads remain accepted without a
+    // formId while Studio payloads must reference a published catalog entry.
+    function questionnaireFormReferenceIsValid() {
+      return (
+          questionnaireLegacyTypeIsKnown()
+          && (
+            !request.resource.data.keys().hasAny(['formId'])
+            || request.resource.data.formId == ''
+          )
+        )
+        || questionnaireCatalogDeliveryIsReady();
+    }
+
+    function createsQuestionnaireSendRequest() {
+      return signedIn()
+        && request.resource.data.requestedByUid == request.auth.uid
+        && request.resource.data.source == 'dashboard_questionnaire_send_click'
+        && request.resource.data.status == 'pending'
+        && request.resource.data.deliveryStatus == 'firestore_queue_pending'
+        && request.resource.data.errorMessage == ''
+        && request.resource.data.questionnaireType is string
+        && questionnaireFormReferenceIsValid()
+        && request.resource.data.keys().hasAll([
+          'coachId',
+          'clientId',
+          'status',
+          'deliveryStatus',
+          'questionnaireType',
+          'requestedByUid',
+          'source',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'coachId',
+          'clientId',
+          'clientName',
+          'clientPhoneNormalized',
+          'coachName',
+          'status',
+          'deliveryStatus',
+          'errorMessage',
+          'questionnaireType',
+          'questionnaireLabel',
+          'formId',
+          'formVersionId',
+          'ghlTag',
+          'questionnaireUrl',
+          'requestedByUid',
+          'requestedByEmail',
+          'createdAt',
+          'updatedAt',
+          'source'
+        ]);
+    }
+
+    function coachCancelsQuestionnaireSend() {
+      return keepsPilotCoach()
+        && request.resource.data.status == 'cancelled'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'updatedAt'
+        ]);
+    }
+
+    function coachMarksQuestionnaireFollowupCreated() {
+      return keepsPilotCoach()
+        && resource.data.status == 'sent'
+        && request.resource.data.status == resource.data.status
+        && request.resource.data.keys().hasAll(['followupTaskCreatedAt'])
+        && request.resource.data.followupTaskCreatedAt is timestamp
+        && (
+          !request.resource.data.keys().hasAny(['followupTaskId'])
+          || request.resource.data.followupTaskId is string
+        )
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'followupTaskCreatedAt',
+          'followupTaskId',
+          'updatedAt'
+        ]);
+    }
+
+    function questionnaireScheduleFrequencyIsKnown() {
+      return request.resource.data.frequency in [
+          'once',
+          'weekly',
+          'every_2_weeks',
+          'monthly',
+          'every_4_weeks',
+          'quarterly'
+        ];
+    }
+
+    function questionnaireScheduleMatchesPublishedStudioForm() {
+      let formId = request.resource.data.formId;
+      let catalogPath = /databases/$(database)/documents/questionnaireCatalog/$(formId);
+      return questionnaireCatalogDeliveryIsReady()
+        // Keep the publication condition explicit here as well as in the
+        // shared reference guard: schedule cadence must never trust a draft
+        // or archived catalog entry.
+        && get(catalogPath).data.status == 'published'
+        && (
+          (
+            get(catalogPath).data.settings.kind == 'check_in'
+            && request.resource.data.frequency in ['every_2_weeks', 'every_4_weeks']
+          )
+          || (
+            get(catalogPath).data.settings.kind == 'quarterly'
+            && request.resource.data.frequency == 'quarterly'
+          )
+          || (
+            !(get(catalogPath).data.settings.kind in ['check_in', 'quarterly'])
+            && questionnaireScheduleFrequencyIsKnown()
+          )
+        );
+    }
+
+    function questionnaireScheduleFrequencyMatchesQuestionnaire() {
+      return (
+          questionnaireLegacyTypeIsKnown()
+          && (
+            !request.resource.data.keys().hasAny(['formId'])
+            || request.resource.data.formId == ''
+          )
+          && questionnaireScheduleFrequencyIsKnown()
+        )
+        || questionnaireScheduleMatchesPublishedStudioForm();
+    }
+
+    function questionnaireScheduleValuesAreValid() {
+      return request.resource.data.status in ['active', 'paused']
+        && request.resource.data.questionnaireType is string
+        && questionnaireFormReferenceIsValid()
+        && questionnaireScheduleFrequencyMatchesQuestionnaire();
+    }
+
+    function createsQuestionnaireScheduleRequest() {
+      return signedIn()
+        && request.resource.data.requestedByUid == request.auth.uid
+        && request.resource.data.requestedByEmail == request.auth.token.email
+        && request.resource.data.source == 'dashboard_questionnaire_schedule'
+        && questionnaireScheduleValuesAreValid()
+        && request.resource.data.keys().hasAll([
+          'coachId',
+          'clientId',
+          'questionnaireType',
+          'frequency',
+          'nextSendAt',
+          'status',
+          'requestedByUid',
+          'requestedByEmail',
+          'createdAt',
+          'updatedAt',
+          'source'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'coachId',
+          'coachRxId',
+          'coachName',
+          'clientId',
+          'clientName',
+          'clientPhoneNormalized',
+          'questionnaireType',
+          'questionnaireLabel',
+          'formId',
+          'formVersionId',
+          'ghlTag',
+          'questionnaireUrl',
+          'frequency',
+          'nextSendAt',
+          'status',
+          'note',
+          'requestedByUid',
+          'requestedByEmail',
+          'createdAt',
+          'updatedAt',
+          'source'
+        ]);
+    }
+
+    function coachEditsQuestionnaireSchedule() {
+      return keepsPilotCoach()
+        && request.resource.data.clientId == resource.data.clientId
+        && request.resource.data.questionnaireType == resource.data.questionnaireType
+        && request.resource.data.source == resource.data.source
+        && request.resource.data.source == 'dashboard_questionnaire_schedule'
+        && request.resource.data.requestedByUid == request.auth.uid
+        && request.resource.data.requestedByEmail == request.auth.token.email
+        && questionnaireScheduleValuesAreValid()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'coachRxId',
+          'coachName',
+          'clientName',
+          'clientPhoneNormalized',
+          'questionnaireLabel',
+          'formId',
+          'formVersionId',
+          'ghlTag',
+          'questionnaireUrl',
+          'frequency',
+          'nextSendAt',
+          'status',
+          'note',
+          'requestedByUid',
+          'requestedByEmail',
+          'updatedAt'
+        ]);
+    }
+
+    function coachTogglesQuestionnaireSchedule() {
+      return keepsPilotCoach()
+        && request.resource.data.status in ['active', 'paused']
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'statusChangedAt',
+          'updatedAt'
+        ]);
+    }
+
     function transfersOwnDocumentToPilotCoach() {
       return isPilotTeamUser()
         && isPilotCoachId(resource.data.coachId)
@@ -331,9 +579,15 @@ service cloud.firestore {
       allow read: if canReadPilotCoachDoc(resource.data.coachId);
       allow create: if ownershipRepairUnlocked()
         && canCreatePilotCoachDoc(request.resource.data.coachId)
-        && clientIdIsSelectableForCoach(request.resource.data.clientId, request.resource.data.coachId);
+        && clientIdIsSelectableForCoach(request.resource.data.clientId, request.resource.data.coachId)
+        && createsQuestionnaireSendRequest();
       allow update: if ownershipRepairUnlocked()
-        && (isAdmin() || keepsPilotCoach() || transfersRelatedDocumentToPilotCoach())
+        && (
+          isAdmin()
+          || coachCancelsQuestionnaireSend()
+          || coachMarksQuestionnaireFollowupCreated()
+          || transfersRelatedDocumentToPilotCoach()
+        )
         && clientIdIsSelectableForCoach(request.resource.data.clientId, request.resource.data.coachId);
       allow delete: if ownershipRepairUnlocked() && isAdmin();
     }
@@ -342,11 +596,55 @@ service cloud.firestore {
       allow read: if canReadPilotCoachDoc(resource.data.coachId);
       allow create: if ownershipRepairUnlocked()
         && canCreatePilotCoachDoc(request.resource.data.coachId)
-        && clientIdIsSelectableForCoach(request.resource.data.clientId, request.resource.data.coachId);
+        && clientIdIsSelectableForCoach(request.resource.data.clientId, request.resource.data.coachId)
+        && (isAdmin() || createsQuestionnaireScheduleRequest());
       allow update: if ownershipRepairUnlocked()
-        && (isAdmin() || keepsPilotCoach() || transfersRelatedDocumentToPilotCoach())
+        && (
+          isAdmin()
+          || coachEditsQuestionnaireSchedule()
+          || coachTogglesQuestionnaireSchedule()
+          || transfersRelatedDocumentToPilotCoach()
+        )
         && clientIdIsSelectableForCoach(request.resource.data.clientId, request.resource.data.coachId);
       allow delete: if ownershipRepairUnlocked() && isAdmin();
+    }
+
+    // The Studio is written through admin-only callable functions. Coaches only
+    // receive the published catalog needed to choose a form for a GHL tag send.
+    // Public form loading and response submission always go through the HTTP
+    // Function; anonymous Firestore access remains closed.
+    match /questionnaireCatalog/{formId} {
+      allow read: if activeUser();
+      allow create, update, delete: if false;
+    }
+
+    match /questionnaireForms/{formId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /questionnaireFormVersions/{versionId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /questionnairePublicSlugs/{slug} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /questionnaireGhlTags/{tagId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /questionnaireStudioAudit/{auditId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /questionnaireRateLimits/{rateLimitId} {
+      allow read, write: if false;
     }
 
     match /rebookings/{rebookingId} {

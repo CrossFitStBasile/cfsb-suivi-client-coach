@@ -103,6 +103,11 @@ const sandbox = {
     if (!client) throw new Error("Ce client n'est pas un membre confirme du portefeuille actuel.");
     return client;
   },
+  requireOperationalClientForCoach: (clientId) => {
+    const client = sandbox.state.data.clients.find((item) => String(item.id) === String(clientId));
+    if (!client) throw new Error("Cette fiche est inactive ou en conflit d'attribution.");
+    return client;
+  },
   portfolioCheckups: () => sandbox.state.data.checkups || [],
   portfolioRebookings: () => sandbox.state.data.rebookings || [],
   collection: (db, collectionName) => ({ db, collectionName }),

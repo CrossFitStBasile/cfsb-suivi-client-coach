@@ -24,12 +24,14 @@ const functions = [
   "questionnaireResponsePhone",
   "questionnaireSendPhone",
   "questionnaireSendDate",
+  "questionnaireRecordsUseSameForm",
   "questionnaireSendHasResponse",
   "latestSendForClient"
 ].map(extractFunction).join("\n\n");
 
 const sandbox = {
   console,
+  DEFAULT_QUESTIONNAIRE_TYPE: "suivi_global",
   state: { data: { questionnaireResponses: [], questionnaireSends: [] } },
   portfolioOperationalRecords: (items = []) => items,
   portfolioQuestionnaireResponses: () => sandbox.state.data.questionnaireResponses,
@@ -85,6 +87,21 @@ const phoneOnlyResponse = {
   submittedAt: "2026-06-04T08:00:00.000Z"
 };
 
+const differentFormResponse = {
+  ...laterResponse,
+  questionnaireType: "habitudes_quotidiennes"
+};
+
+const sameFormIdResponse = {
+  ...laterResponse,
+  formId: "form-bilan"
+};
+
+const differentFormIdResponse = {
+  ...laterResponse,
+  formId: "form-check-in"
+};
+
 sandbox.state.data.questionnaireSends = [
   { id: "old-send", clientId: "client-1", sentAt: "2026-05-01T08:00:00.000Z" },
   { id: "other-client", clientId: "client-2", sentAt: "2026-06-10T08:00:00.000Z" },
@@ -101,6 +118,18 @@ const results = {
   missingDateStillCountsAsConservativeMatch: h.questionnaireSendHasResponse(send, [missingDateResponse]),
   phoneOnlyResponseDoesNotCrossMatch: !h.questionnaireSendHasResponse(send, [phoneOnlyResponse]),
   missingClientIdDoesNotMatch: !h.questionnaireSendHasResponse({ sentAt: send.sentAt }, [laterResponse]),
+  differentFormDoesNotCloseSend: !h.questionnaireSendHasResponse(
+    { ...send, questionnaireType: "suivi_global" },
+    [differentFormResponse]
+  ),
+  sameFormIdClosesSend: h.questionnaireSendHasResponse(
+    { ...send, formId: "form-bilan" },
+    [sameFormIdResponse]
+  ),
+  differentFormIdDoesNotCloseSend: !h.questionnaireSendHasResponse(
+    { ...send, formId: "form-bilan" },
+    [differentFormIdResponse]
+  ),
   latestSendIgnoresInputOrder: h.latestSendForClient("client-1")?.id === "new-send"
 };
 

@@ -50,8 +50,10 @@ const auth = getAuth(firebaseApp);
 const db = getFirestore(firebaseApp);
 const storage = getStorage(firebaseApp);
 const provider = new GoogleAuthProvider();
+let questionnaireStudioController = null;
+let questionnaireStudioModulePromise = null;
 provider.setCustomParameters({ prompt: "select_account" });
-const APP_VERSION = "20260728-questionnaire-library";
+const APP_VERSION = "20260728-questionnaire-studio-library";
 window.__CFSB_DASHBOARD_VERSION = APP_VERSION;
 const RELEASE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 const USAGE_SESSION_ID = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -79,7 +81,8 @@ const QUESTIONNAIRE_TYPES = [
     shortLabel: "Globale",
     ghlTag: "dashboardcoach",
     path: "/questionnaire/",
-    description: "Bilan complet sur l'entrainement, la progression, les objectifs et les besoins de suivi."
+    description: "Bilan complet sur l'entrainement, la progression, les objectifs et les besoins de suivi.",
+    settings: { kind: "quarterly", cadenceDays: [90] }
   },
   {
     type: "habitudes_quotidiennes",
@@ -88,7 +91,8 @@ const QUESTIONNAIRE_TYPES = [
     shortLabel: "Check-in",
     ghlTag: "suiviregulier",
     path: "/questionnaire/check-in/",
-    description: "Court suivi sur les habitudes de base et la prochaine priorite."
+    description: "Court suivi sur les habitudes de base et la prochaine priorite.",
+    settings: { kind: "check_in", cadenceDays: [14, 28] }
   },
   {
     type: "evaluation_habitudes_vie",
@@ -314,6 +318,8 @@ const state = {
     questionnaireResponses: [],
     questionnaireSends: [],
     questionnaireSchedules: [],
+    questionnaireCatalog: [],
+    questionnaireReviewResponses: [],
     rebookings: [],
     checkups: [],
     impacts: [],
@@ -365,6 +371,7 @@ const tabs = [
   ["accomplishments", "Accomplissements"],
   ["training", "Formation continue"],
   ["assistant", "Assistant"],
+  ["studio", "Studio questionnaires"],
   ["admin", "Admin"],
   ["guide", "Guide"]
 ];
@@ -379,12 +386,13 @@ const tabDescriptions = {
   accomplishments: "Photos, videos et preuves de progression client.",
   training: "Developpement coach et ressources internes.",
   assistant: "Laboratoire IA prive en lecture seule.",
+  studio: "Cree, publie et versionne les formulaires clients a URL fixe.",
   admin: "Vue equipe, sources et supervision des coachs pilotes.",
   guide: "Procedures, modules connectes et limites actuelles."
 };
 
 function visibleTabs() {
-  return tabs.filter(([id]) => !["admin", "assistant"].includes(id) || isInfoAdmin());
+  return tabs.filter(([id]) => !["admin", "assistant", "studio"].includes(id) || isInfoAdmin());
 }
 
 function isVisibleTab(tab) {
@@ -768,6 +776,8 @@ function subscribeCoachData() {
   subscribeAnnouncements();
   subscribeAnnouncementAcknowledgements();
   subscribePilotAcceptances();
+  subscribeQuestionnaireCatalog();
+  if (isInfoAdmin()) subscribeQuestionnaireReviewQueue();
   const coachId = state.selectedCoachId;
   if (!coachId) {
     render();
@@ -863,6 +873,8 @@ function resetCoachData() {
   state.data.questionnaireResponses = [];
   state.data.questionnaireSends = [];
   state.data.questionnaireSchedules = [];
+  state.data.questionnaireCatalog = [];
+  state.data.questionnaireReviewResponses = [];
   state.data.rebookings = [];
   state.data.checkups = [];
   state.data.impacts = [];
@@ -880,6 +892,63 @@ function resetCoachData() {
   state.data.announcementAcknowledgements = [];
   state.data.pilotAcceptances = [];
   state.data.loaded = {};
+}
+
+function subscribeQuestionnaireCatalog() {
+  try {
+    const unsubscribe = onSnapshot(
+      query(collection(db, "questionnaireCatalog")),
+      (snap) => {
+        state.data.questionnaireCatalog = snap.docs
+          .map(fromDoc)
+          .sort((a, b) => String(a.label || a.title || "").localeCompare(String(b.label || b.title || "")));
+        state.data.loaded.questionnaireCatalog = true;
+        scheduleRender();
+      },
+      (error) => {
+        state.data.questionnaireCatalog = [];
+        state.data.loaded.questionnaireCatalog = true;
+        console.warn("Questionnaire catalog unavailable; keeping legacy sharing links.", error);
+        scheduleRender();
+      }
+    );
+    state.unsubscribers.push(unsubscribe);
+  } catch (error) {
+    state.data.questionnaireCatalog = [];
+    state.data.loaded.questionnaireCatalog = true;
+    console.warn("Questionnaire catalog subscription failed; keeping legacy sharing links.", error);
+    scheduleRender();
+  }
+}
+
+function subscribeQuestionnaireReviewQueue() {
+  try {
+    const unsubscribe = onSnapshot(
+      query(
+        collection(db, "questionnaireResponses"),
+        where("routingStatus", "in", ["unmatched", "conflict"])
+      ),
+      (snap) => {
+        state.data.questionnaireReviewResponses = snap.docs
+          .map(fromDoc)
+          .sort((a, b) => dateValue(b.submittedAt || b.createdAt) - dateValue(a.submittedAt || a.createdAt));
+        state.data.loaded.questionnaireReviewResponses = true;
+        scheduleRender();
+      },
+      (error) => {
+        state.data.questionnaireReviewResponses = [];
+        state.data.loaded.questionnaireReviewResponses = true;
+        console.warn("Questionnaire review queue unavailable.", error);
+        scheduleRender();
+      }
+    );
+    state.unsubscribers.push(unsubscribe);
+  } catch (error) {
+    state.data.questionnaireReviewResponses = [];
+    state.data.loaded.questionnaireReviewResponses = true;
+    console.warn("Questionnaire review queue subscription failed.", error);
+    scheduleRender();
+  }
 }
 
 function subscribeAnnouncements() {
@@ -1274,6 +1343,14 @@ function renderDashboard() {
   state.renderQueued = false;
   if (!state.user || !state.profile) return;
   normalizeActiveTab();
+  if (state.tab === "studio" && document.querySelector("#questionnaireStudioRoot") && !state.modal) {
+    renderToast();
+    return;
+  }
+  if (questionnaireStudioController) {
+    questionnaireStudioController.destroy();
+    questionnaireStudioController = null;
+  }
 
   const activeCoach = activeCoachRecord();
   const openTasks = state.data.tasks.filter(isOpenTask).length;
@@ -1320,7 +1397,7 @@ function renderDashboard() {
         ${renderReleaseUpdateBanner()}
         ${showDailyCommand ? renderDashboardStats({ openTasks, rebookingSessions, weeklyImpacts, weeklyCheckups, questionnaireResponsesUnread }) : ""}
         ${showDailyCommand ? renderCoachObjectiveHeader() : ""}
-        ${state.tab === "todo" ? "" : renderCoachSyncStatus()}
+        ${["todo", "studio"].includes(state.tab) ? "" : renderCoachSyncStatus()}
         ${renderErrors()}
         ${renderActiveTab()}
       </main>
@@ -1334,6 +1411,45 @@ function renderDashboard() {
   syncAllTaskVoicePlaybackDom();
   scheduleModalFocus();
   scheduleUnreadAnnouncementModal();
+  if (state.tab === "studio" && isInfoAdmin()) {
+    const studioRoot = document.querySelector("#questionnaireStudioRoot");
+    if (studioRoot) void mountQuestionnaireStudioView(studioRoot);
+  }
+}
+
+async function mountQuestionnaireStudioView(studioRoot) {
+  try {
+    questionnaireStudioModulePromise ||= import("./questionnaire-studio.js?v=20260728-questionnaire-studio-library");
+    const { mountQuestionnaireStudio } = await questionnaireStudioModulePromise;
+    if (
+      state.tab !== "studio" ||
+      !isInfoAdmin() ||
+      !document.body.contains(studioRoot) ||
+      questionnaireStudioController
+    ) {
+      return;
+    }
+    questionnaireStudioController = mountQuestionnaireStudio(studioRoot, firebaseApp, {
+      currentUser: () => state.user,
+      onToast: showToast,
+      onError: (message) => pushError(`Studio questionnaires: ${message}`, false)
+    });
+    questionnaireStudioController.ready.catch((error) => {
+      pushError(`Studio questionnaires: ${error.message || error}`, false);
+    });
+  } catch (error) {
+    questionnaireStudioModulePromise = null;
+    questionnaireStudioController = null;
+    if (document.body.contains(studioRoot)) {
+      studioRoot.innerHTML = `
+        <div class="notice compact">
+          <strong>Studio temporairement indisponible</strong>
+          <span>Les autres sections du Dashboard et les formulaires existants restent utilisables.</span>
+        </div>
+      `;
+    }
+    console.error("Questionnaire Studio failed to load.", error);
+  }
 }
 
 function renderReleaseUpdateBanner() {
@@ -1541,6 +1657,7 @@ function scheduleRender() {
 }
 
 function renderPrimaryAction() {
+  if (state.tab === "studio") return "";
   if (!state.selectedCoachId && isInfoAdmin()) {
     return `<button class="primary" data-action="seedCoaches">Reparer la liste coachs</button>`;
   }
@@ -1727,6 +1844,7 @@ function renderCoachObjectiveHeader() {
 }
 
 function renderActiveTab() {
+  if (state.tab === "studio" && isInfoAdmin()) return renderQuestionnaireStudio();
   if (!state.selectedCoachId) return renderGuide();
   if (state.tab === "todo") return renderTodo();
   if (state.tab === "clients") return renderClients();
@@ -1739,6 +1857,16 @@ function renderActiveTab() {
   if (state.tab === "assistant" && isInfoAdmin()) return renderAssistant();
   if (state.tab === "admin" && isInfoAdmin()) return renderAdmin();
   return renderGuide();
+}
+
+function renderQuestionnaireStudio() {
+  return `
+    <section class="questionnaire-studio-host" aria-label="Studio de questionnaires">
+      <div id="questionnaireStudioRoot">
+        <div class="notice compact">Chargement du Studio de questionnaires...</div>
+      </div>
+    </section>
+  `;
 }
 
 function renderTodo() {
@@ -5009,7 +5137,7 @@ function groupQuestionnaireResponsesForCoach(responses) {
     if (items.length === 1) return items[0];
     const sorted = sortQuestionnaireResponsesByPriority(items);
     const representative = sorted[0];
-    const typeLabels = [...new Set(sorted.map((item) => questionnaireTypeLabel(questionnaireResponseType(item))))];
+    const typeLabels = [...new Set(sorted.map(questionnaireResponseLabel))];
     return {
       _kind: "questionnaire_response_group",
       id: `questionnaire_group_${questionnaireResponseGroupKey(representative)}`,
@@ -6220,7 +6348,10 @@ function renderQuestionnaireGroupCard(group) {
               const itemPriority = questionnairePrioritySummary(item, questionnaireHighlights(item));
               return `
                 <button class="secondary questionnaire-group-row" data-action="openQuestionnaireDetail" data-id="${escapeHtml(item.id)}">
-                  <span>${escapeHtml(questionnaireTypeLabel(questionnaireResponseType(item)))}</span>
+                  <span>${escapeHtml(questionnaireRecordLabel({
+                    ...item,
+                    questionnaireType: questionnaireResponseType(item)
+                  }))}</span>
                   <strong>${escapeHtml(itemPriority.label)}</strong>
                   <small>${formatDate(item.submittedAt || item.createdAt) || "date inconnue"}</small>
                 </button>
@@ -6242,7 +6373,10 @@ function renderQuestionnaireCard(response) {
   const highlights = questionnaireHighlights(response);
   const hasClient = Boolean(selectableClientForCoach(response.clientId));
   const priority = questionnairePrioritySummary(response, highlights);
-  const typeLabel = questionnaireTypeLabel(questionnaireResponseType(response));
+  const typeLabel = questionnaireRecordLabel({
+    ...response,
+    questionnaireType: questionnaireResponseType(response)
+  });
   const dateLabel = formatDate(response.submittedAt || response.createdAt) || "date inconnue";
   const actionLabel = hasClient ? "Lire la reponse" : "Relier au bon client";
   return `
@@ -6334,17 +6468,17 @@ function renderUnmatchedQuestionnaireCard(response) {
 }
 
 function renderQuestionnaireSendClientCard(client) {
-  const phone = clientPhone(client);
+  const phone = questionnaireClientPhone(client);
   const lastSend = latestSendForClient(client.id);
   const lastSendDate = lastSend?.sentAt || lastSend?.preparedAt || lastSend?.createdAt;
   const schedules = schedulesForClient(client.id);
   const canSend = Boolean(phone);
   const adminSourceLine = isInfoAdmin() ? `Origine fiche: ${sourceLabel(client.source)}` : "";
   const lastSendLine = lastSend
-    ? `Dernier envoi: ${questionnaireTypeLabel(lastSend.questionnaireType)} · ${formatDate(lastSendDate)} (${questionnaireSendStatusLabel(lastSend.status)})`
+    ? `Dernier envoi: ${questionnaireRecordLabel(lastSend)} · ${formatDate(lastSendDate)} (${questionnaireSendStatusLabel(lastSend.status)})`
     : "Aucun envoi recent";
   const scheduleLine = schedules.length
-    ? `Automatisation: ${schedules.map((schedule) => `${questionnaireTypeLabel(schedule.questionnaireType)} ${questionnaireScheduleStatusLabel(schedule)}`).join(" · ")}`
+    ? `Automatisation: ${schedules.map((schedule) => `${questionnaireRecordLabel(schedule)} ${questionnaireScheduleStatusLabel(schedule)}`).join(" · ")}`
     : "Aucune automatisation active";
   return `
     <article class="card operational-card questionnaire-send-card">
@@ -6377,11 +6511,17 @@ function renderQuestionnaireSendClientCard(client) {
 function renderQuestionnaireScheduleCard(schedule) {
   const client = selectableClientForCoach(schedule.clientId);
   const hasClient = Boolean(client);
-  const phone = schedule.clientPhoneNormalized || clientPhone(client);
+  const phone = validQuestionnairePhone(
+    schedule.clientPhoneNormalized || clientPhone(client)
+  );
   const active = (schedule.status || "active") === "active";
+  const deliveryAvailable = Boolean(questionnaireDeliveryConfigExact(
+    schedule.questionnaireType || DEFAULT_QUESTIONNAIRE_TYPE,
+    schedule.formId || ""
+  ));
   const nextSend = schedule.nextSendAt || "";
   const overdue = active && dateValue(nextSend) && dateValue(nextSend) <= dateValue(todayIso());
-  const questionnaireLabel = questionnaireTypeLabel(schedule.questionnaireType);
+  const questionnaireLabel = questionnaireRecordLabel(schedule);
   return `
     <article class="card operational-card questionnaire-schedule-card ${active ? "" : "muted-card"}">
       <div>
@@ -6412,7 +6552,12 @@ function renderQuestionnaireScheduleCard(schedule) {
       <div class="card-actions operational-actions">
         ${hasClient ? `
           <button class="secondary" data-action="openQuestionnaireSchedule" data-id="${escapeHtml(client.id)}" data-questionnaire-type="${escapeAttr(schedule.questionnaireType || DEFAULT_QUESTIONNAIRE_TYPE)}">Modifier</button>
-          <button class="secondary" data-action="toggleQuestionnaireSchedule" data-id="${escapeHtml(schedule.id)}">${active ? "Pause" : "Reprendre"}</button>
+          <button
+            class="secondary"
+            data-action="toggleQuestionnaireSchedule"
+            data-id="${escapeHtml(schedule.id)}"
+            ${!active && !deliveryAvailable ? "disabled" : ""}
+          >${active ? "Pause" : deliveryAvailable ? "Reprendre" : "Workflow GHL non vérifié"}</button>
         ` : `<button class="secondary" disabled>A valider par un admin</button>`}
       </div>
     </article>
@@ -6423,7 +6568,7 @@ function renderQuestionnaireFollowupCard(send) {
   const alreadyCreated = Boolean(send.followupTaskCreatedAt);
   const waitingDays = daysSince(send.sentAt || send.createdAt);
   const canFollowUp = waitingDays >= 7;
-  const questionnaireLabel = questionnaireTypeLabel(send.questionnaireType);
+  const questionnaireLabel = questionnaireRecordLabel(send);
   return `
     <article class="card operational-card questionnaire-card questionnaire-card-compact">
       <div class="operational-card-main">
@@ -6482,7 +6627,7 @@ function renderQuestionnaireSendAudit(sends) {
         <summary>
           <span>
             <strong>Journal d'envoi</strong>
-            <small>Dernier: ${escapeHtml(latest.clientName || "Client")} · ${escapeHtml(questionnaireTypeLabel(latest.questionnaireType))} · ${formatDateTime(latest.updatedAt || latest.sentAt || latest.createdAt)}</small>
+            <small>Dernier: ${escapeHtml(latest.clientName || "Client")} · ${escapeHtml(questionnaireRecordLabel(latest))} · ${formatDateTime(latest.updatedAt || latest.sentAt || latest.createdAt)}</small>
           </span>
           <span class="pill ${errorCount ? "red" : "green"}">${errorCount ? `${errorCount} erreur${errorCount > 1 ? "s" : ""}` : "OK"}</span>
         </summary>
@@ -6491,7 +6636,7 @@ function renderQuestionnaireSendAudit(sends) {
             <div class="send-audit-item ${send.status === "error" ? "error" : ""}">
               <span>${escapeHtml(send.clientName || "Client")}</span>
               <strong>${escapeHtml(questionnaireSendStatusLabel(send.status))}</strong>
-              <small>${escapeHtml(questionnaireTypeLabel(send.questionnaireType))} · ${escapeHtml(send.errorMessage || send.deliveryStatus || "En attente de reponse")} · ${formatDateTime(send.updatedAt || send.sentAt || send.createdAt)}</small>
+              <small>${escapeHtml(questionnaireRecordLabel(send))} · ${escapeHtml(send.errorMessage || send.deliveryStatus || "En attente de reponse")} · ${formatDateTime(send.updatedAt || send.sentAt || send.createdAt)}</small>
               ${send.status === "error" ? `<em>${escapeHtml(questionnaireSendActionHint(send))}</em>` : ""}
             </div>
           `).join("")}
@@ -7349,7 +7494,10 @@ function clientNextActions(client, work = clientWorkSummary(client)) {
   work.openResponses.slice(0, 2).forEach((response) => {
     items.push({
       level: "warning",
-      title: `Lire ${questionnaireTypeLabel(questionnaireResponseType(response))}`,
+      title: `Lire ${questionnaireRecordLabel({
+        ...response,
+        questionnaireType: questionnaireResponseType(response)
+      })}`,
       meta: `Reponse: ${formatDate(response.submittedAt || response.createdAt)}`,
       button: `<button class="primary tiny" type="button" data-action="openQuestionnaireDetail" data-id="${escapeAttr(response.id)}">Lire</button>`
     });
@@ -7781,16 +7929,105 @@ function renderClientSourceDetails(client, identitySummary, syncSummary) {
   `;
 }
 
+function availableQuestionnaireTypes() {
+  const catalog = state.data.questionnaireCatalog || [];
+  const byType = new Map(
+    catalog.length
+      ? []
+      : QUESTIONNAIRE_TYPES.map((item) => [item.type, { ...item }])
+  );
+  catalog.forEach((item) => {
+    const formId = String(item.formId || item.id || "").trim();
+    const legacyType = String(item.legacyType || "").trim();
+    const type = legacyType || (formId ? `studio:${formId}` : "");
+    if (!type) return;
+    if (item.status !== "published") {
+      byType.delete(type);
+      return;
+    }
+    const fallback = byType.get(type) || {};
+    byType.set(type, {
+      ...fallback,
+      type,
+      formId,
+      activeVersionId: String(item.activeVersionId || ""),
+      label: String(item.label || item.title || fallback.label || "Questionnaire"),
+      libraryLabel: String(item.libraryLabel || item.label || item.title || fallback.libraryLabel || fallback.label || "Questionnaire"),
+      shortLabel: String(item.shortLabel || item.label || item.title || fallback.shortLabel || "Formulaire"),
+      description: String(item.description || fallback.description || ""),
+      ghlTag: String(item.ghlTag || fallback.ghlTag || ""),
+      publicUrl: String(item.publicUrl || fallback.publicUrl || ""),
+      path: String(item.publicPath || fallback.path || ""),
+      deliveryReady: item.deliveryReady === true,
+      responsePolicy: item.responsePolicy || null,
+      settings: item.settings || fallback.settings || null,
+      source: "questionnaire_studio_catalog"
+    });
+  });
+  return [...byType.values()].filter((item) => item.ghlTag && (item.publicUrl || item.path));
+}
+
+function deliverableQuestionnaireTypes() {
+  const byType = new Map(
+    QUESTIONNAIRE_TYPES.map((item) => [item.type, {
+      ...item,
+      formId: "",
+      activeVersionId: "",
+      deliveryReady: true,
+      source: "legacy_live_workflow"
+    }])
+  );
+  availableQuestionnaireTypes()
+    .filter((item) =>
+      item.source === "questionnaire_studio_catalog"
+      && item.deliveryReady === true
+    )
+    .forEach((item) => byType.set(item.type, item));
+  return [...byType.values()].filter((item) => item.ghlTag && (item.publicUrl || item.path));
+}
+
 function questionnaireTypeConfig(type) {
-  return QUESTIONNAIRE_TYPES.find((item) => item.type === type) || QUESTIONNAIRE_TYPES.find((item) => item.type === DEFAULT_QUESTIONNAIRE_TYPE);
+  const configs = availableQuestionnaireTypes();
+  return configs.find((item) => item.type === type)
+    || configs.find((item) => item.type === DEFAULT_QUESTIONNAIRE_TYPE)
+    || QUESTIONNAIRE_TYPES[0];
+}
+
+function questionnaireTypeConfigExact(type) {
+  const requestedType = String(type || "").trim();
+  return availableQuestionnaireTypes()
+    .find((item) => item.type === requestedType) || null;
+}
+
+function questionnaireDeliveryConfigExact(type, formId = "") {
+  const requestedType = String(type || "").trim();
+  const requestedFormId = String(formId || "").trim();
+  return deliverableQuestionnaireTypes().find((item) =>
+    item.type === requestedType
+    && (!requestedFormId || String(item.formId || "") === requestedFormId)
+  ) || null;
 }
 
 function questionnaireTypeLabel(type) {
-  return questionnaireTypeConfig(type)?.label || "Globale check";
+  return questionnaireTypeConfig(type)?.label || "Questionnaire";
+}
+
+function questionnaireRecordLabel(record = {}) {
+  const type = String(record.questionnaireType || DEFAULT_QUESTIONNAIRE_TYPE).trim();
+  const formId = String(record.formId || "").trim();
+  if (!formId) {
+    return QUESTIONNAIRE_TYPES.find((item) => item.type === type)?.label
+      || record.questionnaireLabel
+      || "Questionnaire";
+  }
+  return availableQuestionnaireTypes()
+    .find((item) => String(item.formId || "") === formId)?.label
+    || record.questionnaireLabel
+    || questionnaireTypeLabel(type);
 }
 
 function questionnaireTypeOptions(current = DEFAULT_QUESTIONNAIRE_TYPE) {
-  return QUESTIONNAIRE_TYPES.map((item) => `
+  return deliverableQuestionnaireTypes().map((item) => `
     <option value="${escapeAttr(item.type)}" ${item.type === current ? "selected" : ""}>
       ${escapeHtml(item.label)}
     </option>
@@ -7802,20 +8039,44 @@ function questionnaireLibraryLabel(type) {
   return config?.libraryLabel || config?.label || "Questionnaire";
 }
 
+function questionnairePublicUrl(type = DEFAULT_QUESTIONNAIRE_TYPE) {
+  const config = questionnaireTypeConfigExact(type);
+  if (!config) throw new Error("Ce questionnaire n'est plus publie. Actualise la liste avant de partager son lien.");
+  const url = new URL(config.publicUrl || config.path || "/questionnaire/", QUESTIONNAIRE_BASE_URL);
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+function questionnaireConfigPublicUrl(config = {}) {
+  const url = new URL(config.publicUrl || config.path || "/questionnaire/", QUESTIONNAIRE_BASE_URL);
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
 function questionnaireGenericUrl(type = DEFAULT_QUESTIONNAIRE_TYPE) {
-  const config = questionnaireTypeConfig(type);
-  return new URL(config.path || "/questionnaire/", QUESTIONNAIRE_BASE_URL).toString();
+  return questionnairePublicUrl(type);
 }
 
 function renderQuestionnaireLibraryModal() {
+  const questionnaires = availableQuestionnaireTypes();
+  const catalogLoaded = Boolean(state.data.loaded.questionnaireCatalog);
+  const catalogAvailable = (state.data.questionnaireCatalog || []).length > 0;
+  const availabilityMessage = catalogAvailable
+    ? `${questionnaires.length} formulaire(s) publie(s), avec un lien generique sans information personnelle`
+    : "Les trois liens generiques LIVE restent disponibles pendant le chargement du catalogue";
   return modal("Formulaires a partager", `
     <section class="questionnaire-library">
       <div class="notice compact questionnaire-library-notice">
-        <strong>Trois liens generiques, sans information personnelle</strong>
-        <span>La cliente entre elle-meme ses informations pour relier sa reponse a son dossier.</span>
+        <strong>${escapeHtml(availabilityMessage)}</strong>
+        <span>Le membre saisit ses informations pour relier sa reponse a son dossier.</span>
+        ${catalogLoaded && !catalogAvailable
+          ? "<span>Mode de continuite actif : le catalogue dynamique est indisponible, mais les formulaires existants peuvent toujours etre partages.</span>"
+          : ""}
       </div>
       <div class="questionnaire-library-grid">
-        ${QUESTIONNAIRE_TYPES.map((item) => {
+        ${questionnaires.length ? questionnaires.map((item) => {
           const url = questionnaireGenericUrl(item.type);
           const label = questionnaireLibraryLabel(item.type);
           return `
@@ -7853,9 +8114,9 @@ function renderQuestionnaireLibraryModal() {
               </div>
             </article>
           `;
-        }).join("")}
+        }).join("") : '<div class="empty small">Aucun formulaire publie dans le catalogue.</div>'}
       </div>
-      <p class="questionnaire-library-footnote">Un lien partage manuellement n'apparait pas dans Relances et ne declenche aucune automatisation GHL. La reponse apparaitra dans A lire apres son enregistrement.</p>
+      <p class="questionnaire-library-footnote">Un lien partage manuellement n'apparait pas dans Relances et ne declenche aucune automatisation GHL. Une reponse qui necessite une attention apparaitra dans A lire; une reponse verte peut etre archivee automatiquement.</p>
       <div class="modal-actions">
         <button class="secondary" type="button" data-action="closeModal">Fermer</button>
       </div>
@@ -7863,24 +8124,15 @@ function renderQuestionnaireLibraryModal() {
   `);
 }
 
-function questionnaireUrlForClient(client, type = DEFAULT_QUESTIONNAIRE_TYPE) {
-  const config = questionnaireTypeConfig(type);
-  const url = new URL(config.path || "/questionnaire/", QUESTIONNAIRE_BASE_URL);
-  url.searchParams.set("phone", clientPhone(client));
-  if (client.name) url.searchParams.set("client_name", client.name);
-  if (client.email) url.searchParams.set("client_email", client.email);
-  return url.toString();
-}
-
 function renderQuestionnaireSendModal() {
   const selectedClientId = state.modal.clientId || "";
   const selectedQuestionnaireType = state.modal.questionnaireType || DEFAULT_QUESTIONNAIRE_TYPE;
   const clients = selectableClientsForCoach();
-  const clientsWithPhone = clients.filter(clientPhone).length;
+  const clientsWithPhone = clients.filter(questionnaireClientPhone).length;
   const clientsMissingPhone = clients.length - clientsWithPhone;
   const isAdminView = isInfoAdmin();
   const sendExplanation = isAdminView
-    ? "Le dashboard ajoute le tag GHL dashboardcoach ou le tag associe au questionnaire choisi."
+    ? "Le dashboard ajoute uniquement le tag GHL du formulaire. Le workflow GHL envoie ensuite son URL publique fixe. Pour une récurrence, active la réinscription et retire ce tag à la fin du workflow."
     : "Le questionnaire sera envoye au client selectionne si son telephone est confirme dans sa fiche.";
   return modal("Envoyer un questionnaire", `
     <form class="modal-form" data-form="questionnaireSend">
@@ -7910,15 +8162,26 @@ function renderQuestionnaireSendModal() {
 function renderQuestionnaireScheduleModal() {
   const client = selectableClientForCoach(state.modal.clientId);
   if (!client) return "";
-  const phone = clientPhone(client);
+  const phone = questionnaireClientPhone(client);
   const selectedQuestionnaireType = state.modal.questionnaireType || DEFAULT_QUESTIONNAIRE_TYPE;
   const existing = scheduleForClient(client.id, selectedQuestionnaireType) || {};
   const questionnaireType = existing.questionnaireType || selectedQuestionnaireType;
-  const frequency = existing.frequency || "monthly";
+  const questionnaireAvailable = Boolean(
+    questionnaireDeliveryConfigExact(questionnaireType, existing.formId || "")
+  );
+  const frequency = questionnaireAvailable
+    ? sanitizeQuestionnaireScheduleFrequency(existing.frequency, questionnaireType)
+    : String(existing.frequency || "monthly").trim();
   const nextSendAt = existing.nextSendAt || todayIso();
   const status = existing.status || "active";
   return modal(existing.id ? "Gerer l'automatisation" : "Creer une automatisation", `
-    <form class="modal-form" data-form="questionnaireSchedule" data-client-id="${escapeAttr(client.id)}">
+    <form
+      class="modal-form"
+      data-form="questionnaireSchedule"
+      data-client-id="${escapeAttr(client.id)}"
+      data-existing-schedule-id="${escapeAttr(existing.id || "")}"
+      data-existing-questionnaire-type="${escapeAttr(existing.id ? questionnaireType : "")}"
+    >
       <div class="client-modal-intro">
         <div>
           <strong>${escapeHtml(client.name || "Client")}</strong>
@@ -7928,13 +8191,30 @@ function renderQuestionnaireScheduleModal() {
       </div>
       <div class="form-grid">
         <label>Questionnaire
-          <select class="input" name="questionnaireType" required>
-            ${questionnaireTypeOptions(questionnaireType)}
+          <select
+            class="input"
+            name="${existing.id ? "" : "questionnaireType"}"
+            data-action="selectQuestionnaireScheduleType"
+            ${existing.id ? 'disabled data-permanent-disabled="true"' : ""}
+            required
+          >
+            ${questionnaireAvailable
+              ? questionnaireTypeOptions(questionnaireType)
+              : `<option value="${escapeAttr(questionnaireType)}" selected>${escapeHtml(
+                existing.questionnaireLabel || "Questionnaire archivé"
+              )}</option>`}
           </select>
+          ${existing.id
+            ? `<input type="hidden" name="questionnaireType" value="${escapeAttr(questionnaireType)}">`
+            : ""}
         </label>
         <label>Frequence
           <select class="input" name="frequency" required>
-            ${questionnaireScheduleFrequencyOptions(frequency)}
+            ${questionnaireAvailable
+              ? questionnaireScheduleFrequencyOptions(frequency, questionnaireType)
+              : `<option value="${escapeAttr(frequency)}" selected>${escapeHtml(
+                questionnaireScheduleFrequencyLabel(frequency)
+              )}</option>`}
           </select>
         </label>
         <label>Prochain envoi
@@ -7950,11 +8230,14 @@ function renderQuestionnaireScheduleModal() {
           <input class="input" name="note" value="${escapeAttr(existing.note || "")}" placeholder="Ex.: suivi mensuel nutrition">
         </label>
       </div>
-      <div class="notice compact">
-        Le serveur verifie les questionnaires dus chaque matin. Si le client repond, la reponse apparaitra dans l'inbox questionnaire comme les envois manuels.
-      </div>
-      <div class="modal-actions">
-        <button class="primary" type="submit" ${phone ? "" : "disabled"}>Enregistrer automatisation</button>
+        <div class="notice compact">
+          Le serveur verifie les questionnaires dus chaque matin. Une reponse qui necessite une attention apparaitra dans A lire; une reponse verte peut etre archivee automatiquement.
+          ${questionnaireAvailable
+            ? ""
+            : "<br>Ce questionnaire n'est plus publié. Cette planification ne peut pas être réactivée."}
+        </div>
+        <div class="modal-actions">
+          <button class="primary" type="submit" ${phone && questionnaireAvailable ? "" : "disabled"}>Enregistrer automatisation</button>
         <button class="secondary" type="button" data-action="openClient" data-id="${escapeAttr(client.id)}">Retour client</button>
         <button class="secondary" type="button" data-action="closeModal">Fermer</button>
       </div>
@@ -7963,7 +8246,10 @@ function renderQuestionnaireScheduleModal() {
 }
 
 function renderQuestionnaireDetailModal() {
-  const response = portfolioQuestionnaireResponses().find((item) => item.id === state.modal.id);
+  const response = uniqueById([
+    ...portfolioQuestionnaireResponses(),
+    ...questionnaireResponsesForAdminReview()
+  ]).find((item) => item.id === state.modal.id);
   if (!response) return "";
   const statusClass = triageClass(response.triageStatus);
   const phone = questionnaireResponsePhone(response);
@@ -8050,7 +8336,7 @@ function renderQuestionnaireReadingBrief(response, digest, priority) {
 
 function questionnaireSendClientOptions(clients = selectableClientsForCoach(), selectedClientId = "") {
   return clients.map((client) => {
-    const phone = clientPhone(client);
+    const phone = questionnaireClientPhone(client);
     return `
       <option value="${escapeAttr(client.id)}" ${String(client.id) === String(selectedClientId) ? "selected" : ""} ${phone ? "" : "disabled"}>
         ${escapeHtml(client.name || "Client")} - ${escapeHtml(phone || "telephone manquant")}
@@ -8964,7 +9250,14 @@ document.addEventListener("submit", async (event) => {
     if (form.dataset.form === "clientPhoneFix") await saveClientPhoneFix(form.dataset.id, data);
     if (form.dataset.form === "clientCreate") await createClient(data);
     if (form.dataset.form === "questionnaireSend") await journalQuestionnaireSend(data.clientId, data.questionnaireType);
-    if (form.dataset.form === "questionnaireSchedule") await saveQuestionnaireSchedule(form.dataset.clientId, data);
+    if (form.dataset.form === "questionnaireSchedule") {
+      await saveQuestionnaireSchedule(
+        form.dataset.clientId,
+        data,
+        form.dataset.existingQuestionnaireType,
+        form.dataset.existingScheduleId
+      );
+    }
     if (form.dataset.form === "questionnaireLinkClient") await linkQuestionnaireResponseToClient(form.dataset.id, data);
     if (form.dataset.form === "rebookingCreate") await createRebooking(data);
     if (form.dataset.form === "rebookingLinkClient") await linkRebookingToClient(form.dataset.id, data);
@@ -9009,6 +9302,17 @@ document.addEventListener("change", (event) => {
     state.mobileMenuOpen = "";
     setActiveTab(actionEl.value, "mobile_select");
     render();
+  }
+  if (actionEl.dataset.action === "selectQuestionnaireScheduleType") {
+    const frequencySelect = actionEl
+      .closest('[data-form="questionnaireSchedule"]')
+      ?.querySelector('[name="frequency"]');
+    if (frequencySelect) {
+      frequencySelect.innerHTML = questionnaireScheduleFrequencyOptions(
+        frequencySelect.value,
+        actionEl.value
+      );
+    }
   }
 });
 
@@ -9081,8 +9385,15 @@ function clearTodoSearchAndGroup() {
 
 function setActiveTab(tab, source = "navigation") {
   const nextTab = String(tab || "").trim();
-  if (!isVisibleTab(nextTab)) return;
-  if (!nextTab || state.tab === nextTab) return;
+  if (!isVisibleTab(nextTab)) return false;
+  if (!nextTab || state.tab === nextTab) return false;
+  if (
+    state.tab === "studio" &&
+    questionnaireStudioController?.hasUnsavedChanges?.() &&
+    !window.confirm("Des changements du questionnaire ne sont pas sauvegardes. Quitter le Studio?")
+  ) {
+    return false;
+  }
   if (state.modal) {
     safeResetVoiceRecorder();
     state.modal = null;
@@ -9090,6 +9401,7 @@ function setActiveTab(tab, source = "navigation") {
   state.coachPickerOpen = false;
   state.tab = nextTab;
   void trackUsageEvent("tab_viewed", { tab: nextTab, source });
+  return true;
 }
 
 async function seedCoaches() {
@@ -11057,15 +11369,19 @@ async function reactivateAlumniAsClient(alumniId) {
 
 async function journalQuestionnaireSend(clientId, questionnaireType = DEFAULT_QUESTIONNAIRE_TYPE) {
   const client = requireSelectableClientForCoach(clientId);
-  const phone = clientPhone(client);
-  if (!phone) throw new Error("Telephone manquant. Le matching et l'envoi se font par telephone.");
-  const questionnaire = questionnaireTypeConfig(questionnaireType);
+  const phone = questionnaireClientPhone(client);
+  if (!phone) throw new Error("Telephone invalide. Un numero a 10 chiffres est requis pour l'envoi.");
+  const questionnaire = questionnaireDeliveryConfigExact(questionnaireType);
+  if (!questionnaire) {
+    throw new Error("Ce questionnaire n'est plus publié. Actualise la liste avant de réessayer.");
+  }
   const confirmed = window.confirm(`Envoyer ${questionnaire.label} a ${client.name || "ce client"} (${phone}) via GoHighLevel?`);
   if (!confirmed) {
     await logAction("questionnaire.send_cancelled", "clients", clientId, {
       clientName: client.name || "",
       phone,
-      questionnaireType: questionnaire.type
+      questionnaireType: questionnaire.type,
+      formId: questionnaire.formId || ""
     });
     return;
   }
@@ -11080,8 +11396,10 @@ async function journalQuestionnaireSend(clientId, questionnaireType = DEFAULT_QU
     errorMessage: "",
     questionnaireType: questionnaire.type,
     questionnaireLabel: questionnaire.label,
+    formId: questionnaire.formId || "",
+    formVersionId: questionnaire.activeVersionId || "",
     ghlTag: questionnaire.ghlTag,
-    questionnaireUrl: questionnaireUrlForClient(client, questionnaire.type),
+    questionnaireUrl: questionnaireConfigPublicUrl(questionnaire),
     requestedByUid: state.user?.uid || "",
     requestedByEmail: state.user?.email || "",
     createdAt: serverTimestamp(),
@@ -11094,18 +11412,51 @@ async function journalQuestionnaireSend(clientId, questionnaireType = DEFAULT_QU
     phone,
     provider: "ghl",
     questionnaireType: questionnaire.type,
+    formId: questionnaire.formId || "",
     ghlTag: questionnaire.ghlTag
   });
   showToast(`Envoi ${questionnaire.label} lance. Le statut se mettra a jour automatiquement.`);
 }
 
-async function saveQuestionnaireSchedule(clientId, data) {
+async function saveQuestionnaireSchedule(
+  clientId,
+  data,
+  existingQuestionnaireType = "",
+  existingScheduleId = ""
+) {
   const client = requireSelectableClientForCoach(clientId);
-  const phone = clientPhone(client);
-  if (!phone) throw new Error("Telephone manquant. La planification depend du telephone.");
-  const questionnaire = questionnaireTypeConfig(data.questionnaireType);
-  const scheduleId = questionnaireScheduleId(client.coachId || state.selectedCoachId, client.id, questionnaire.type);
-  const existing = portfolioQuestionnaireSchedules().find((item) => item.id === scheduleId) || {};
+  const phone = questionnaireClientPhone(client);
+  if (!phone) throw new Error("Telephone invalide. Un numero a 10 chiffres est requis pour la planification.");
+  const existingSchedule = existingScheduleId
+    ? portfolioQuestionnaireSchedules().find((item) => item.id === existingScheduleId)
+    : null;
+  const questionnaire = questionnaireDeliveryConfigExact(
+    existingQuestionnaireType || data.questionnaireType,
+    existingSchedule?.formId || ""
+  );
+  if (!questionnaire) {
+    throw new Error("Ce questionnaire n'est plus publié. Crée une nouvelle planification avec un formulaire actif.");
+  }
+  const currentSchedules = portfolioQuestionnaireSchedules();
+  const lockedExisting = existingScheduleId
+    ? currentSchedules.find((item) =>
+      item.id === existingScheduleId
+      && String(item.clientId || "") === String(client.id)
+      && String(item.questionnaireType || DEFAULT_QUESTIONNAIRE_TYPE) === questionnaire.type
+    )
+    : null;
+  if (existingScheduleId && !lockedExisting) {
+    throw new Error("Cette planification a changé. Recharge la fiche client avant de réessayer.");
+  }
+  const generatedScheduleId = questionnaireScheduleId(
+    client.coachId || state.selectedCoachId,
+    client.id,
+    questionnaire.type
+  );
+  const scheduleId = lockedExisting?.id || generatedScheduleId;
+  const existing = lockedExisting
+    || currentSchedules.find((item) => item.id === generatedScheduleId)
+    || {};
   const payload = {
     coachId: client.coachId || state.selectedCoachId,
     coachRxId: client.coachRxId || coachRecordById(client.coachId || state.selectedCoachId)?.coachRxId || "",
@@ -11115,9 +11466,11 @@ async function saveQuestionnaireSchedule(clientId, data) {
     clientPhoneNormalized: phone,
     questionnaireType: questionnaire.type,
     questionnaireLabel: questionnaire.label,
+    formId: questionnaire.formId || "",
+    formVersionId: questionnaire.activeVersionId || "",
     ghlTag: questionnaire.ghlTag,
-    questionnaireUrl: questionnaireUrlForClient(client, questionnaire.type),
-    frequency: sanitizeQuestionnaireScheduleFrequency(data.frequency),
+    questionnaireUrl: questionnaireConfigPublicUrl(questionnaire),
+    frequency: sanitizeQuestionnaireScheduleFrequency(data.frequency, questionnaire.type),
     nextSendAt: data.nextSendAt || todayIso(),
     status: data.status === "paused" ? "paused" : "active",
     note: String(data.note || "").trim(),
@@ -11134,7 +11487,8 @@ async function saveQuestionnaireSchedule(clientId, data) {
     frequency: payload.frequency,
     nextSendAt: payload.nextSendAt,
     status: payload.status,
-    questionnaireType: questionnaire.type
+    questionnaireType: questionnaire.type,
+    formId: questionnaire.formId || ""
   });
   closeModal();
   showToast(`Automatisation ${questionnaire.label} enregistree.`);
@@ -11145,6 +11499,15 @@ async function toggleQuestionnaireSchedule(scheduleId) {
   if (!schedule) return;
   requireOperationalClientForCoach(schedule.clientId);
   const nextStatus = (schedule.status || "active") === "active" ? "paused" : "active";
+  if (
+    nextStatus === "active"
+    && !questionnaireDeliveryConfigExact(
+      schedule.questionnaireType || DEFAULT_QUESTIONNAIRE_TYPE,
+      schedule.formId || ""
+    )
+  ) {
+    throw new Error("Cette automatisation ne peut pas reprendre avant la vérification de son workflow GHL.");
+  }
   await patchEntity("questionnaireSchedules", scheduleId, {
     status: nextStatus,
     statusChangedAt: serverTimestamp()
@@ -11176,12 +11539,15 @@ async function createQuestionnaireFollowupTask(sendId) {
     showToast(`Relance disponible dans ${Math.max(0, 7 - waitingDays)} jour(s).`);
     return;
   }
-  if (send.followupTaskCreatedAt) {
+  if (send.followupTaskCreatedAt || send.followupTaskId) {
     showToast("Une relance existe deja pour cet envoi.");
     return;
   }
-  const client = requireOperationalClientForCoach(send.clientId);
-  const ref = await addDoc(collection(db, "tasks"), {
+  const client = requireSelectableClientForCoach(send.clientId);
+  const taskId = `questionnaire_followup_${String(sendId).replace(/[^A-Za-z0-9_-]+/g, "_")}`.slice(0, 180);
+  const ref = doc(db, "tasks", taskId);
+  const batch = writeBatch(db);
+  batch.set(ref, {
     coachId: state.selectedCoachId,
     clientId: client.id,
     clientName: client.name || send.clientName || "",
@@ -11196,12 +11562,18 @@ async function createQuestionnaireFollowupTask(sendId) {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   });
+  batch.update(doc(db, "questionnaireSends", sendId), {
+    followupTaskCreatedAt: serverTimestamp(),
+    followupTaskId: taskId,
+    updatedAt: serverTimestamp()
+  });
+  await batch.commit();
   await logAction("task.created", "tasks", ref.id, {
     source: "questionnaire_followup",
     clientId: client.id,
     questionnaireSendId: sendId
   });
-  await patchEntity("questionnaireSends", sendId, { followupTaskCreatedAt: serverTimestamp() }, "Relance creee");
+  showToast("Relance creee");
 }
 
 async function createMissionFromQuestionnaireResponse(responseId) {
@@ -11255,10 +11627,16 @@ async function linkQuestionnaireResponseToClient(responseId, data) {
   const client = requireSelectableClientForCoach(data.clientId);
   const note = String(data.note || "").trim();
   await patchEntity("questionnaireResponses", responseId, {
+    coachId: client.coachId || state.selectedCoachId,
+    coachRxId: client.coachRxId || coachRecordById(client.coachId || state.selectedCoachId)?.coachRxId || "",
+    coachName: client.coachName || coachRecordById(client.coachId || state.selectedCoachId)?.name || "",
     clientId: client.id,
+    internalClientId: String(client.internalClientId || client.id),
     clientName: client.name || response.clientName || "",
     clientPhoneNormalized: clientPhone(client) || questionnaireResponsePhone(response) || "",
     processingStatus: "to_read",
+    routingStatus: "matched_manual",
+    routingSource: "admin_confirmed_internal_client",
     matchedManuallyAt: serverTimestamp(),
     matchedManuallyByUid: state.user?.uid || "",
     matchedManuallyByEmail: state.user?.email || "",
@@ -11275,8 +11653,11 @@ async function linkQuestionnaireResponseToClient(responseId, data) {
 }
 
 async function markQuestionnaireResponseRead(responseId, options = {}) {
-  const response = portfolioQuestionnaireResponses().find((item) => item.id === responseId);
-  if (!response) throw new Error("Reponse questionnaire introuvable dans le portefeuille confirme.");
+  const response = uniqueById([
+    ...portfolioQuestionnaireResponses(),
+    ...questionnaireResponsesForAdminReview()
+  ]).find((item) => item.id === responseId);
+  if (!response) throw new Error("Reponse questionnaire introuvable.");
   const responseCoachId = response?.coachId || state.selectedCoachId;
   await patchEntity("questionnaireResponses", responseId, {
     processingStatus: "read",
@@ -12405,8 +12786,11 @@ function portfolioQuestionnaireResponses() {
 
 function questionnaireResponsesForAdminReview() {
   if (!isInfoAdmin()) return [];
-  return (state.data.questionnaireResponses || [])
-    .filter((item) => operationalRecordClientLinkStatus(item) === "unlinked");
+  return uniqueById([
+    ...(state.data.questionnaireReviewResponses || []),
+    ...(state.data.questionnaireResponses || [])
+      .filter((item) => operationalRecordClientLinkStatus(item) === "unlinked")
+  ]).filter((item) => !["read", "archived", "validated"].includes(item.processingStatus || ""));
 }
 
 function questionnaireResponseForAdminLinking(responseId) {
@@ -12474,6 +12858,15 @@ function clientPhone(client) {
   );
 }
 
+function validQuestionnairePhone(value) {
+  const phone = normalizePhone(value);
+  return /^\d{10}$/.test(phone) ? phone : "";
+}
+
+function questionnaireClientPhone(client) {
+  return validQuestionnairePhone(clientPhone(client));
+}
+
 function questionnaireResponsePhone(response) {
   return normalizePhone(
     response?.clientPhoneNormalized
@@ -12500,6 +12893,23 @@ function questionnaireSendDate(send) {
   return dateValue(send?.sentAt || send?.preparedAt || send?.createdAt);
 }
 
+function questionnaireRecordsUseSameForm(send, response) {
+  const sendFormId = String(send?.formId || "").trim();
+  const responseFormId = String(response?.formId || "").trim();
+  if (sendFormId && responseFormId) return sendFormId === responseFormId;
+  const sendType = String(
+    send?.questionnaireType
+    || send?.questionnaire_type
+    || DEFAULT_QUESTIONNAIRE_TYPE
+  ).trim();
+  const responseType = String(
+    response?.questionnaireType
+    || response?.questionnaire_type
+    || DEFAULT_QUESTIONNAIRE_TYPE
+  ).trim();
+  return Boolean(sendType && responseType && sendType === responseType);
+}
+
 function questionnaireSendHasResponse(send, responses = portfolioQuestionnaireResponses()) {
   const sendClientId = String(send?.clientId || "").trim();
   if (!sendClientId) return false;
@@ -12507,6 +12917,7 @@ function questionnaireSendHasResponse(send, responses = portfolioQuestionnaireRe
   return portfolioOperationalRecords(responses, state.selectedCoachId, { allowUnlinked: false }).some((response) => {
     const responseClientId = String(response?.clientId || "").trim();
     if (!responseClientId || responseClientId !== sendClientId) return false;
+    if (!questionnaireRecordsUseSameForm(send, response)) return false;
     const submittedAt = dateValue(response.submittedAt || response.receivedAt || response.createdAt);
     if (!sentAt || !submittedAt) return true;
     return submittedAt >= sentAt;
@@ -12719,14 +13130,15 @@ function latestSendForClient(clientId) {
 function schedulesForClient(clientId) {
   return portfolioQuestionnaireSchedules()
     .filter((schedule) => schedule.clientId === clientId)
-    .sort((a, b) => questionnaireTypeLabel(a.questionnaireType).localeCompare(questionnaireTypeLabel(b.questionnaireType)));
+    .sort((a, b) => questionnaireRecordLabel(a).localeCompare(questionnaireRecordLabel(b)));
 }
 
 function scheduleForClient(clientId, questionnaireType = "") {
   const schedules = schedulesForClient(clientId);
   if (questionnaireType) {
-    const found = schedules.find((schedule) => (schedule.questionnaireType || DEFAULT_QUESTIONNAIRE_TYPE) === questionnaireType);
-    if (found) return found;
+    return schedules.find((schedule) =>
+      (schedule.questionnaireType || DEFAULT_QUESTIONNAIRE_TYPE) === questionnaireType
+    ) || null;
   }
   return schedules.find((schedule) => (schedule.questionnaireType || DEFAULT_QUESTIONNAIRE_TYPE) === DEFAULT_QUESTIONNAIRE_TYPE) || schedules[0];
 }
@@ -12735,10 +13147,36 @@ function questionnaireScheduleId(coachId, clientId, questionnaireType = DEFAULT_
   return `${String(coachId || state.selectedCoachId || "coach").trim()}_${String(clientId || "client").trim()}_${String(questionnaireType || DEFAULT_QUESTIONNAIRE_TYPE).trim()}`.replace(/[^A-Za-z0-9_-]+/g, "_").slice(0, 140);
 }
 
-function sanitizeQuestionnaireScheduleFrequency(value) {
+function questionnaireScheduleFrequencyValues(questionnaireType = DEFAULT_QUESTIONNAIRE_TYPE) {
+  const questionnaire = questionnaireDeliveryConfigExact(questionnaireType)
+    || QUESTIONNAIRE_TYPES.find((item) => item.type === questionnaireType)
+    || QUESTIONNAIRE_TYPES[0];
+  if (!String(questionnaire.formId || "").trim()) {
+    return ["once", "weekly", "every_2_weeks", "monthly", "every_4_weeks", "quarterly"];
+  }
+  if (
+    questionnaire.settings?.kind === "check_in"
+  ) {
+    return ["every_2_weeks", "every_4_weeks"];
+  }
+  if (
+    questionnaire.settings?.kind === "quarterly"
+  ) {
+    return ["quarterly"];
+  }
+  return ["once", "weekly", "every_2_weeks", "monthly", "every_4_weeks", "quarterly"];
+}
+
+function questionnaireScheduleDefaultFrequency(questionnaireType = DEFAULT_QUESTIONNAIRE_TYPE) {
+  const allowed = questionnaireScheduleFrequencyValues(questionnaireType);
+  return allowed.includes("monthly") ? "monthly" : allowed[0];
+}
+
+function sanitizeQuestionnaireScheduleFrequency(value, questionnaireType = DEFAULT_QUESTIONNAIRE_TYPE) {
   const clean = String(value || "").trim();
-  if (["once", "weekly", "every_2_weeks", "monthly", "every_4_weeks", "quarterly"].includes(clean)) return clean;
-  return "monthly";
+  const allowed = questionnaireScheduleFrequencyValues(questionnaireType);
+  if (allowed.includes(clean)) return clean;
+  return questionnaireScheduleDefaultFrequency(questionnaireType);
 }
 
 function questionnaireScheduleFrequencyLabel(value) {
@@ -12753,9 +13191,10 @@ function questionnaireScheduleFrequencyLabel(value) {
   return labels[value] || "Mensuel";
 }
 
-function questionnaireScheduleFrequencyOptions(current) {
-  return ["once", "weekly", "every_2_weeks", "monthly", "every_4_weeks", "quarterly"].map((value) => `
-    <option value="${escapeAttr(value)}" ${value === current ? "selected" : ""}>${escapeHtml(questionnaireScheduleFrequencyLabel(value))}</option>
+function questionnaireScheduleFrequencyOptions(current, questionnaireType = DEFAULT_QUESTIONNAIRE_TYPE) {
+  const selected = sanitizeQuestionnaireScheduleFrequency(current, questionnaireType);
+  return questionnaireScheduleFrequencyValues(questionnaireType).map((value) => `
+    <option value="${escapeAttr(value)}" ${value === selected ? "selected" : ""}>${escapeHtml(questionnaireScheduleFrequencyLabel(value))}</option>
   `).join("");
 }
 
@@ -12821,11 +13260,16 @@ function questionnaireResponseType(response) {
   return questionnaireTypeConfig(raw)?.type || DEFAULT_QUESTIONNAIRE_TYPE;
 }
 
-function questionnaireAnswer(response, key) {
+function questionnaireResponseLabel(response) {
+  return questionnaireStudioReadingSchema(response)?.label
+    || String(response?.questionnaireLabel || "").trim()
+    || questionnaireTypeLabel(questionnaireResponseType(response));
+}
+
+function questionnaireRawAnswer(response, key) {
   const answers = response?.answers || {};
   const direct = answers[key];
-  if (Array.isArray(direct)) return direct.filter(Boolean).join(", ");
-  if (direct !== undefined && direct !== null && String(direct).trim()) return String(direct).trim();
+  if (direct !== undefined && direct !== null) return direct;
   const other = Array.isArray(answers.other_responses) ? answers.other_responses : [];
   const wanted = new Set([
     keyOf(key),
@@ -12833,14 +13277,75 @@ function questionnaireAnswer(response, key) {
     keyOf(questionnaireSignalLabel(key))
   ]);
   const found = other.find((item) => wanted.has(keyOf(item?.label || "")));
-  return found?.value ? String(found.value).trim() : "";
+  return found?.value;
+}
+
+function questionnaireAnswer(response, key) {
+  const raw = questionnaireRawAnswer(response, key);
+  if (Array.isArray(raw)) return raw.filter((value) => value !== null && value !== "").join(", ");
+  if (raw === undefined || raw === null) return "";
+  return String(raw).trim();
+}
+
+function questionnaireStudioAnswer(response, field) {
+  const [key, , metadata = {}] = field;
+  let raw = questionnaireRawAnswer(response, key);
+  if (raw === undefined || raw === null) {
+    if (key === "followup_type") raw = response?.followupType;
+    if (key === "contact_request") raw = response?.contactRequest;
+  }
+  const options = Array.isArray(metadata.options) ? metadata.options : [];
+  const optionLabel = (value) => {
+    const option = options.find((item) =>
+      String(item?.value) === String(value)
+    );
+    if (option?.label) return String(option.label);
+    if (typeof value === "boolean") return value ? "Oui" : "Non";
+    if (metadata.type === "yes_no" && ["true", "false"].includes(String(value).toLowerCase())) {
+      return String(value).toLowerCase() === "true" ? "Oui" : "Non";
+    }
+    return value === undefined || value === null ? "" : String(value).trim();
+  };
+  if (Array.isArray(raw)) {
+    return raw
+      .filter((value) => value !== undefined && value !== null && value !== "")
+      .map(optionLabel)
+      .filter(Boolean)
+      .join(", ");
+  }
+  return optionLabel(raw);
 }
 
 function questionnaireDigest(response, highlights = questionnaireHighlights(response), priority = questionnairePrioritySummary(response, highlights)) {
+  const studioSchema = questionnaireStudioReadingSchema(response);
+  if (studioSchema) return questionnaireStudioDigest(response, studioSchema, highlights, priority);
   const type = questionnaireResponseType(response);
   if (type === "habitudes_quotidiennes") return questionnaireHabitsDigest(response, priority);
   if (type === "evaluation_habitudes_vie") return questionnaireLifestyleDigest(response, priority);
   return questionnaireGlobalDigest(response, highlights, priority);
+}
+
+function questionnaireStudioDigest(response, schema, highlights, priority) {
+  const answerCards = schema.sections
+    .flatMap((section) => section.fields)
+    .map((field) => ({
+      label: field[1],
+      value: questionnaireStudioAnswer(response, field)
+    }))
+    .filter((item) => item.value)
+    .slice(0, 4);
+  const signalReasons = highlights
+    .map((item) => item.reason)
+    .filter(Boolean)
+    .slice(0, 3);
+  return {
+    typeLabel: schema.label,
+    headline: questionnaireActionHeadline(response),
+    summary: signalReasons.join(" · ") || priority.reason || "Reponse conservee dans l'historique client.",
+    nextAction: priority.nextStep,
+    focus: signalReasons,
+    cards: answerCards
+  };
 }
 
 function questionnaireGlobalDigest(response, highlights, priority) {
@@ -12975,6 +13480,50 @@ function questionnaireUnknownAnswers(response, schema) {
   return unknown;
 }
 
+function questionnaireStudioReadingSchema(response) {
+  const raw = response?.formSchema
+    || response?.schemaSnapshot
+    || response?.questionnaireSchema
+    || response?.definitionSnapshot?.formSchema
+    || response?.definitionSnapshot
+    || null;
+  if (!raw || typeof raw !== "object") return null;
+  const rawSections = Array.isArray(raw.sections) ? raw.sections : [];
+  const sections = rawSections.map((section, sectionIndex) => {
+    const rawFields = Array.isArray(section.fields)
+      ? section.fields
+      : (Array.isArray(section.questions) ? section.questions : []);
+    const fields = rawFields
+      .filter((field) =>
+        field &&
+        typeof field === "object" &&
+        !["info", "information"].includes(String(field.type || ""))
+      )
+      .map((field, fieldIndex) => [
+        String(field.id || field.key || field.name || `question_${sectionIndex + 1}_${fieldIndex + 1}`),
+        String(field.label || field.title || field.prompt || "Question"),
+        {
+          type: String(field.type || ""),
+          options: Array.isArray(field.options)
+            ? field.options.map((option) => ({
+              value: option?.value,
+              label: String(option?.label || option?.value || "")
+            }))
+            : []
+        }
+      ]);
+    return {
+      title: String(section.title || section.label || `Section ${sectionIndex + 1}`),
+      fields
+    };
+  }).filter((section) => section.fields.length);
+  if (!sections.length) return null;
+  return {
+    label: String(raw.label || raw.title || response.questionnaireLabel || "Questionnaire"),
+    sections
+  };
+}
+
 function renderQuestionnaireResponseRow(question, value, signal) {
   return `
     <div class="questionnaire-response-row ${signal ? `signal ${escapeAttr(signal.level)}` : ""}">
@@ -12986,10 +13535,13 @@ function renderQuestionnaireResponseRow(question, value, signal) {
 }
 
 function renderQuestionnaireStructuredAnswers(response, highlights = questionnaireHighlights(response)) {
-  const schema = QUESTIONNAIRE_READING_SCHEMAS[questionnaireResponseType(response)] || QUESTIONNAIRE_READING_SCHEMAS.suivi_global;
+  const schema = questionnaireStudioReadingSchema(response)
+    || QUESTIONNAIRE_READING_SCHEMAS[questionnaireResponseType(response)]
+    || QUESTIONNAIRE_READING_SCHEMAS.suivi_global;
   const sections = schema.sections.map((section) => {
-    const rows = section.fields.map(([key, question]) => {
-      const value = questionnaireFieldValue(response, key);
+    const rows = section.fields.map((field) => {
+      const [key, question] = field;
+      const value = questionnaireStudioAnswer(response, field);
       if (!value) return "";
       return renderQuestionnaireResponseRow(question, value, questionnaireSignalForField(highlights, key));
     }).filter(Boolean);
@@ -13032,6 +13584,16 @@ function renderAnswerSummary(response, highlights = questionnaireHighlights(resp
 function questionnaireHighlights(response) {
   const answers = response.answers || {};
   const status = response.triageStatus || "";
+  if (Array.isArray(response.triageSignals) && response.triageSignals.length) {
+    const levelByStatus = { rouge: "red", orange: "orange", jaune: "amber", vert: "green" };
+    return response.triageSignals.slice(0, 5).map((signal) => ({
+      key: String(signal.fieldId || signal.key || "triage"),
+      level: String(signal.level || levelByStatus[signal.status] || levelByStatus[status] || "amber"),
+      label: String(signal.label || questionnaireSignalLabel(signal.fieldId || signal.key || "triage")),
+      reason: String(signal.reason || signal.message || "Reponse a verifier."),
+      value: String(signal.value ?? answers[signal.fieldId || signal.key] ?? "").slice(0, 180)
+    }));
+  }
   const signals = [];
   const add = (key, level, reason, value = answers[key]) => {
     if (!value || signals.some((signal) => signal.key === key)) return;

@@ -15,6 +15,49 @@ Le candidat final doit :
 
 Le GO du 28 juillet couvre uniquement la préparation et la validation locales. Il ne couvre ni déploiement, ni écriture de données réelles, ni communication aux coachs.
 
+## Pourquoi la découverte précédente a semblé oubliée
+
+Le problème n'était pas une suppression volontaire du Studio. Quatre états
+avaient été mélangés :
+
+1. le travail de conception/Studio existait dans un worktree local divergent,
+   avec des changements non scellés;
+2. le Dashboard réellement servi provenait d'un snapshot Hosting distinct;
+3. la tâche « diagnostic et extension 0.6.9 » concernait surtout l'import
+   CoachRx et l'identité client, pas l'architecture des questionnaires;
+4. aucun test ne fixait ensemble le snapshot live, les trois anciennes pages,
+   Apps Script v23, les tags GHL, les huit redirections et le nouveau Studio.
+
+Une nouvelle tâche pouvait donc repartir correctement du live, mais ne pas voir
+le travail non commité du worktree précédent. La conversation conservait
+l'intention produit; Git ne conservait pas encore un candidat canonique
+déployable. C'est ce décalage entre « discuté/construit localement » et
+« intégré/scellé dans le socle live » qui donnait l'impression d'un oubli.
+
+La réconciliation corrige ce défaut de méthode :
+
+- un baseline exact du Hosting live;
+- une branche candidate unique;
+- des hashes des parcours historiques et de CoachRx;
+- une gate commune à Hosting, Functions, Firestore et au pipeline standard;
+- un runbook par étapes avec commit propre, dry-run, canaris et rollback;
+- une archive et un bundle Git à conserver avant tout GO production.
+
+## Architecture clarifiée
+
+- Les anciennes pages restent sur Firebase Hosting et soumettent à Apps Script
+  v23. Elles ne sont ni supprimées ni redirigées dans ce candidat.
+- Les nouveaux formulaires utilisent l'API Firebase, des URL génériques et un
+  reçu durable.
+- Le téléphone sert à retrouver une fiche existante, mais le rattachement
+  persistant utilise l'identité interne stable. Une ambiguïté échoue fermée.
+- Un dossier à ownership `needs_review` reste disponible pour le suivi interne
+  quotidien; un envoi, un rattachement ou un changement de propriétaire exige
+  toujours une fiche confirmée.
+- `published` et `deliveryReady` sont séparés. Un administrateur peut tester un
+  lien publié sans que les coachs ou le planificateur puissent déclencher un
+  workflow GHL non vérifié.
+
 ## Provenance du socle
 
 - Parent historique Dashboard/CoachRx 0.7.0 :
