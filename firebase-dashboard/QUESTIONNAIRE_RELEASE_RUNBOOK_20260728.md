@@ -82,6 +82,13 @@ correspond à aucun téléphone ou identifiant de `clients`, et ne porte aucun d
 deux tags historiques du canari. Cette combinaison constitue l'autorisation
 interne explicite de cibler ce contact; aucun membre réel n'est admissible.
 
+La preview vérifie aussi l'état `ENABLED`, la cadence, le fuseau, la cible,
+l'OIDC, les retries et le délai exacts du job Scheduler. Le champ
+`lastExecutionStatusCode` est conservé comme diagnostic historique de la
+dernière exécution; il ne décrit pas la configuration courante et ne bloque pas
+à lui seul. Chaque canari exige plutôt un nouveau `syncRun` exact, lié au nonce
+et au SHA, après son propre déclenchement.
+
 Les scripts refusent un worktree modifié ou un `HEAD` différent du SHA scellé.
 Toutes les autorisations et preuves ci-dessous doivent être égales à ce SHA.
 Un nouveau commit de candidat invalide donc automatiquement les anciens GO,

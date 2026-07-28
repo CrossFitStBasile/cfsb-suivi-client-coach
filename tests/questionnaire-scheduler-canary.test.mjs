@@ -341,6 +341,9 @@ test("runner preserves only aggregate evidence and exact synthetic cleanup", () 
     /async function triggerSchedulerJob[\s\S]*assertCanaryControlReady\(context, controlProof\)[\s\S]*getAndValidateSchedulerJob\(context\)[\s\S]*assertCanaryControlReady\(context, controlProof\)[\s\S]*cloudscheduler\.googleapis\.com/
   );
   assert.match(runnerSource, /scheduler_attempt_deadline_mismatch/);
+  assert.match(runnerSource, /scheduler_job_status_invalid/);
+  assert.match(runnerSource, /lastExecutionStatusCode/);
+  assert.doesNotMatch(runnerSource, /scheduler_job_status_error/);
   assert.match(runnerSource, /targetUri !== functionUri/);
   assert.match(runnerSource, /minimumTtlMs: MINIMUM_CONTROL_TTL_MS/);
   assert.match(runnerSource, /targetTagObserved: tagCleanup\.tagObserved/);

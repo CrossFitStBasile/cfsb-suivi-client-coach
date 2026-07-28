@@ -449,7 +449,14 @@ async function getAndValidateSchedulerJob(context) {
   if (!["", "0s"].includes(String(job.retryConfig?.maxRetryDuration || ""))) {
     throw new CanaryError("scheduler_retry_duration_not_zero");
   }
-  if (Number(job.status?.code || 0) !== 0) throw new CanaryError("scheduler_job_status_error");
+  const historicalStatusCode = Number(job.status?.code || 0);
+  if (
+    !Number.isInteger(historicalStatusCode)
+    || historicalStatusCode < 0
+    || historicalStatusCode > 16
+  ) {
+    throw new CanaryError("scheduler_job_status_invalid");
+  }
   if (job.httpTarget?.httpMethod !== "POST") throw new CanaryError("scheduler_http_method_mismatch");
   if (job.pubsubTarget || job.appEngineHttpTarget) throw new CanaryError("scheduler_target_type_mismatch");
   const targetUri = String(job.httpTarget?.uri || "").trim();
@@ -497,6 +504,7 @@ function schedulerJobSummary(job) {
     attemptDeadline: job.attemptDeadline,
     retryCount: Number(job.retryConfig?.retryCount || 0),
     retryDurationSeconds: 0,
+    lastExecutionStatusCode: Number(job.status?.code || 0),
     httpMethod: "POST",
     oidcVerified: true,
     targetVerified: true
