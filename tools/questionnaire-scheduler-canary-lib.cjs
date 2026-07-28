@@ -13,6 +13,12 @@ const LEGACY_QUESTIONNAIRE_TYPE = "suivi_global";
 const LEGACY_GHL_TAG = "dashboardcoach";
 const PROCESS_QUESTIONNAIRE_TYPE = "habitudes_quotidiennes";
 const PROCESS_GHL_TAG = "suiviregulier";
+const EVALUATION_GHL_TAG = "evaluationnutrition";
+const HISTORICAL_GHL_TAGS = Object.freeze([
+  LEGACY_GHL_TAG,
+  PROCESS_GHL_TAG,
+  EVALUATION_GHL_TAG
+]);
 const SYNTHETIC_CONTACT_MARKER_TAG = "cfsb-questionnaire-internal-canary";
 const MAX_ARMING_MS = 30 * 60 * 1000;
 const CONTROL_NONCE_PATTERN = /^[a-f0-9]{32}$/;
@@ -60,6 +66,7 @@ function parseArgs(argv = []) {
     }
     if ([
       "--preview",
+      "--provision-contact",
       "--pin-contact",
       "--execute-process",
       "--execute-empty",
@@ -87,6 +94,151 @@ function reservedSyntheticPhone(value) {
   return /^\d{3}55501\d{2}$/.test(normalizePhone(value));
 }
 
+function buildContactProvisionClaim({
+  releaseCommit,
+  locationId,
+  phone,
+  createdAt
+}) {
+  const commit = assertReleaseCommit(releaseCommit);
+  const cleanLocationId = String(locationId || "").trim();
+  const cleanPhone = normalizePhone(phone);
+  const createdAtDate = new Date(String(createdAt || ""));
+  if (!/^[A-Za-z0-9_-]{8,80}$/.test(cleanLocationId)) {
+    throw new CanaryError("provision_claim_location_invalid");
+  }
+  if (!reservedSyntheticPhone(cleanPhone)) {
+    throw new CanaryError("provision_claim_phone_invalid");
+  }
+  if (
+    !Number.isFinite(createdAtDate.getTime())
+    || createdAtDate.getTime() > Date.now() + (5 * 60 * 1000)
+  ) {
+    throw new CanaryError("provision_claim_time_invalid");
+  }
+  return Object.freeze({
+    source: CANARY_SOURCE,
+    purpose: "ghl_contact_provision",
+    releaseCommit: commit,
+    locationId: cleanLocationId,
+    phone: cleanPhone,
+    createdAt: createdAtDate.toISOString()
+  });
+}
+
+function validContactProvisionClaim(value, { locationId, phone }) {
+  try {
+    const normalized = buildContactProvisionClaim({
+      releaseCommit: value?.releaseCommit,
+      locationId: value?.locationId,
+      phone: value?.phone,
+      createdAt: value?.createdAt
+    });
+    return value?.source === CANARY_SOURCE
+      && value?.purpose === "ghl_contact_provision"
+      && normalized.locationId === String(locationId || "").trim()
+      && normalized.phone === normalizePhone(phone);
+  } catch (_) {
+    return false;
+  }
+}
+
+async function acquireSharedContactProvisionClaim({
+  claim,
+  createClaim,
+  readClaim
+}) {
+  if (
+    !claim
+    || typeof createClaim !== "function"
+    || typeof readClaim !== "function"
+    || !validContactProvisionClaim(claim, claim)
+  ) {
+    throw new CanaryError("provision_claim_contract_invalid");
+  }
+  try {
+    const created = await createClaim(claim);
+    if (!validContactProvisionClaim(created || claim, claim)) {
+      throw new CanaryError("provision_claim_create_response_invalid");
+    }
+    return Object.freeze({ acquired: true, claim });
+  } catch (_) {
+    let existing = null;
+    try {
+      existing = await readClaim();
+    } catch (_) {
+      throw new CanaryError("provision_claim_unresolved");
+    }
+    if (!validContactProvisionClaim(existing, claim)) {
+      throw new CanaryError("provision_claim_unresolved");
+    }
+    return Object.freeze({ acquired: false, claim: existing });
+  }
+}
+
+function completeGhlContactSearch(data) {
+  const contacts = Array.isArray(data?.contacts) ? data.contacts : null;
+  const declaredTotals = [
+    data?.meta?.total,
+    data?.total,
+    data?.count
+  ].filter((value) => value !== undefined && value !== null && value !== "");
+  const totals = declaredTotals.map(Number);
+  const nextPage = String(data?.meta?.nextPage || data?.nextPage || "").trim();
+  const nextPageUrl = String(
+    data?.meta?.nextPageUrl || data?.nextPageUrl || ""
+  ).trim();
+  if (
+    !contacts
+    || totals.length === 0
+    || totals.some((value) => !Number.isInteger(value) || value < 0)
+    || totals.some((value) => value !== totals[0])
+    || totals[0] > 100
+    || contacts.length !== totals[0]
+    || contacts.length > 100
+    || nextPage
+    || nextPageUrl
+  ) {
+    throw new CanaryError("synthetic_contact_search_incomplete");
+  }
+  return contacts;
+}
+
+function dashboardClientMatchesSyntheticIdentity(value = {}, {
+  documentId = "",
+  phone,
+  contactId = ""
+} = {}) {
+  const expectedPhone = normalizePhone(phone);
+  const expectedContactId = String(contactId || "").trim();
+  if (!expectedPhone) return false;
+  const phones = [
+    value.phoneNormalized,
+    value.clientPhoneNormalized,
+    value.client_phone_normalized,
+    value.phone,
+    value.clientPhone,
+    value.telephone,
+    value.mobile,
+    value.phoneNumber,
+    value.phone_number
+  ].map(normalizePhone).filter(Boolean);
+  const contactIds = [
+    documentId,
+    value.ghlContactId,
+    value.ghl_contact_id,
+    value.ghlId,
+    value.ghl_id,
+    value.contactId,
+    value.sourceClientId,
+    value.source_client_id,
+    value.clientId,
+    value.coachRxLink?.sourceClientId
+  ].map((entry) => String(entry || "").trim()).filter(Boolean);
+  return phones.includes(expectedPhone)
+    || (expectedContactId && contactIds.includes(expectedContactId));
+}
+
 function contactName(contact = {}) {
   return String(
     contact.contactName
@@ -103,7 +255,12 @@ function contactTags(contact = {}) {
     .filter(Boolean);
 }
 
-function explicitSyntheticContact(contact = {}) {
+function historicalGhlTagsAbsent(contact = {}) {
+  const tags = contactTags(contact);
+  return HISTORICAL_GHL_TAGS.every((tag) => !tags.includes(tag));
+}
+
+function explicitSyntheticContact(contact = {}, { requireDnd = true } = {}) {
   const id = String(contact.id || "").trim();
   const name = contactName(contact).toLowerCase();
   const tags = contactTags(contact);
@@ -117,6 +274,7 @@ function explicitSyntheticContact(contact = {}) {
     && cfsbPurposeName
     && tags.some((tag) => syntheticPattern.test(tag))
     && tags.includes(SYNTHETIC_CONTACT_MARKER_TAG)
+    && (!requireDnd || contact.dnd === true)
     && reservedSyntheticPhone(contact.phone)
   );
 }
@@ -440,6 +598,17 @@ function decodeFirestoreValue(value = {}) {
   if (Object.prototype.hasOwnProperty.call(value, "doubleValue")) return Number(value.doubleValue);
   if (Object.prototype.hasOwnProperty.call(value, "timestampValue")) return value.timestampValue;
   if (Object.prototype.hasOwnProperty.call(value, "nullValue")) return null;
+  if (Object.prototype.hasOwnProperty.call(value, "mapValue")) {
+    const decoded = {};
+    for (const [key, entry] of Object.entries(value.mapValue?.fields || {})) {
+      decoded[key] = decodeFirestoreValue(entry);
+    }
+    return decoded;
+  }
+  if (Object.prototype.hasOwnProperty.call(value, "arrayValue")) {
+    return (Array.isArray(value.arrayValue?.values) ? value.arrayValue.values : [])
+      .map(decodeFirestoreValue);
+  }
   return undefined;
 }
 
@@ -469,6 +638,8 @@ module.exports = {
   LEGACY_GHL_TAG,
   PROCESS_QUESTIONNAIRE_TYPE,
   PROCESS_GHL_TAG,
+  EVALUATION_GHL_TAG,
+  HISTORICAL_GHL_TAGS,
   SYNTHETIC_CONTACT_MARKER_TAG,
   MAX_ARMING_MS,
   CONTROL_NONCE_PATTERN,
@@ -480,8 +651,14 @@ module.exports = {
   parseArgs,
   normalizePhone,
   reservedSyntheticPhone,
+  buildContactProvisionClaim,
+  validContactProvisionClaim,
+  acquireSharedContactProvisionClaim,
+  completeGhlContactSearch,
+  dashboardClientMatchesSyntheticIdentity,
   contactName,
   contactTags,
+  historicalGhlTagsAbsent,
   explicitSyntheticContact,
   contactConfirmationFingerprint,
   selectUniqueSyntheticContact,

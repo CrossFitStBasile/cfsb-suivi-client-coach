@@ -52,12 +52,10 @@ legacy coach (création, lecture, modification, pause et reprise), les droits
 admin et le refus total des deux collections canari privées. Pendant la fenêtre,
 ne pas demander aux membres de soumettre et ne pas lancer de nouveaux envois.
 
-Variables à définir dans le même terminal après le GO production :
+Preuves locales à lier au candidat avant le GO production :
 
 ```cmd
 set CFSB_QUESTIONNAIRE_RELEASE_COMMIT=<SHA_CANDIDAT_SCELLE>
-set CFSB_QUESTIONNAIRE_RELEASE_GO=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
-set CFSB_COACH_NOTICE_CONFIRMED=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
 run-questionnaire-firestore-rules-emulator-canary.cmd
 set CFSB_QUESTIONNAIRE_RULES_EMULATOR_OK=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
 ```
@@ -71,6 +69,37 @@ run-questionnaire-release-canary.cmd --preview
 set CFSB_QUESTIONNAIRE_CANARY_CONTACT_FINGERPRINT=<EMPREINTE_AFFICHEE_PAR_PREVIEW>
 run-questionnaire-release-canary.cmd --pin-contact
 ```
+
+Si la preview retourne `stop: true`, `next: provision_contact_required` et
+`explicitSyntheticContactCount: 0`, publier d'abord l'avis coach. Tout candidat
+partiel ou multiple reste un STOP manuel. Le mode scellé suivant peut alors
+créer une seule fiche interne, en DND, sur le numéro fictif réservé
+`514-555-0100` :
+
+```cmd
+set CFSB_QUESTIONNAIRE_RELEASE_GO=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
+set CFSB_COACH_NOTICE_CONFIRMED=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
+set CFSB_QUESTIONNAIRE_PROVISION_CONTACT_GO=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
+run-questionnaire-release-canary.cmd --provision-contact
+run-questionnaire-release-canary.cmd --preview
+set CFSB_QUESTIONNAIRE_CANARY_CONTACT_FINGERPRINT=<EMPREINTE_AFFICHEE_PAR_PREVIEW>
+run-questionnaire-release-canary.cmd --pin-contact
+```
+
+Le provisionnement vérifie d'abord l'absence exacte par téléphone avec l'API
+GHL de déduplication et l'absence de tout autre canari synthétique sur les
+numéros réservés. Les recherches GHL exigent un total complet non paginé égal
+au nombre de fiches retournées; une page tronquée bloque. Il n'utilise jamais
+`upsert`, applique le tag interne et le DND, puis exige que la fiche créée soit
+relue comme unique et absente des clients Dashboard. Juste avant l'unique POST,
+un claim Firestore partagé, atomique et permanent, puis un verrou local
+atomique et persistant sont créés pour ce numéro. Le claim partagé empêche deux
+postes différents de devenir écrivains; le verrou local couvre les rejeux du
+poste opérateur. Une réponse réseau incertaine, un rejeu ou une invocation
+concurrente n'entraîne jamais un second POST : la récupération est uniquement
+en lecture. Un verrou sans fiche GHL observable est un STOP qui exige une
+adjudication manuelle; ni le claim ni le verrou ne doivent être supprimés pour
+forcer un rejeu.
 
 Le pin refuse de s'exécuter si l'empreinte confirmée n'est pas exactement celle
 de la passe preview. Le reçu SHA-bound contient seulement l'identifiant opaque

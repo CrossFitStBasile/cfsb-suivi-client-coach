@@ -22,6 +22,7 @@ exit /b %ERRORLEVEL%
 :usage
 echo Usage:
 echo   run-questionnaire-release-canary.cmd --preview
+echo   run-questionnaire-release-canary.cmd --provision-contact
 echo   run-questionnaire-release-canary.cmd --pin-contact
 echo   run-questionnaire-release-canary.cmd --execute-process
 echo   run-questionnaire-release-canary.cmd --execute-empty

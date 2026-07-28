@@ -31,6 +31,10 @@ test("canary CLI modes and release SHA fail closed", () => {
     { mode: "execute-process", releaseCommit: commit }
   );
   assert.deepEqual(
+    lib.parseArgs([`--release-commit=${commit}`, "--provision-contact"]),
+    { mode: "provision-contact", releaseCommit: commit }
+  );
+  assert.deepEqual(
     lib.parseArgs([`--release-commit=${commit}`, "--pin-contact"]),
     { mode: "pin-contact", releaseCommit: commit }
   );
@@ -64,7 +68,8 @@ test("synthetic GHL contact requires explicit name, tag, unique ID and valid pho
     id: "syntheticContact01",
     name: "CFSB Questionnaire Canary",
     phone: "514-555-0100",
-    tags: ["qa", lib.SYNTHETIC_CONTACT_MARKER_TAG]
+    tags: ["qa", lib.SYNTHETIC_CONTACT_MARKER_TAG],
+    dnd: true
   };
   assert.equal(lib.explicitSyntheticContact(valid), true);
   assert.equal(lib.explicitSyntheticContact({ ...valid, name: "Ordinary Member" }), false);
@@ -75,6 +80,22 @@ test("synthetic GHL contact requires explicit name, tag, unique ID and valid pho
   );
   assert.equal(lib.explicitSyntheticContact({ ...valid, phone: "555" }), false);
   assert.equal(lib.explicitSyntheticContact({ ...valid, phone: "514-555-2100" }), false);
+  assert.equal(lib.explicitSyntheticContact({ ...valid, dnd: false }), false);
+  assert.equal(
+    lib.explicitSyntheticContact({ ...valid, dnd: undefined }, { requireDnd: false }),
+    true
+  );
+  for (const tag of [
+    lib.LEGACY_GHL_TAG,
+    lib.PROCESS_GHL_TAG,
+    lib.EVALUATION_GHL_TAG
+  ]) {
+    assert.equal(lib.historicalGhlTagsAbsent(valid), true);
+    assert.equal(
+      lib.historicalGhlTagsAbsent({ ...valid, tags: [...valid.tags, tag] }),
+      false
+    );
+  }
   assert.match(lib.contactConfirmationFingerprint(valid), /^[a-f0-9]{64}$/);
   assert.equal(lib.selectUniqueSyntheticContact([[valid]]), valid);
   assert.throws(
@@ -91,6 +112,178 @@ test("synthetic GHL contact requires explicit name, tag, unique ID and valid pho
       { targetTag: "suiviregulier" }
     ),
     /synthetic_contact_target_tag_already_present/
+  );
+});
+
+test("shared provision claim permits one creator and makes timeout recovery read-only", async () => {
+  const locationId = "locationCanary01";
+  const phone = "5145550100";
+  const claim = lib.buildContactProvisionClaim({
+    releaseCommit: commit,
+    locationId,
+    phone,
+    createdAt: new Date().toISOString()
+  });
+  let stored = null;
+  let createCalls = 0;
+  const acquire = () => lib.acquireSharedContactProvisionClaim({
+    claim,
+    createClaim: async (value) => {
+      createCalls += 1;
+      if (stored) throw new lib.CanaryError("http_409");
+      stored = value;
+      return value;
+    },
+    readClaim: async () => stored
+  });
+  const concurrent = await Promise.all([acquire(), acquire()]);
+  assert.equal(concurrent.filter((value) => value.acquired).length, 1);
+  assert.equal(concurrent.filter((value) => !value.acquired).length, 1);
+  assert.equal(createCalls, 2);
+
+  let timeoutCreateCalls = 0;
+  stored = null;
+  const timeoutAfterWrite = await lib.acquireSharedContactProvisionClaim({
+    claim,
+    createClaim: async (value) => {
+      timeoutCreateCalls += 1;
+      stored = value;
+      throw new lib.CanaryError("http_503");
+    },
+    readClaim: async () => stored
+  });
+  assert.equal(timeoutAfterWrite.acquired, false);
+  assert.equal(timeoutCreateCalls, 1);
+
+  let noWriteCreateCalls = 0;
+  await assert.rejects(
+    lib.acquireSharedContactProvisionClaim({
+      claim,
+      createClaim: async () => {
+        noWriteCreateCalls += 1;
+        throw new lib.CanaryError("http_503");
+      },
+      readClaim: async () => null
+    }),
+    /provision_claim_unresolved/
+  );
+  assert.equal(noWriteCreateCalls, 1);
+});
+
+test("GHL contact search completeness accepts live and documented totals only", () => {
+  const contacts = [{ id: "contactOne" }, { id: "contactTwo" }];
+  assert.equal(
+    lib.completeGhlContactSearch({
+      contacts,
+      meta: { total: 2, nextPage: "", nextPageUrl: "" }
+    }),
+    contacts
+  );
+  assert.equal(
+    lib.completeGhlContactSearch({ contacts, count: 2 }),
+    contacts
+  );
+  assert.throws(
+    () => lib.completeGhlContactSearch({ contacts, meta: { total: 3 } }),
+    /synthetic_contact_search_incomplete/
+  );
+  assert.throws(
+    () => lib.completeGhlContactSearch({ contacts, count: 2, total: 3 }),
+    /synthetic_contact_search_incomplete/
+  );
+  assert.throws(
+    () => lib.completeGhlContactSearch({ contacts }),
+    /synthetic_contact_search_incomplete/
+  );
+  assert.throws(
+    () => lib.completeGhlContactSearch({
+      contacts,
+      meta: { total: 2, nextPage: "2" }
+    }),
+    /synthetic_contact_search_incomplete/
+  );
+});
+
+test("Dashboard non-member proof covers canonical and legacy identity aliases", () => {
+  const identity = {
+    phone: "5145550100",
+    contactId: "syntheticContact01"
+  };
+  for (const field of [
+    "phoneNormalized",
+    "clientPhoneNormalized",
+    "client_phone_normalized",
+    "phone",
+    "clientPhone",
+    "telephone",
+    "mobile",
+    "phoneNumber",
+    "phone_number"
+  ]) {
+    assert.equal(
+      lib.dashboardClientMatchesSyntheticIdentity(
+        { [field]: "+1 514-555-0100" },
+        identity
+      ),
+      true,
+      field
+    );
+  }
+  for (const field of [
+    "ghlContactId",
+    "ghl_contact_id",
+    "ghlId",
+    "ghl_id",
+    "contactId",
+    "sourceClientId",
+    "source_client_id",
+    "clientId"
+  ]) {
+    assert.equal(
+      lib.dashboardClientMatchesSyntheticIdentity(
+        { [field]: "syntheticContact01" },
+        identity
+      ),
+      true,
+      field
+    );
+  }
+  assert.equal(
+    lib.dashboardClientMatchesSyntheticIdentity(
+      { coachRxLink: { sourceClientId: "syntheticContact01" } },
+      identity
+    ),
+    true
+  );
+  assert.equal(
+    lib.dashboardClientMatchesSyntheticIdentity(
+      {},
+      { ...identity, documentId: "syntheticContact01" }
+    ),
+    true
+  );
+  assert.equal(
+    lib.dashboardClientMatchesSyntheticIdentity(
+      { telephone: "4505550199", clientId: "different" },
+      identity
+    ),
+    false
+  );
+
+  const decoded = lib.decodeFirestoreDocument({
+    fields: {
+      coachRxLink: {
+        mapValue: {
+          fields: {
+            sourceClientId: { stringValue: "syntheticContact01" }
+          }
+        }
+      }
+    }
+  });
+  assert.equal(
+    lib.dashboardClientMatchesSyntheticIdentity(decoded, identity),
+    true
   );
 });
 
@@ -335,6 +528,44 @@ test("runner preserves only aggregate evidence and exact synthetic cleanup", () 
   assert.match(runnerSource, /positive_canary_target_tag_not_observed/);
   assert.match(runnerSource, /synthetic_contact_matches_dashboard_member/);
   assert.match(runnerSource, /CFSB_QUESTIONNAIRE_CANARY_CONTACT_FINGERPRINT/);
+  assert.match(runnerSource, /CFSB_QUESTIONNAIRE_PROVISION_CONTACT_GO/);
+  assert.match(runnerSource, /mode: "provision-contact"/);
+  assert.match(runnerSource, /next: "provision_contact_required"/);
+  assert.match(runnerSource, /explicitSyntheticContactCount: 0/);
+  assert.match(runnerSource, /synthetic_contact_candidates_not_unique/);
+  assert.match(runnerSource, /contacts\/search\/duplicate/);
+  assert.match(runnerSource, /number: `\+1\$\{SYNTHETIC_CONTACT_PHONE\}`/);
+  assert.match(
+    runnerSource,
+    /duplicateContactByReservedPhone[\s\S]*allowNotFound: true/
+  );
+  assert.match(runnerSource, /completeGhlContactSearch/);
+  assert.match(runnerSource, /assertReservedPhoneNotDashboardMember/);
+  assert.match(runnerSource, /coachRxLink\.sourceClientId/);
+  assert.match(runnerSource, /historicalGhlTagsAbsent/);
+  assert.match(runnerSource, /HISTORICAL_GHL_TAGS/);
+  assert.match(runnerSource, /searchReservedPhoneMatches/);
+  assert.match(runnerSource, /synthetic_phone_collision_before_create/);
+  assert.match(runnerSource, /synthetic_phone_not_unique/);
+  assert.match(runnerSource, /acquireProvisionAttemptFence/);
+  assert.match(runnerSource, /flag: "wx"/);
+  assert.match(runnerSource, /provision_attempt_receipt_invalid/);
+  assert.match(runnerSource, /synthetic_contact_provision_attempt_unresolved/);
+  assert.match(runnerSource, /synthetic_contact_exists_on_other_reserved_phone/);
+  assert.match(runnerSource, /acquireCloudProvisionClaim/);
+  assert.match(runnerSource, /SYNTHETIC_CONTACT_PROVISION_CLAIM_ID/);
+  assert.match(runnerSource, /sharedProvisionFenceCreated/);
+  assert.match(
+    runnerSource,
+    /if \(!provisionFence\.acquired\)[\s\S]*waitForProvisionedSyntheticContact[\s\S]*created: false,[\s\S]*sharedFenceCreated: true,[\s\S]*contact: recovered/
+  );
+  assert.match(runnerSource, /ghlWriteRequest\(token, "\/contacts\/", "POST"/);
+  assert.match(runnerSource, /dnd: true/);
+  assert.match(
+    runnerSource,
+    /externalWrites:[\s\S]*sharedFenceCreated[\s\S]*provisioned\.created/
+  );
+  assert.doesNotMatch(runnerSource, /contacts\/upsert/);
   assert.match(runnerSource, /scheduler_job_changed_before_trigger/);
   assert.match(
     runnerSource,

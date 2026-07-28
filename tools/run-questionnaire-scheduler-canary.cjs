@@ -14,6 +14,7 @@ const {
   CONTROL_ID,
   LEGACY_GHL_TAG,
   PROCESS_GHL_TAG,
+  HISTORICAL_GHL_TAGS,
   SYNTHETIC_CONTACT_MARKER_TAG,
   EXPECTED_SCHEDULER_JOB_NAME,
   CanaryError,
@@ -21,7 +22,12 @@ const {
   processCanarySendId,
   parseArgs,
   normalizePhone,
+  buildContactProvisionClaim,
+  acquireSharedContactProvisionClaim,
+  completeGhlContactSearch,
+  dashboardClientMatchesSyntheticIdentity,
   contactTags,
+  historicalGhlTagsAbsent,
   explicitSyntheticContact,
   contactConfirmationFingerprint,
   selectUniqueSyntheticContact,
@@ -51,6 +57,11 @@ const FUNCTIONS_BASE = `https://cloudfunctions.googleapis.com/v2/projects/${PROJ
 const GHL_BASE = "https://services.leadconnectorhq.com";
 const GHL_LOCATION_ID = "hWM7E7ZXB88LWDmjezKU";
 const GHL_API_VERSION = "2021-07-28";
+const SYNTHETIC_CONTACT_NAME = "CFSB Questionnaire Canary";
+const SYNTHETIC_CONTACT_PHONE = "5145550100";
+const SYNTHETIC_CONTACT_SOURCE = "cfsb_dashboard_questionnaire_canary";
+const SYNTHETIC_CONTACT_PROVISION_CLAIM_ID =
+  `contact-provision-${SYNTHETIC_CONTACT_PHONE}`;
 const REQUEST_TIMEOUT_MS = 15_000;
 const POLL_TIMEOUT_MS = 90_000;
 const POLL_INTERVAL_MS = 2_000;
@@ -91,6 +102,32 @@ async function main() {
     ...firebase
   };
 
+  if (options.mode === "provision-contact") {
+    const job = await getAndValidateSchedulerJob(context);
+    const provisioned = await provisionSyntheticContact(context);
+    printResult({
+      ok: true,
+      check: "questionnaire_canary_contact_provision",
+      mode: "provision-contact",
+      projectId: PROJECT_ID,
+      releaseCommit: options.releaseCommit,
+      schedulerJob: schedulerJobSummary(job),
+      contactCreated: provisioned.created,
+      explicitSyntheticContactCount: 1,
+      dashboardNonMemberVerified: true,
+      exactMarkerTagVerified: true,
+      doNotDisturbVerified: true,
+      targetTagsAbsent: true,
+      contactFingerprint: contactConfirmationFingerprint(provisioned.contact),
+      piiPrinted: false,
+      sharedProvisionFenceCreated: provisioned.sharedFenceCreated,
+      externalWrites:
+        (provisioned.sharedFenceCreated ? 1 : 0)
+        + (provisioned.created ? 1 : 0)
+    });
+    return;
+  }
+
   if (options.mode === "pin-contact") {
     const job = await getAndValidateSchedulerJob(context);
     const { contact } = await discoverSyntheticContact(context, {
@@ -98,8 +135,8 @@ async function main() {
       targetTag: LEGACY_GHL_TAG
     });
     await assertContactNotDashboardMember(context, contact);
-    if (contactTags(contact).includes(PROCESS_GHL_TAG)) {
-      throw new CanaryError("synthetic_contact_process_tag_already_present");
+    if (!historicalGhlTagsAbsent(contact)) {
+      throw new CanaryError("synthetic_contact_historical_tag_already_present");
     }
     const fingerprint = contactConfirmationFingerprint(contact);
     if (
@@ -147,11 +184,39 @@ async function main() {
   const job = await getAndValidateSchedulerJob(context);
   if (options.mode === "preview") {
     const preflight = runLivePreflight({ requireIndexReady: false });
-    const synthetic = await discoverSyntheticContact(context, {
+    const token = readGhlSecret(context);
+    const contactSets = await searchSyntheticContactSets(token);
+    const candidates = contactSets.flat();
+    const explicit = candidates.filter((contact) =>
+      explicitSyntheticContact(contact)
+    );
+    if (candidates.length === 0) {
+      printResult({
+        ok: true,
+        check: "questionnaire_scheduler_canary",
+        mode: "preview",
+        readOnly: true,
+        stop: true,
+        next: "provision_contact_required",
+        projectId: PROJECT_ID,
+        releaseCommit: options.releaseCommit,
+        schedulerJob: schedulerJobSummary(job),
+        schedules: preflight.schedules,
+        explicitSyntheticContactCount: 0,
+        dashboardNonMemberVerified: false,
+        exactMarkerTagVerified: false,
+        writes: 0
+      });
+      return;
+    }
+    if (candidates.length !== 1 || explicit.length !== 1) {
+      throw new CanaryError("synthetic_contact_candidates_not_unique");
+    }
+    const syntheticContact = selectDiscoveredSyntheticContact(contactSets, {
       requireTargetTagAbsent: false,
       targetTag: LEGACY_GHL_TAG
     });
-    await assertContactNotDashboardMember(context, synthetic.contact);
+    await assertContactNotDashboardMember(context, syntheticContact);
     printResult({
       ok: true,
       check: "questionnaire_scheduler_canary",
@@ -161,10 +226,10 @@ async function main() {
       releaseCommit: options.releaseCommit,
       schedulerJob: schedulerJobSummary(job),
       schedules: preflight.schedules,
-      explicitSyntheticContactCount: synthetic ? 1 : 0,
+      explicitSyntheticContactCount: 1,
       dashboardNonMemberVerified: true,
       exactMarkerTagVerified: true,
-      contactFingerprint: contactConfirmationFingerprint(synthetic.contact),
+      contactFingerprint: contactConfirmationFingerprint(syntheticContact),
       writes: 0
     });
     return;
@@ -209,6 +274,15 @@ function verifyExecutionAuthority(options) {
   if (process.env.CFSB_COACH_NOTICE_CONFIRMED !== commit) {
     throw new CanaryError("coach_notice_missing");
   }
+  if (options.mode === "provision-contact") {
+    if (process.env.CFSB_QUESTIONNAIRE_RULES_EMULATOR_OK !== commit) {
+      throw new CanaryError("rules_emulator_proof_missing");
+    }
+    if (process.env.CFSB_QUESTIONNAIRE_PROVISION_CONTACT_GO !== commit) {
+      throw new CanaryError("provision_contact_go_missing");
+    }
+    return;
+  }
   if (
     options.mode === "execute-process"
     && process.env.CFSB_QUESTIONNAIRE_ADDITIVE_CANARY_OK !== commit
@@ -232,7 +306,7 @@ function verifyExecutionAuthority(options) {
 }
 
 function verifyLiveFunctionReceipt(options) {
-  if (["preview", "pin-contact", "cleanup"].includes(options.mode)) return;
+  if (["preview", "provision-contact", "pin-contact", "cleanup"].includes(options.mode)) return;
   const verifier = path.join(
     process.cwd(),
     "tools",
@@ -262,6 +336,59 @@ function contactReceiptPath(releaseCommit) {
     "questionnaire-release",
     `canary-contact-${releaseCommit}.receipt.json`
   );
+}
+
+function provisionAttemptReceiptPath() {
+  const base = String(process.env.LOCALAPPDATA || "").trim();
+  if (!base) throw new CanaryError("local_receipt_directory_unavailable");
+  return path.join(
+    base,
+    "CFSB",
+    "questionnaire-release",
+    `canary-contact-provision-${SYNTHETIC_CONTACT_PHONE}.attempt.json`
+  );
+}
+
+function acquireProvisionAttemptFence(releaseCommit) {
+  const receiptPath = provisionAttemptReceiptPath();
+  const receipt = {
+    version: 1,
+    releaseCommit,
+    locationId: GHL_LOCATION_ID,
+    phone: SYNTHETIC_CONTACT_PHONE,
+    createdAt: new Date().toISOString()
+  };
+  fs.mkdirSync(path.dirname(receiptPath), { recursive: true });
+  try {
+    fs.writeFileSync(receiptPath, `${JSON.stringify(receipt)}\n`, {
+      encoding: "utf8",
+      flag: "wx"
+    });
+    return Object.freeze({ acquired: true, receipt });
+  } catch (error) {
+    if (error?.code !== "EEXIST") {
+      throw new CanaryError("provision_attempt_receipt_write_failed");
+    }
+  }
+
+  let existing;
+  try {
+    existing = JSON.parse(fs.readFileSync(receiptPath, "utf8"));
+  } catch (_) {
+    throw new CanaryError("provision_attempt_receipt_invalid");
+  }
+  const createdAtMs = new Date(String(existing.createdAt || "")).getTime();
+  if (
+    existing.version !== 1
+    || !/^[a-f0-9]{40}$/.test(String(existing.releaseCommit || ""))
+    || existing.locationId !== GHL_LOCATION_ID
+    || existing.phone !== SYNTHETIC_CONTACT_PHONE
+    || !Number.isFinite(createdAtMs)
+    || createdAtMs > Date.now() + (5 * 60 * 1000)
+  ) {
+    throw new CanaryError("provision_attempt_receipt_invalid");
+  }
+  return Object.freeze({ acquired: false, receipt: existing });
 }
 
 function contactIdentityDigest(contact) {
@@ -564,40 +691,66 @@ async function listDocuments(context, collectionId, fieldPaths = []) {
   throw new CanaryError("firestore_pagination_limit");
 }
 
+async function dashboardClientIdentityMatch(context, {
+  phone,
+  contactId = ""
+}) {
+  const expectedPhone = normalizePhone(phone);
+  const expectedContactId = String(contactId || "").trim();
+  if (!expectedPhone) {
+    throw new CanaryError("synthetic_contact_identity_invalid");
+  }
+  const documents = await listDocuments(context, "clients", [
+    "phoneNormalized",
+    "clientPhoneNormalized",
+    "client_phone_normalized",
+    "phone",
+    "clientPhone",
+    "telephone",
+    "mobile",
+    "phoneNumber",
+    "phone_number",
+    "ghlContactId",
+    "ghl_contact_id",
+    "ghlId",
+    "ghl_id",
+    "contactId",
+    "sourceClientId",
+    "source_client_id",
+    "clientId",
+    "coachRxLink.sourceClientId"
+  ]);
+  const match = documents.some((document) => {
+    const value = decodeFirestoreDocument(document);
+    return dashboardClientMatchesSyntheticIdentity(value, {
+      documentId: documentId(document),
+      phone: expectedPhone,
+      contactId: expectedContactId
+    });
+  });
+  return match;
+}
+
+async function assertReservedPhoneNotDashboardMember(context) {
+  if (await dashboardClientIdentityMatch(context, {
+    phone: SYNTHETIC_CONTACT_PHONE
+  })) {
+    throw new CanaryError("synthetic_phone_matches_dashboard_member");
+  }
+}
+
 async function assertContactNotDashboardMember(context, contact) {
   const expectedPhone = normalizePhone(contact?.phone);
   const expectedContactId = String(contact?.id || "").trim();
   if (!expectedPhone || !expectedContactId) {
     throw new CanaryError("synthetic_contact_identity_invalid");
   }
-  const documents = await listDocuments(context, "clients", [
-    "phoneNormalized",
-    "clientPhoneNormalized",
-    "phone",
-    "mobile",
-    "ghlContactId",
-    "ghlId",
-    "contactId",
-    "sourceClientId"
-  ]);
-  const match = documents.some((document) => {
-    const value = decodeFirestoreDocument(document);
-    const phones = [
-      value.phoneNormalized,
-      value.clientPhoneNormalized,
-      value.phone,
-      value.mobile
-    ].map(normalizePhone).filter(Boolean);
-    const contactIds = [
-      documentId(document),
-      value.ghlContactId,
-      value.ghlId,
-      value.contactId,
-      value.sourceClientId
-    ].map((entry) => String(entry || "").trim()).filter(Boolean);
-    return phones.includes(expectedPhone) || contactIds.includes(expectedContactId);
-  });
-  if (match) throw new CanaryError("synthetic_contact_matches_dashboard_member");
+  if (await dashboardClientIdentityMatch(context, {
+    phone: expectedPhone,
+    contactId: expectedContactId
+  })) {
+    throw new CanaryError("synthetic_contact_matches_dashboard_member");
+  }
 }
 
 async function getDocument(context, collectionId, documentId, { allowNotFound = false, fieldPaths = [] } = {}) {
@@ -994,10 +1147,16 @@ function readGhlSecret(context) {
   return token;
 }
 
-async function ghlRequest(token, pathname, searchParams = {}) {
+async function ghlRequest(
+  token,
+  pathname,
+  searchParams = {},
+  { allowNotFound = false } = {}
+) {
   const url = new URL(`${GHL_BASE}${pathname}`);
   for (const [key, value] of Object.entries(searchParams)) url.searchParams.set(key, value);
   return limitedJsonRequest(url.toString(), {
+    allowNotFound,
     headers: {
       Authorization: `Bearer ${token}`,
       Version: GHL_API_VERSION
@@ -1101,15 +1260,21 @@ async function discoverSyntheticContact(context, {
   targetTag = LEGACY_GHL_TAG
 }) {
   const token = readGhlSecret(context);
-  const contactSets = [];
-  for (const query of ["canary", "questionnaire test", "dashboard test", "qa"]) {
-    const data = await ghlRequest(token, "/contacts/", {
-      locationId: GHL_LOCATION_ID,
-      query,
-      limit: "100"
-    });
-    contactSets.push(Array.isArray(data.contacts) ? data.contacts : []);
+  const contactSets = await searchSyntheticContactSets(token);
+  const contact = selectDiscoveredSyntheticContact(contactSets, {
+    requireTargetTagAbsent,
+    targetTag
+  });
+  if (String(contact?.locationId || "").trim() !== GHL_LOCATION_ID) {
+    throw new CanaryError("synthetic_contact_location_mismatch");
   }
+  return { token, contact };
+}
+
+function selectDiscoveredSyntheticContact(contactSets, {
+  requireTargetTagAbsent,
+  targetTag
+}) {
   let contact;
   try {
     contact = selectUniqueSyntheticContact(contactSets, { targetTag });
@@ -1145,12 +1310,307 @@ async function discoverSyntheticContact(context, {
   if (String(contact?.locationId || "").trim() !== GHL_LOCATION_ID) {
     throw new CanaryError("synthetic_contact_location_mismatch");
   }
-  return { token, contact };
+  return contact;
+}
+
+async function searchSyntheticContactSets(token) {
+  const byId = new Map();
+  for (const query of ["canary", "questionnaire test", "dashboard test", "qa"]) {
+    const data = await ghlRequest(token, "/contacts/", {
+      locationId: GHL_LOCATION_ID,
+      query,
+      limit: "100"
+    });
+    for (const contact of completeGhlContactSearch(data)) {
+      const id = String(contact?.id || "").trim();
+      if (id) byId.set(id, contact);
+    }
+  }
+  const candidateIds = [...byId.values()]
+    .filter((contact) => explicitSyntheticContact(contact, { requireDnd: false }))
+    .map((contact) => String(contact.id).trim());
+  if (candidateIds.length > 5) {
+    throw new CanaryError("synthetic_contact_candidate_overflow");
+  }
+  const hydrated = await Promise.all(candidateIds.map(async (contactId) => {
+    const response = await ghlRequest(
+      token,
+      `/contacts/${encodeURIComponent(contactId)}`
+    );
+    return response.contact || response;
+  }));
+  return [hydrated];
+}
+
+async function duplicateContactByReservedPhone(token) {
+  const data = await ghlRequest(token, "/contacts/search/duplicate", {
+    locationId: GHL_LOCATION_ID,
+    number: `+1${SYNTHETIC_CONTACT_PHONE}`
+  }, { allowNotFound: true });
+  if (!data) return null;
+  const contact = data?.contact;
+  if (!contact?.id) return null;
+  const exact = await ghlRequest(
+    token,
+    `/contacts/${encodeURIComponent(String(contact.id).trim())}`
+  );
+  return exact.contact || exact;
+}
+
+async function searchReservedPhoneMatches(token) {
+  const byId = new Map();
+  for (const query of [
+    SYNTHETIC_CONTACT_PHONE,
+    `+1${SYNTHETIC_CONTACT_PHONE}`,
+    "514-555-0100"
+  ]) {
+    const data = await ghlRequest(token, "/contacts/", {
+      locationId: GHL_LOCATION_ID,
+      query,
+      limit: "100"
+    });
+    for (const contact of completeGhlContactSearch(data)) {
+      if (
+        contact?.id
+        && normalizePhone(contact.phone) === SYNTHETIC_CONTACT_PHONE
+      ) {
+        byId.set(String(contact.id).trim(), contact);
+      }
+    }
+  }
+  return [...byId.values()];
+}
+
+async function validateProvisionedSyntheticContact(context, contact) {
+  if (
+    String(contact?.locationId || "").trim() !== GHL_LOCATION_ID
+    || normalizePhone(contact?.phone) !== SYNTHETIC_CONTACT_PHONE
+    || !explicitSyntheticContact(contact)
+    || !historicalGhlTagsAbsent(contact)
+  ) {
+    throw new CanaryError("synthetic_contact_provision_validation_failed");
+  }
+  await assertContactNotDashboardMember(context, contact);
+  return contact;
+}
+
+async function waitForProvisionedSyntheticContact(context, token, expectedId = "") {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const [duplicate, phoneMatches] = await Promise.all([
+      duplicateContactByReservedPhone(token),
+      searchReservedPhoneMatches(token)
+    ]);
+    if (phoneMatches.length > 1) {
+      throw new CanaryError("synthetic_phone_not_unique");
+    }
+    if (duplicate) {
+      const valid = await validateProvisionedSyntheticContact(context, duplicate);
+      if (expectedId && String(valid.id || "").trim() !== expectedId) {
+        throw new CanaryError("synthetic_contact_provision_identity_mismatch");
+      }
+      if (
+        phoneMatches.length !== 1
+        || String(phoneMatches[0]?.id || "").trim() !== String(valid.id || "").trim()
+      ) {
+        if (attempt < 9 && phoneMatches.length === 0) {
+          await delay(2_000);
+          continue;
+        }
+        throw new CanaryError("synthetic_phone_lookup_mismatch");
+      }
+      try {
+        const discovered = selectUniqueSyntheticContact(
+          await searchSyntheticContactSets(token),
+          { targetTag: LEGACY_GHL_TAG }
+        );
+        if (String(discovered?.id || "").trim() === String(valid.id || "").trim()) {
+          return valid;
+        }
+      } catch (error) {
+        if (
+          !(error instanceof CanaryError)
+          || error.code !== "synthetic_contact_not_unique"
+        ) {
+          throw error;
+        }
+      }
+    }
+    if (attempt < 9) await delay(2_000);
+  }
+  throw new CanaryError("synthetic_contact_provision_not_observable");
+}
+
+async function provisionSyntheticContact(context) {
+  const token = readGhlSecret(context);
+  await assertReservedPhoneNotDashboardMember(context);
+  const [existing, phoneMatches, syntheticContactSets] = await Promise.all([
+    duplicateContactByReservedPhone(token),
+    searchReservedPhoneMatches(token),
+    searchSyntheticContactSets(token)
+  ]);
+  const syntheticContacts = syntheticContactSets.flat();
+  if (syntheticContacts.length > 1) {
+    throw new CanaryError("synthetic_contact_not_unique");
+  }
+  if (phoneMatches.length > 1) {
+    throw new CanaryError("synthetic_phone_not_unique");
+  }
+  if (!existing && phoneMatches.length > 0) {
+    throw new CanaryError("synthetic_phone_duplicate_lookup_inconsistent");
+  }
+  if (existing) {
+    if (
+      syntheticContacts.length > 0
+      && String(syntheticContacts[0]?.id || "").trim()
+        !== String(existing.id || "").trim()
+    ) {
+      throw new CanaryError("synthetic_contact_global_identity_mismatch");
+    }
+    if (
+      phoneMatches.length > 0
+      && String(phoneMatches[0]?.id || "").trim() !== String(existing.id || "").trim()
+    ) {
+      throw new CanaryError("synthetic_phone_lookup_mismatch");
+    }
+    const contact = await waitForProvisionedSyntheticContact(
+      context,
+      token,
+      String(existing.id || "").trim()
+    );
+    return {
+      created: false,
+      sharedFenceCreated: false,
+      contact
+    };
+  }
+  if (syntheticContacts.length > 0) {
+    throw new CanaryError("synthetic_contact_exists_on_other_reserved_phone");
+  }
+
+  await assertReservedPhoneNotDashboardMember(context);
+  const [
+    duplicateImmediatelyBefore,
+    phoneMatchesImmediatelyBefore,
+    syntheticContactSetsImmediatelyBefore
+  ] =
+    await Promise.all([
+      duplicateContactByReservedPhone(token),
+      searchReservedPhoneMatches(token),
+      searchSyntheticContactSets(token)
+    ]);
+  if (
+    duplicateImmediatelyBefore
+    || phoneMatchesImmediatelyBefore.length > 0
+    || syntheticContactSetsImmediatelyBefore.flat().length > 0
+  ) {
+    throw new CanaryError("synthetic_phone_collision_before_create");
+  }
+
+  const sharedClaim = await acquireCloudProvisionClaim(context);
+  if (!sharedClaim.acquired) {
+    try {
+      const recovered = await waitForProvisionedSyntheticContact(context, token);
+      return {
+        created: false,
+        sharedFenceCreated: false,
+        contact: recovered
+      };
+    } catch (_) {
+      throw new CanaryError("synthetic_contact_provision_attempt_unresolved");
+    }
+  }
+
+  const provisionFence = acquireProvisionAttemptFence(context.releaseCommit);
+  if (!provisionFence.acquired) {
+    try {
+      const recovered = await waitForProvisionedSyntheticContact(context, token);
+      return {
+        created: false,
+        sharedFenceCreated: true,
+        contact: recovered
+      };
+    } catch (_) {
+      throw new CanaryError("synthetic_contact_provision_attempt_unresolved");
+    }
+  }
+
+  let createdId = "";
+  try {
+    const response = await ghlWriteRequest(token, "/contacts/", "POST", {
+      firstName: "CFSB Questionnaire",
+      lastName: "Canary",
+      name: SYNTHETIC_CONTACT_NAME,
+      locationId: GHL_LOCATION_ID,
+      phone: `+1${SYNTHETIC_CONTACT_PHONE}`,
+      dnd: true,
+      tags: [SYNTHETIC_CONTACT_MARKER_TAG, "qa"],
+      source: SYNTHETIC_CONTACT_SOURCE
+    });
+    createdId = String((response.contact || response)?.id || "").trim();
+    if (!/^[A-Za-z0-9_-]{8,80}$/.test(createdId)) {
+      throw new CanaryError("synthetic_contact_provision_response_invalid");
+    }
+  } catch (_) {
+    try {
+      const recovered = await waitForProvisionedSyntheticContact(context, token);
+      return {
+        created: true,
+        sharedFenceCreated: true,
+        contact: recovered
+      };
+    } catch (_) {
+      throw new CanaryError("synthetic_contact_provision_attempt_unresolved");
+    }
+  }
+
+  const contact = await waitForProvisionedSyntheticContact(
+    context,
+    token,
+    createdId
+  );
+  return {
+    created: true,
+    sharedFenceCreated: true,
+    contact
+  };
+}
+
+async function acquireCloudProvisionClaim(context) {
+  const claim = buildContactProvisionClaim({
+    releaseCommit: context.releaseCommit,
+    locationId: GHL_LOCATION_ID,
+    phone: SYNTHETIC_CONTACT_PHONE,
+    createdAt: new Date().toISOString()
+  });
+  return acquireSharedContactProvisionClaim({
+    claim,
+    createClaim: async (value) => {
+      const created = await createDocument(
+        context,
+        CONTROL_COLLECTION,
+        SYNTHETIC_CONTACT_PROVISION_CLAIM_ID,
+        value
+      );
+      return decodeFirestoreDocument(created);
+    },
+    readClaim: async () => {
+      const existing = await getDocument(
+        context,
+        CONTROL_COLLECTION,
+        SYNTHETIC_CONTACT_PROVISION_CLAIM_ID,
+        { allowNotFound: true }
+      );
+      return existing ? decodeFirestoreDocument(existing) : null;
+    }
+  });
 }
 
 async function discoverPinnedSyntheticContact(context, { targetTag }) {
   const result = await loadPinnedSyntheticContact(context);
-  if (contactTags(result.contact).includes(String(targetTag || "").trim().toLowerCase())) {
+  if (
+    contactTags(result.contact).includes(String(targetTag || "").trim().toLowerCase())
+    || !historicalGhlTagsAbsent(result.contact)
+  ) {
     throw new CanaryError("synthetic_contact_target_tag_already_present");
   }
   return result;
@@ -1454,7 +1914,7 @@ async function reconcileUncertainCanaryExternalEffects(
     attempt < UNCERTAIN_EFFECT_OBSERVATION_ATTEMPTS;
     attempt += 1
   ) {
-    for (const tag of [PROCESS_GHL_TAG, LEGACY_GHL_TAG]) {
+    for (const tag of HISTORICAL_GHL_TAGS) {
       cleanups.push(await removeSyntheticGhlTagIfPresent(
         pinned.token,
         pinned.contact,
@@ -1570,7 +2030,7 @@ async function executeCleanup(context) {
       dashboardNonMemberVerified = true;
       exactMarkerTagVerified = true;
       const tagCleanup = [];
-      for (const tag of [PROCESS_GHL_TAG, LEGACY_GHL_TAG]) {
+      for (const tag of HISTORICAL_GHL_TAGS) {
         tagCleanup.push(await removeSyntheticGhlTagIfPresent(
           pinned.token,
           pinned.contact,

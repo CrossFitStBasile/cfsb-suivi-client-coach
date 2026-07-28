@@ -93,12 +93,27 @@ async function main() {
       await assertFails(
         getDoc(doc(db, "questionnaireSchedulerCanaryControls", "release"))
       );
+      await assertFails(
+        getDoc(doc(
+          db,
+          "questionnaireSchedulerCanaryControls",
+          "contact-provision-5145550100"
+        ))
+      );
       await assertFails(setDoc(
         doc(db, "questionnaireCanaryTargets", "target"),
         { source: "questionnaire_scheduler_canary" }
       ));
       await assertFails(setDoc(
         doc(db, "questionnaireSchedulerCanaryControls", "release"),
+        { source: "questionnaire_scheduler_canary" }
+      ));
+      await assertFails(setDoc(
+        doc(
+          db,
+          "questionnaireSchedulerCanaryControls",
+          "contact-provision-5145550100"
+        ),
         { source: "questionnaire_scheduler_canary" }
       ));
     }
