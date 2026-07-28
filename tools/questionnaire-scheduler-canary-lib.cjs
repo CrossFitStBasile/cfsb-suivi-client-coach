@@ -1,0 +1,505 @@
+"use strict";
+
+const PROJECT_ID = "cfsb-dashboard-coach-aa9a4";
+const REGION = "us-central1";
+const FUNCTION_ID = "scheduledQuestionnaireSendPlans";
+const CANARY_SOURCE = "questionnaire_scheduler_canary";
+const TARGET_PREFIX = "system_questionnaire_canary_";
+const SCHEDULE_PREFIX = "system_questionnaire_schedule_canary_";
+const PROCESS_SEND_PREFIX = "system_questionnaire_process_canary_";
+const CONTROL_COLLECTION = "questionnaireSchedulerCanaryControls";
+const CONTROL_ID = "release";
+const LEGACY_QUESTIONNAIRE_TYPE = "suivi_global";
+const LEGACY_GHL_TAG = "dashboardcoach";
+const PROCESS_QUESTIONNAIRE_TYPE = "habitudes_quotidiennes";
+const PROCESS_GHL_TAG = "suiviregulier";
+const SYNTHETIC_CONTACT_MARKER_TAG = "cfsb-questionnaire-internal-canary";
+const MAX_ARMING_MS = 30 * 60 * 1000;
+const CONTROL_NONCE_PATTERN = /^[a-f0-9]{32}$/;
+const EXPECTED_SCHEDULER_JOB_NAME =
+  `projects/${PROJECT_ID}/locations/${REGION}/jobs/firebase-schedule-${FUNCTION_ID}-${REGION}`;
+
+class CanaryError extends Error {
+  constructor(code) {
+    super(code);
+    this.name = "CanaryError";
+    this.code = String(code || "canary_error");
+  }
+}
+
+function assertReleaseCommit(value) {
+  const commit = String(value || "").trim().toLowerCase();
+  if (!/^[a-f0-9]{40}$/.test(commit)) throw new CanaryError("release_commit_invalid");
+  return commit;
+}
+
+function canaryIds(releaseCommit) {
+  const commit = assertReleaseCommit(releaseCommit);
+  const suffix = commit.slice(0, 12);
+  return Object.freeze({
+    targetId: `${TARGET_PREFIX}${suffix}`,
+    scheduleId: `${SCHEDULE_PREFIX}${suffix}`
+  });
+}
+
+function processCanarySendId(releaseCommit) {
+  const commit = assertReleaseCommit(releaseCommit);
+  return `${PROCESS_SEND_PREFIX}${commit.slice(0, 12)}`;
+}
+
+function parseArgs(argv = []) {
+  let mode = "preview";
+  let releaseCommit = "";
+  const seenModes = new Set();
+  for (const raw of argv) {
+    const arg = String(raw || "");
+    if (arg.startsWith("--release-commit=")) {
+      if (releaseCommit) throw new CanaryError("release_commit_repeated");
+      releaseCommit = assertReleaseCommit(arg.slice("--release-commit=".length));
+      continue;
+    }
+    if ([
+      "--preview",
+      "--pin-contact",
+      "--execute-process",
+      "--execute-empty",
+      "--execute-positive",
+      "--cleanup"
+    ].includes(arg)) {
+      seenModes.add(arg);
+      mode = arg.slice(2);
+      continue;
+    }
+    throw new CanaryError("argument_unknown");
+  }
+  if (seenModes.size > 1) throw new CanaryError("mode_conflict");
+  if (!releaseCommit) throw new CanaryError("release_commit_missing");
+  return Object.freeze({ mode, releaseCommit });
+}
+
+function normalizePhone(value) {
+  const digits = String(value || "").replace(/\D/g, "");
+  const normalized = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+  return /^\d{10}$/.test(normalized) ? normalized : "";
+}
+
+function reservedSyntheticPhone(value) {
+  return /^\d{3}55501\d{2}$/.test(normalizePhone(value));
+}
+
+function contactName(contact = {}) {
+  return String(
+    contact.contactName
+    || contact.fullName
+    || contact.name
+    || [contact.firstName, contact.lastName].filter(Boolean).join(" ")
+    || ""
+  ).trim();
+}
+
+function contactTags(contact = {}) {
+  return (Array.isArray(contact.tags) ? contact.tags : [])
+    .map((tag) => String(tag || "").trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function explicitSyntheticContact(contact = {}) {
+  const id = String(contact.id || "").trim();
+  const name = contactName(contact).toLowerCase();
+  const tags = contactTags(contact);
+  const syntheticPattern = /(?:^|[^a-z])(canary|test|qa)(?:[^a-z]|$)/i;
+  const cfsbPurposeName =
+    /(?:cfsb|crossfit[\s_-]*st[\s_-]*basile)/i.test(name)
+    && /questionnaire/i.test(name)
+    && syntheticPattern.test(name);
+  return Boolean(
+    /^[A-Za-z0-9_-]{8,80}$/.test(id)
+    && cfsbPurposeName
+    && tags.some((tag) => syntheticPattern.test(tag))
+    && tags.includes(SYNTHETIC_CONTACT_MARKER_TAG)
+    && reservedSyntheticPhone(contact.phone)
+  );
+}
+
+function contactConfirmationFingerprint(contact = {}) {
+  if (!explicitSyntheticContact(contact)) {
+    throw new CanaryError("synthetic_contact_invalid");
+  }
+  const id = String(contact.id || "").trim();
+  const phone = normalizePhone(contact.phone);
+  return require("node:crypto")
+    .createHash("sha256")
+    .update(`${id}\n${phone}\n${SYNTHETIC_CONTACT_MARKER_TAG}`, "utf8")
+    .digest("hex");
+}
+
+function selectUniqueSyntheticContact(contactSets = [], {
+  targetTag = LEGACY_GHL_TAG
+} = {}) {
+  const cleanTargetTag = String(targetTag || "").trim().toLowerCase();
+  if (!cleanTargetTag) throw new CanaryError("synthetic_target_tag_invalid");
+  const byId = new Map();
+  for (const contacts of contactSets) {
+    for (const contact of Array.isArray(contacts) ? contacts : []) {
+      const id = String(contact?.id || "").trim();
+      if (id) byId.set(id, contact);
+    }
+  }
+  const matches = [...byId.values()].filter(explicitSyntheticContact);
+  if (matches.length !== 1) throw new CanaryError("synthetic_contact_not_unique");
+  const contact = matches[0];
+  if (contactTags(contact).includes(cleanTargetTag)) {
+    throw new CanaryError("synthetic_contact_target_tag_already_present");
+  }
+  return contact;
+}
+
+function validArmedUntil(value, nowMs = Date.now()) {
+  const date = new Date(String(value || ""));
+  const armedUntilMs = date.getTime();
+  if (
+    !Number.isFinite(armedUntilMs)
+    || armedUntilMs <= nowMs
+    || armedUntilMs > nowMs + MAX_ARMING_MS
+  ) {
+    return "";
+  }
+  return date.toISOString();
+}
+
+function buildCanaryTarget({
+  releaseCommit,
+  armedUntil,
+  expectedGhlContactId,
+  phoneNormalized
+}) {
+  const commit = assertReleaseCommit(releaseCommit);
+  const cleanArmedUntil = validArmedUntil(armedUntil);
+  const contactId = String(expectedGhlContactId || "").trim();
+  const phone = normalizePhone(phoneNormalized);
+  if (!cleanArmedUntil) throw new CanaryError("armed_until_invalid");
+  if (!/^[A-Za-z0-9_-]{8,80}$/.test(contactId)) throw new CanaryError("ghl_contact_id_invalid");
+  if (!reservedSyntheticPhone(phone)) throw new CanaryError("synthetic_phone_not_reserved");
+  return Object.freeze({
+    source: CANARY_SOURCE,
+    questionnaireCanaryOnly: true,
+    entityType: "system",
+    ownershipStatus: "canary",
+    clientSelectable: false,
+    status: "active",
+    coachId: "admin",
+    canaryReleaseCommit: commit,
+    armedUntil: cleanArmedUntil,
+    expectedGhlContactId: contactId,
+    phoneNormalized: phone,
+    name: "CFSB Questionnaire Canary"
+  });
+}
+
+function buildCanarySchedule({
+  releaseCommit,
+  armedUntil,
+  todayToronto,
+  requestedByUid,
+  requestedByEmail,
+  phoneNormalized
+}) {
+  const commit = assertReleaseCommit(releaseCommit);
+  const ids = canaryIds(commit);
+  const cleanArmedUntil = validArmedUntil(armedUntil);
+  const date = String(todayToronto || "").trim();
+  const uid = String(requestedByUid || "").trim();
+  const email = String(requestedByEmail || "").trim().toLowerCase();
+  const phone = normalizePhone(phoneNormalized);
+  if (!cleanArmedUntil) throw new CanaryError("armed_until_invalid");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new CanaryError("today_toronto_invalid");
+  if (!uid || !email) throw new CanaryError("admin_profile_invalid");
+  if (!reservedSyntheticPhone(phone)) throw new CanaryError("synthetic_phone_not_reserved");
+  return Object.freeze({
+    source: CANARY_SOURCE,
+    questionnaireCanaryOnly: true,
+    canaryReleaseCommit: commit,
+    armedUntil: cleanArmedUntil,
+    clientId: ids.targetId,
+    clientName: "CFSB Questionnaire Canary",
+    clientPhoneNormalized: phone,
+    coachId: "admin",
+    coachRxId: "admin",
+    coachName: "Admin",
+    questionnaireType: LEGACY_QUESTIONNAIRE_TYPE,
+    formId: "",
+    frequency: "once",
+    nextSendAt: date,
+    status: "active",
+    requestedByUid: uid,
+    requestedByEmail: email
+  });
+}
+
+function buildProcessCanarySend({
+  releaseCommit,
+  armedUntil,
+  requestedByUid,
+  requestedByEmail,
+  phoneNormalized
+}) {
+  const commit = assertReleaseCommit(releaseCommit);
+  const ids = canaryIds(commit);
+  const cleanArmedUntil = validArmedUntil(armedUntil);
+  const uid = String(requestedByUid || "").trim();
+  const email = String(requestedByEmail || "").trim().toLowerCase();
+  const phone = normalizePhone(phoneNormalized);
+  if (!cleanArmedUntil) throw new CanaryError("armed_until_invalid");
+  if (!uid || !email) throw new CanaryError("admin_profile_invalid");
+  if (!reservedSyntheticPhone(phone)) throw new CanaryError("synthetic_phone_not_reserved");
+  return Object.freeze({
+    source: "dashboard_questionnaire_scheduled",
+    questionnaireCanaryOnly: true,
+    questionnaireCanarySource: CANARY_SOURCE,
+    questionnaireCanaryMode: "process",
+    canaryReleaseCommit: commit,
+    armedUntil: cleanArmedUntil,
+    clientId: ids.targetId,
+    clientName: "CFSB Questionnaire Canary",
+    clientPhoneNormalized: phone,
+    coachId: "admin",
+    coachRxId: "admin",
+    coachName: "Admin",
+    status: "pending",
+    deliveryStatus: "firestore_queue_pending",
+    errorMessage: "",
+    questionnaireType: PROCESS_QUESTIONNAIRE_TYPE,
+    formId: "",
+    requestedByUid: uid,
+    requestedByEmail: email,
+    questionnaireScheduleId: "",
+    scheduledFor: ""
+  });
+}
+
+function buildCanaryControl({
+  releaseCommit,
+  armedUntil,
+  mode,
+  nonce
+}) {
+  const commit = assertReleaseCommit(releaseCommit);
+  const cleanArmedUntil = validArmedUntil(armedUntil);
+  const cleanMode = String(mode || "").trim();
+  if (!cleanArmedUntil) throw new CanaryError("armed_until_invalid");
+  if (!["empty", "positive"].includes(cleanMode)) {
+    throw new CanaryError("canary_control_mode_invalid");
+  }
+  const cleanNonce = String(nonce || "").trim().toLowerCase();
+  if (!CONTROL_NONCE_PATTERN.test(cleanNonce)) {
+    throw new CanaryError("canary_control_nonce_invalid");
+  }
+  const ids = canaryIds(commit);
+  return Object.freeze({
+    source: CANARY_SOURCE,
+    questionnaireCanaryOnly: true,
+    canaryReleaseCommit: commit,
+    armedUntil: cleanArmedUntil,
+    mode: cleanMode,
+    nonce: cleanNonce,
+    expectedJobName: EXPECTED_SCHEDULER_JOB_NAME,
+    expectedScheduleId: cleanMode === "positive" ? ids.scheduleId : ""
+  });
+}
+
+function canaryControlOwnedForCleanup(value = {}, releaseCommit, mode, nonce = "") {
+  const commit = assertReleaseCommit(releaseCommit);
+  const cleanMode = String(mode || "").trim();
+  const cleanNonce = String(nonce || value.nonce || "").trim().toLowerCase();
+  const ids = canaryIds(commit);
+  const armedUntilMs = new Date(String(value.armedUntil || "")).getTime();
+  return value.source === CANARY_SOURCE
+    && value.questionnaireCanaryOnly === true
+    && value.canaryReleaseCommit === commit
+    && value.mode === cleanMode
+    && CONTROL_NONCE_PATTERN.test(cleanNonce)
+    && value.nonce === cleanNonce
+    && value.expectedJobName === EXPECTED_SCHEDULER_JOB_NAME
+    && value.expectedScheduleId === (cleanMode === "positive" ? ids.scheduleId : "")
+    && Number.isFinite(armedUntilMs);
+}
+
+function canaryControlActive(
+  value = {},
+  releaseCommit,
+  mode,
+  nonce,
+  {
+    nowMs = Date.now(),
+    minimumTtlMs = 0
+  } = {}
+) {
+  if (!canaryControlOwnedForCleanup(value, releaseCommit, mode, nonce)) return false;
+  const armedUntilMs = new Date(String(value.armedUntil || "")).getTime();
+  return armedUntilMs - nowMs >= Math.max(0, Number(minimumTtlMs) || 0)
+    && armedUntilMs <= nowMs + MAX_ARMING_MS;
+}
+
+function canaryTargetMatches(value = {}, releaseCommit, nowMs = Date.now()) {
+  const commit = assertReleaseCommit(releaseCommit);
+  return value.source === CANARY_SOURCE
+    && value.questionnaireCanaryOnly === true
+    && value.entityType === "system"
+    && value.ownershipStatus === "canary"
+    && value.clientSelectable === false
+    && value.status === "active"
+    && value.coachId === "admin"
+    && value.canaryReleaseCommit === commit
+    && Boolean(validArmedUntil(value.armedUntil, nowMs))
+    && /^[A-Za-z0-9_-]{8,80}$/.test(String(value.expectedGhlContactId || ""))
+    && reservedSyntheticPhone(value.phoneNormalized);
+}
+
+function canaryTargetOwnedForCleanup(value = {}, releaseCommit) {
+  const commit = assertReleaseCommit(releaseCommit);
+  return value.source === CANARY_SOURCE
+    && value.questionnaireCanaryOnly === true
+    && value.entityType === "system"
+    && value.ownershipStatus === "canary"
+    && value.clientSelectable === false
+    && ["active", "cancelled"].includes(value.status)
+    && value.coachId === "admin"
+    && value.canaryReleaseCommit === commit
+    && value.name === "CFSB Questionnaire Canary"
+    && /^[A-Za-z0-9_-]{8,80}$/.test(String(value.expectedGhlContactId || ""))
+    && reservedSyntheticPhone(value.phoneNormalized);
+}
+
+function canaryScheduleMatches(value = {}, releaseCommit, todayToronto, nowMs = Date.now()) {
+  const commit = assertReleaseCommit(releaseCommit);
+  const ids = canaryIds(commit);
+  return value.source === CANARY_SOURCE
+    && value.questionnaireCanaryOnly === true
+    && value.canaryReleaseCommit === commit
+    && Boolean(validArmedUntil(value.armedUntil, nowMs))
+    && value.clientId === ids.targetId
+    && value.coachId === "admin"
+    && value.questionnaireType === LEGACY_QUESTIONNAIRE_TYPE
+    && value.formId === ""
+    && value.frequency === "once"
+    && value.nextSendAt === todayToronto
+    && value.status === "active"
+    && Boolean(value.requestedByUid)
+    && Boolean(value.requestedByEmail)
+    && reservedSyntheticPhone(value.clientPhoneNormalized);
+}
+
+function positiveCanaryAttemptExists(sendValues = [], releaseCommit) {
+  const commit = assertReleaseCommit(releaseCommit);
+  return (Array.isArray(sendValues) ? sendValues : []).some((value) =>
+    value
+    && value.source === "dashboard_questionnaire_scheduled"
+    && value.questionnaireCanaryOnly === true
+    && value.questionnaireCanarySource === CANARY_SOURCE
+    && value.questionnaireCanaryMode === "scheduler"
+    && value.canaryReleaseCommit === commit
+  );
+}
+
+function canarySendRequiresDeferredExternalCleanup(value = {}) {
+  return !["sent", "error"].includes(String(value.status || ""))
+    || String(value.externalEffectState || "") === "started";
+}
+
+function canarySendHasUncertainExternalEffect(value = {}) {
+  return String(value.status || "") === "error"
+    && String(value.externalEffectState || "") === "uncertain";
+}
+
+function stringField(value) {
+  return { stringValue: String(value || "") };
+}
+
+function booleanField(value) {
+  return { booleanValue: Boolean(value) };
+}
+
+function timestampField(value) {
+  return { timestampValue: new Date(value).toISOString() };
+}
+
+function encodeFirestoreFields(value = {}) {
+  const fields = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof entry === "boolean") fields[key] = booleanField(entry);
+    else if (["createdAt", "updatedAt"].includes(key)) fields[key] = timestampField(entry);
+    else fields[key] = stringField(entry);
+  }
+  return fields;
+}
+
+function decodeFirestoreValue(value = {}) {
+  if (Object.prototype.hasOwnProperty.call(value, "stringValue")) return value.stringValue;
+  if (Object.prototype.hasOwnProperty.call(value, "booleanValue")) return value.booleanValue;
+  if (Object.prototype.hasOwnProperty.call(value, "integerValue")) return Number(value.integerValue);
+  if (Object.prototype.hasOwnProperty.call(value, "doubleValue")) return Number(value.doubleValue);
+  if (Object.prototype.hasOwnProperty.call(value, "timestampValue")) return value.timestampValue;
+  if (Object.prototype.hasOwnProperty.call(value, "nullValue")) return null;
+  return undefined;
+}
+
+function decodeFirestoreDocument(document = {}) {
+  const decoded = {};
+  for (const [key, value] of Object.entries(document.fields || {})) {
+    decoded[key] = decodeFirestoreValue(value);
+  }
+  return decoded;
+}
+
+function safeResultError(error) {
+  return error instanceof CanaryError ? error.code : "unexpected_error";
+}
+
+module.exports = {
+  PROJECT_ID,
+  REGION,
+  FUNCTION_ID,
+  CANARY_SOURCE,
+  TARGET_PREFIX,
+  SCHEDULE_PREFIX,
+  PROCESS_SEND_PREFIX,
+  CONTROL_COLLECTION,
+  CONTROL_ID,
+  LEGACY_QUESTIONNAIRE_TYPE,
+  LEGACY_GHL_TAG,
+  PROCESS_QUESTIONNAIRE_TYPE,
+  PROCESS_GHL_TAG,
+  SYNTHETIC_CONTACT_MARKER_TAG,
+  MAX_ARMING_MS,
+  CONTROL_NONCE_PATTERN,
+  EXPECTED_SCHEDULER_JOB_NAME,
+  CanaryError,
+  assertReleaseCommit,
+  canaryIds,
+  processCanarySendId,
+  parseArgs,
+  normalizePhone,
+  reservedSyntheticPhone,
+  contactName,
+  contactTags,
+  explicitSyntheticContact,
+  contactConfirmationFingerprint,
+  selectUniqueSyntheticContact,
+  validArmedUntil,
+  buildCanaryTarget,
+  buildCanarySchedule,
+  buildProcessCanarySend,
+  buildCanaryControl,
+  canaryControlOwnedForCleanup,
+  canaryControlActive,
+  canaryTargetMatches,
+  canaryTargetOwnedForCleanup,
+  canaryScheduleMatches,
+  positiveCanaryAttemptExists,
+  canarySendRequiresDeferredExternalCleanup,
+  canarySendHasUncertainExternalEffect,
+  encodeFirestoreFields,
+  decodeFirestoreValue,
+  decodeFirestoreDocument,
+  safeResultError
+};

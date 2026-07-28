@@ -29,8 +29,7 @@ if /I not "%CFSB_QUESTIONNAIRE_RELEASE_GO%"=="%CFSB_QUESTIONNAIRE_RELEASE_COMMIT
 if /I not "%CFSB_COACH_NOTICE_CONFIRMED%"=="%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" (
   echo STOP: l'avis aux coachs n'est pas confirme.
   echo.
-  echo Cette etape touche les regles ou des fonctions en usage et les regles
-  echo n'ont pas pu etre executees dans l'emulateur local faute de Java.
+  echo Cette etape touche les regles ou des fonctions en usage.
   echo Envoie l'avis du runbook, puis confirme dans ce terminal:
   echo set CFSB_COACH_NOTICE_CONFIRMED=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
   echo.
@@ -49,6 +48,12 @@ if errorlevel 1 (
 )
 
 if /I "%QUESTIONNAIRE_STAGE%"=="rules" (
+  if /I not "%CFSB_QUESTIONNAIRE_RULES_EMULATOR_OK%"=="%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" (
+    echo STOP: le canari Firestore Emulator n'est pas confirme pour ce SHA.
+    echo Lance run-questionnaire-firestore-rules-emulator-canary.cmd puis:
+    echo set CFSB_QUESTIONNAIRE_RULES_EMULATOR_OK=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
+    exit /b 1
+  )
   set "DEPLOY_ONLY=firestore:rules"
   set "LIVE_PREFLIGHT_ARGS="
   set "NEXT_PROOF=CFSB_QUESTIONNAIRE_RULES_CANARY_OK"
@@ -163,6 +168,62 @@ if not "%DRY_RUN_CODE%"=="0" (
   exit /b 1
 )
 
+if /I "%QUESTIONNAIRE_STAGE%"=="indexes" (
+  if "%LOCALAPPDATA%"=="" (
+    echo STOP: LOCALAPPDATA est indisponible; impossible de produire le recu
+    echo local obligatoire de la premiere passe index.
+    exit /b 1
+  )
+  set "INDEX_REVIEW_RECEIPT=%LOCALAPPDATA%\CFSB\questionnaire-release\index-dry-run-%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%.receipt"
+  if not exist "%LOCALAPPDATA%\CFSB\questionnaire-release\index-dry-run-%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%.receipt" (
+    if not exist "%LOCALAPPDATA%\CFSB\questionnaire-release" mkdir "%LOCALAPPDATA%\CFSB\questionnaire-release"
+    > "%LOCALAPPDATA%\CFSB\questionnaire-release\index-dry-run-%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%.receipt" echo %CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
+    if not exist "%LOCALAPPDATA%\CFSB\questionnaire-release\index-dry-run-%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%.receipt" (
+      echo STOP: le recu local de premiere passe n'a pas pu etre cree.
+      exit /b 1
+    )
+    echo.
+    echo STOP: premiere invocation indexes terminee sans mutation.
+    echo Un recu local lie au SHA a ete produit apres le dry-run reussi.
+    echo La variable de revue, meme prepositionnee, ne peut jamais contourner
+    echo cette premiere invocation.
+    echo.
+    echo Examine le journal de dry-run:
+    echo %DRY_RUN_LOG%
+    echo.
+    echo Si le delta contient uniquement l'index questionnaireSchedules
+    echo attendu, lie ensuite la revue au SHA et relance la commande.
+    exit /b 1
+  )
+  setlocal EnableDelayedExpansion
+  set "INDEX_REVIEW_RECEIPT_SHA="
+  set /p INDEX_REVIEW_RECEIPT_SHA=<"%LOCALAPPDATA%\CFSB\questionnaire-release\index-dry-run-%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%.receipt"
+  if /I not "!INDEX_REVIEW_RECEIPT_SHA!"=="%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" (
+    echo STOP: le recu local de premiere passe ne correspond pas au SHA scelle.
+    endlocal
+    exit /b 1
+  )
+  endlocal
+  if /I not "%CFSB_QUESTIONNAIRE_INDEX_DRY_RUN_REVIEWED%"=="%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" (
+    echo.
+    echo STOP: le recu de premiere passe existe, mais sa revue n'est pas
+    echo confirmee pour le SHA scelle. Aucun index n'a ete publie.
+    echo.
+    echo Examine le journal de dry-run et confirme qu'il propose uniquement
+    echo l'ajout de l'index questionnaireSchedules attendu, sans suppression
+    echo ni autre changement:
+    echo %DRY_RUN_LOG%
+    echo.
+    echo Si cette revue humaine est concluante, lie la preuve au SHA scelle:
+    echo set CFSB_QUESTIONNAIRE_INDEX_DRY_RUN_REVIEWED=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
+    echo.
+    echo Relance ensuite cette meme commande. La seconde invocation repetera
+    echo tous les prevols, le dry-run et la preuve du worktree scelle avant
+    echo toute mutation.
+    exit /b 1
+  )
+)
+
 echo.
 echo Second prevol live immediatement avant la mutation Stage A...
 "%NODE_EXE%" "%~dp0tools\preflight-questionnaire-stage-a-live.cjs" %LIVE_PREFLIGHT_ARGS%
@@ -188,6 +249,13 @@ if exist "%DEPLOY_LOG%" type "%DEPLOY_LOG%"
 if not "%DEPLOY_CODE%"=="0" goto :deploy_failed
 findstr /i /c:"Cannot run login in non-interactive mode" /c:"Authentication Error" /c:"Deploys failed" /c:"There was an error deploying functions" /c:"Error:" "%DEPLOY_LOG%" > nul
 if not errorlevel 1 goto :deploy_failed
+
+if /I "%QUESTIONNAIRE_STAGE%"=="legacy" (
+  echo.
+  echo Enregistrement des revisions live A3 liees au SHA scelle...
+  "%NODE_EXE%" "%~dp0tools\questionnaire-function-revision-receipt.cjs" --release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT% --record
+  if errorlevel 1 goto :revision_receipt_failed
+)
 
 echo.
 echo Sous-etape "%QUESTIONNAIRE_STAGE%" publiee. ARRET HUMAIN OBLIGATOIRE.
@@ -220,6 +288,13 @@ echo.
 echo ECHEC STAGE A "%QUESTIONNAIRE_STAGE%". N'EXECUTE PAS l'etape suivante.
 echo Journal: %DEPLOY_LOG%
 echo Applique le retour arriere correspondant du runbook avant de lever l'avis coach.
+exit /b 1
+
+:revision_receipt_failed
+echo.
+echo STOP: A3 est publiee, mais le recu des revisions live n'a pas pu etre
+echo lie au SHA scelle. N'EXECUTE AUCUN canari et ne poursuis pas vers A4.
+echo Garde l'avis coach actif et examine les revisions Cloud Functions.
 exit /b 1
 
 :usage

@@ -1,7 +1,8 @@
 # Questionnaire Studio — runbook de continuité
 
 Date de préparation : 2026-07-28
-Statut : candidat local seulement; aucune action en production autorisée ou exécutée.
+Statut : candidat préparé pour un déploiement contrôlé; l'état live exact est
+consigné séparément dans les preuves horodatées de chaque sous-étape.
 
 ## Résultat recherché
 
@@ -44,10 +45,12 @@ Un GO local ne constitue pas un GO production. Avant l'étape A, il faut :
 - l'avis aux coachs envoyé avant la première mutation.
 - zéro document `questionnaireSchedules` actif avec `nextSendAt` dû ou invalide.
 
-L'avis est obligatoire pour ce candidat : les règles n'ont pas pu être exécutées
-dans l'émulateur local faute de Java, et la sous-étape A3 redéploie trois
-fonctions déjà utilisées. Pendant la fenêtre, ne pas demander aux membres de
-soumettre et ne pas lancer de nouveaux envois.
+L'avis est obligatoire pour ce candidat parce que la sous-étape A3 redéploie
+trois fonctions déjà utilisées. Les règles ont finalement été exécutées avec le
+Firestore Emulator et le JRE Temurin local : le canari a confirmé les opérations
+legacy coach (création, lecture, modification, pause et reprise), les droits
+admin et le refus total des deux collections canari privées. Pendant la fenêtre,
+ne pas demander aux membres de soumettre et ne pas lancer de nouveaux envois.
 
 Variables à définir dans le même terminal après le GO production :
 
@@ -55,13 +58,38 @@ Variables à définir dans le même terminal après le GO production :
 set CFSB_QUESTIONNAIRE_RELEASE_COMMIT=<SHA_CANDIDAT_SCELLE>
 set CFSB_QUESTIONNAIRE_RELEASE_GO=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
 set CFSB_COACH_NOTICE_CONFIRMED=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
+run-questionnaire-firestore-rules-emulator-canary.cmd
+set CFSB_QUESTIONNAIRE_RULES_EMULATOR_OK=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
 ```
+
+Avant A1, vérifier sans écriture externe les trois révisions Functions live, la
+cible Scheduler et le contact synthétique :
+
+```cmd
+node tools\questionnaire-function-revision-receipt.cjs --release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT% --preview
+run-questionnaire-release-canary.cmd --preview
+set CFSB_QUESTIONNAIRE_CANARY_CONTACT_FINGERPRINT=<EMPREINTE_AFFICHEE_PAR_PREVIEW>
+run-questionnaire-release-canary.cmd --pin-contact
+```
+
+Le pin refuse de s'exécuter si l'empreinte confirmée n'est pas exactement celle
+de la passe preview. Le reçu SHA-bound contient seulement l'identifiant opaque
+GHL et une empreinte identité+téléphone; les exécutions suivantes relisent ce
+seul ID et ne font plus aucune recherche large. STOP sauf si le contact est
+unique, appartient au locationId CFSB exact, porte le tag exact
+`cfsb-questionnaire-internal-canary`, utilise un numéro réservé `555-01xx`, ne
+correspond à aucun téléphone ou identifiant de `clients`, et ne porte aucun des
+deux tags historiques du canari. Cette combinaison constitue l'autorisation
+interne explicite de cibler ce contact; aucun membre réel n'est admissible.
 
 Les scripts refusent un worktree modifié ou un `HEAD` différent du SHA scellé.
 Toutes les autorisations et preuves ci-dessous doivent être égales à ce SHA.
 Un nouveau commit de candidat invalide donc automatiquement les anciens GO,
 avis et canaris : il faut les reprendre pour le nouveau candidat.
-Chaque commande fait une passe `firebase deploy --dry-run` avant la mutation.
+Chaque invocation susceptible de muter fait une passe `firebase deploy
+--dry-run` avant la mutation. A4 ajoute volontairement une première invocation
+sans mutation afin que le delta d'index puisse être examiné avant de permettre
+une seconde invocation.
 Chaque sous-étape exécute aussi le prévol live en lecture seule avant les portes,
 puis une seconde fois après le dry-run et immédiatement avant la mutation. Il
 parcourt toutes les pages de `questionnaireSchedules`, sans requête composite,
@@ -92,9 +120,13 @@ Contrôles obligatoires :
 - Dashboard actuel ouvrable pour un coach;
 - trois pages historiques ouvrables;
 - lecture et écriture historiques permises;
-- création, modification, pause et reprise d'une planification legacy permises;
+- création, modification, pause et reprise d'une planification legacy permises
+  dans le canari Firestore Emulator;
 - aucune planification existante mise en pause par le système;
 - aucun nouveau document `questionnaireSends`.
+
+La sous-étape `rules` refuse maintenant de démarrer tant que
+`CFSB_QUESTIONNAIRE_RULES_EMULATOR_OK` ne correspond pas au SHA scellé.
 
 Après conservation des preuves :
 
@@ -102,8 +134,10 @@ Après conservation des preuves :
 set CFSB_QUESTIONNAIRE_RULES_CANARY_OK=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
 ```
 
-STOP si une règle est refusée, si le Dashboard se vide, si une planification
-historique échoue ou si une réponse ne peut plus être lue.
+Le canari de règles live reste non destructif : ne pas activer ni basculer une
+planification de membre pour prouver A1. Vérifier l'ouverture et les lectures du
+Dashboard, puis conserver la preuve Emulator. STOP si une règle est refusée, si
+le Dashboard se vide ou si une réponse ne peut plus être lue.
 
 ### A2 — sept fonctions strictement additives
 
@@ -137,6 +171,48 @@ Contrôles obligatoires :
   refusé;
 - un téléphone ambigu reste en validation.
 
+Après le déploiement A2, sceller les sept révisions additives live, puis lancer
+le canari public exact :
+
+```cmd
+run-questionnaire-public-api-canary.cmd --record-revision
+run-questionnaire-public-api-canary.cmd --execute
+```
+
+Le canari conserve une réponse synthétique non membre comme preuve. Il vérifie
+les quatre définitions et leurs empreintes, puis les quatre documents
+`questionnaireForms` et les quatre documents `questionnaireCatalog` exacts.
+Les deux collections doivent rester `published`, sur la version et l'empreinte
+attendues, avec `deliveryReady: false`. Il vérifie aussi l'accusé strict, le
+rejeu idempotent, le conflit `409` sur contenu changé, l'absence de toute
+liaison client et la stabilité des sept révisions. Le `createTime`, le
+`updateTime` et l'empreinte du document Firestore doivent rester strictement
+identiques après le rejeu et le conflit. Son numéro réservé `514-555-01xx` est
+recherché dans les trois champs téléphone exacts avant et après chaque écriture.
+Il ne supprime ni ne modifie la preuve.
+
+Le reçu local des sept révisions peut être relancé avec
+`--record-revision`. Il rafraîchit seulement son heure si les sept révisions,
+builds et empreintes de provenance live sont encore exactement identiques; tout
+écart bloque la reprise.
+
+Si la première soumission a été écrite mais qu'une panne transitoire a interrompu
+la lecture ou les contrôles suivants, ne supprime pas la réponse. Le mode normal
+retourne `canary_response_already_exists_use_recover`. Après avoir confirmé le
+STOP et conservé l'évidence, lier l'autorité de reprise au même SHA :
+
+```cmd
+set CFSB_QUESTIONNAIRE_A2_RECOVERY_GO=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
+run-questionnaire-public-api-canary.cmd --record-revision
+run-questionnaire-public-api-canary.cmd --recover
+```
+
+Le mode `--recover` exige que le document déterministe appartienne exactement à
+l'identité synthétique, à la version et à la clé du SHA scellé. Il ne crée ni ne
+supprime ce document : il prouve sa stabilité, fait le rejeu identique, exige le
+conflit `409`, revalide les huit documents formulaire/catalogue et les sept
+révisions. Ne définir la preuve A2 que si ce mode retourne `ok: true`.
+
 Après conservation des preuves :
 
 ```cmd
@@ -158,6 +234,15 @@ La commande ne redéploie que :
 - `processQuestionnaireSendRequest`;
 - `scheduledQuestionnaireSendPlans`.
 
+Après le succès Firebase, le script lit les trois Functions v2 et produit
+automatiquement un reçu local lié au SHA avec, pour chacune, la révision Cloud
+Run, le build, l'heure de mise à jour et l'empreinte de provenance source. Le
+reçu exige `ACTIVE`, `GEN_2` et 100 % du trafic sur la dernière révision. Si ce
+reçu ne peut pas être produit, A3 est considérée partielle et aucun canari ne
+doit être exécuté. Chaque mode `--execute-*` relit ensuite les Functions live et
+refuse tout écart avec ce reçu; un ancien backend compatible ne peut donc pas
+valider le nouveau SHA.
+
 Contrôles obligatoires avant et après :
 
 - un envoi historique utilise encore son tag et son libellé historiques;
@@ -166,6 +251,23 @@ Contrôles obligatoires avant et après :
   planifié;
 - un échec ou une ambiguïté GHL reste explicite et ne produit pas un faux succès;
 - la recherche GHL reste bornée et échoue fermée.
+
+Exécuter le canari A3 privé. Il crée une cible système non membre, inaccessible
+au Dashboard, puis un seul envoi déterministe du parcours Check-in historique.
+Le backend compare l'identifiant GHL au contact synthétique épinglé avant tout
+effet externe, conserve le document d'envoi comme preuve et retire seulement la
+cible système. Le tag est laissé au workflow jusqu'à 30 secondes; s'il n'est pas
+retiré comme prévu, le runner le retire explicitement du même contact
+synthétique et en vérifie l'absence :
+
+```cmd
+run-questionnaire-release-canary.cmd --execute-process
+```
+
+STOP si le résultat n'est pas `ok: true`, si `sendDelta` diffère de `1`, si
+l'effet externe n'est pas `completed` ou si le nettoyage exact échoue. Ne
+supprimer et ne recréer jamais le document d'envoi pour réessayer un effet
+incertain.
 
 Après conservation des preuves :
 
@@ -187,19 +289,47 @@ deploy-questionnaire-stage-a.cmd indexes
 ```
 
 La commande exige que `CFSB_QUESTIONNAIRE_LEGACY_CANARY_OK` soit égal au SHA
-scellé, puis :
+scellé. Cette première invocation :
 
 1. exécute le prévol live à zéro suivi actif dû jusqu'au prochain passage de
    07:15;
 2. exécute toutes les portes locales;
 3. fait le dry-run de `firestore:indexes` seulement;
-   STOP si ce dry-run annonce autre chose que la création de l'unique index
+4. s'arrête obligatoirement sans publier d'index.
+
+Même si la variable de revue a été prépositionnée, la première invocation crée
+d'abord un reçu local SHA-bound après le dry-run puis s'arrête. Une invocation
+ultérieure exige à la fois ce reçu et la variable de revue.
+
+Examiner le journal affiché. STOP si ce dry-run annonce autre chose que la
+création de l'unique index `questionnaireSchedules` attendu. Un index historique
+manquant, une suppression ou toute autre création constitue un delta hors portée
+à examiner séparément. Si et seulement si la revue humaine est concluante,
+enregistrer la preuve liée au candidat scellé :
+
+```cmd
+set CFSB_QUESTIONNAIRE_INDEX_DRY_RUN_REVIEWED=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
+```
+
+Cette preuve ne vaut que pour ce SHA. Relancer ensuite exactement la même
+commande :
+
+```cmd
+deploy-questionnaire-stage-a.cmd indexes
+```
+
+La seconde invocation :
+
+1. refait depuis le début le contrôle du commit et du worktree scellés,
+   l'authentification, le prévol live et toutes les portes locales;
+2. refait le dry-run de `firestore:indexes` seulement;
+   STOP si ce nouveau dry-run annonce autre chose que la création de l'unique index
    `questionnaireSchedules` attendu; un index historique manquant ou toute autre
    création constitue un delta hors portée à examiner séparément;
-4. refait le prévol live immédiatement;
-5. publie uniquement `firestore:indexes`, en mode non interactif et sans
+3. refait le prévol live immédiatement et reconfirme le worktree scellé;
+4. publie uniquement `firestore:indexes`, en mode non interactif et sans
    `--force` afin de ne supprimer aucun index existant;
-6. s'arrête sans déclarer Stage A réussie.
+5. s'arrête sans déclarer Stage A réussie.
 
 Si le prévol échoue ou si l'état devient dangereux entre les deux lectures,
 aucun index n'est publié. Les sorties ne contiennent que des comptes agrégés,
@@ -226,19 +356,81 @@ Contrôles obligatoires après `READY`, dans cet ordre :
 
 1. vérifier qu'aucun `questionnaireSends` inattendu n'a été créé et qu'aucun tag
    GHL n'a été ajouté;
-2. exécuter un canari Scheduler à vide : `dueSchedules: 0`, `queued: 0`,
-   `skipped: 0`;
-3. vérifier qu'aucune planification réelle n'a changé;
-4. exécuter un seul canari positif sur un contact interne;
-5. confirmer un seul ID d'envoi déterministe, le tag historique attendu,
-   l'avancement de la cadence et l'absence de doublon au rejeu;
-6. confirmer la continuité publique, puis ouvrir le Dashboard avec un compte
+2. lier la preuve `READY` au SHA;
+3. exécuter un canari Scheduler à vide;
+4. lier sa preuve au SHA;
+5. exécuter un seul canari positif sur le contact synthétique épinglé;
+6. confirmer un seul ID d'envoi déterministe, l'effet GHL exact, la mise en
+   pause de la cadence `once` et l'absence de doublon au rejeu;
+7. confirmer la continuité publique, puis ouvrir le Dashboard avec un compte
    admin et un compte coach.
+
+Commandes exactes :
+
+```cmd
+set CFSB_QUESTIONNAIRE_INDEX_READY_OK=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
+run-questionnaire-release-canary.cmd --execute-empty
+set CFSB_QUESTIONNAIRE_SCHEDULER_EMPTY_CANARY_OK=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
+run-questionnaire-release-canary.cmd --execute-positive
+```
+
+Les deux exécutions créent d'abord un contrôle privé à expiration courte. Tant
+qu'il est armé, la Function refuse sans envoi tout snapshot qui contient une
+planification réelle due. Le canari vide exige `0/0/0` et l'empreinte exacte de
+toutes les planifications inchangée. Le positif exige `1/1/0`, puis `0/0/0` au
+rejeu. La création de l'envoi et l'avancement de la cadence sont
+transactionnels : un run concurrent ne peut pas écraser un envoi terminal ni
+réouvrir l'effet GHL. Le contrôle, la cible et la planification synthétiques
+sont supprimés avec une précondition Firestore `updateTime`; les
+`questionnaireSends` et `syncRuns` restent comme audit.
+
+Chaque contrôle porte aussi un nonce aléatoire lié au `syncRun`. Juste avant
+chaque `jobs.run`, le runner exige au moins deux minutes de TTL, relit le
+contrôle, puis relit la Function et le job Scheduler exacts. Tout contrôle
+existant invalide ou expiré bloque le Scheduler au lieu de revenir en mode
+production. Un canari positif antérieur portant le même SHA bloque toute
+nouvelle tentative, même après minuit Toronto. Un résultat réussi exige que le
+tag GHL ait réellement été observé; une simple acceptation API ne déverrouille
+jamais l'étape suivante.
+
+### Récupération canari sans rejeu
+
+Si un runner s'interrompt après avoir créé un contrôle ou une fixture, ne
+supprimer aucun `questionnaireSends` et ne relancer aucun effet. Utiliser
+l'autorité de récupération dédiée :
+
+```cmd
+set CFSB_QUESTIONNAIRE_RECOVERY_GO=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
+run-questionnaire-release-canary.cmd --cleanup
+```
+
+Le cleanup valide les propriétaires exacts, pause la planification, place la
+cible en `cancelled` comme barrière transactionnelle avant l'effet GHL, puis
+retire le contrôle et attend jusqu'à 45 secondes que tout envoi soit terminal et
+qu'aucun `externalEffectState: started` ne puisse encore être en vol. Il retire
+ensuite uniquement la planification et la cible avec leurs préconditions
+`updateTime`. Si la quiescence n'est pas prouvée, il échoue fermé et conserve
+les fixtures annulées pour une nouvelle inspection; il n'annonce jamais un
+nettoyage GHL terminé. Un état `uncertain` est un résultat terminal inconnu :
+le runner attend au moins 20 secondes après son horodatage, puis relit et retire
+au besoin les deux tags exacts pendant sept observations espacées de cinq
+secondes sur le seul contact synthétique vérifié non membre. Il ne supprime les
+fixtures et ne produit `ok: true` que si cette réconciliation complète réussit;
+si GHL ou la preuve du contact est indisponible, il échoue fermé et laisse les
+fixtures annulées pour une nouvelle commande `--cleanup`. Le cleanup fonctionne
+même si les Functions ont été rollbackées. Les envois, y compris `pending`,
+`started`, `uncertain`, `sent` ou `error`, restent intacts.
+Le résultat `firestoreRecoveryComplete: true` signifie que le Scheduler est
+débloqué et `externalEffectQuiescent: true` confirme qu'aucun ajout de tag n'est
+encore en vol. `uncertainExternalEffectsReconciled` indique le nombre d'effets
+inconnus stabilisés et nettoyés. `ghlCleanupStatus: deferred` n'est permis que
+lorsqu'aucun effet `uncertain` n'existe; il signifie alors séparément que les
+deux tags du contact synthétique doivent encore être revérifiés. Le cleanup ne
+constitue jamais une preuve de canari réussie.
 
 Après conservation de toutes les preuves :
 
 ```cmd
-set CFSB_QUESTIONNAIRE_INDEX_READY_OK=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
 set CFSB_QUESTIONNAIRE_SCHEDULER_CANARY_OK=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
 set CFSB_QUESTIONNAIRE_STAGE_A_VERIFIED=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
 ```
@@ -429,8 +621,10 @@ Message de reprise :
 > Vous pouvez reprendre l'envoi des questionnaires. Pour l'instant, continuez
 > d'utiliser les liens indiqués dans la bibliothèque du Dashboard.
 
-L'envoi de ces messages est une action opérationnelle distincte et exige une
-autorisation explicite. Aucun message n'est envoyé par ce candidat local.
+L'envoi de ces messages est une action opérationnelle distincte. Pour la
+présente exécution, l'autorisation autonome donnée par Michael couvre l'avis et
+la reprise; la reprise reste interdite tant que la soumission live et sa lecture
+Firestore ne sont pas toutes deux confirmées.
 
 ## Preuves à conserver
 

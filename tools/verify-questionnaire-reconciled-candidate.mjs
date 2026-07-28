@@ -13,8 +13,15 @@ const syntaxTargets = [
   "firebase-dashboard/public/questionnaire-studio.js",
   "firebase-dashboard/public/questionnaire/f/questionnaire-public.js",
   "functions/index.js",
+  "functions/questionnaire-scheduler-safety.js",
   "functions/questionnaire-studio.js",
   "functions/questionnaire-service.js",
+  "tools/questionnaire-scheduler-canary-lib.cjs",
+  "tools/questionnaire-public-api-canary-lib.cjs",
+  "tools/questionnaire-function-revision-receipt.cjs",
+  "tools/run-questionnaire-firestore-rules-emulator-canary.cjs",
+  "tools/run-questionnaire-public-api-canary.cjs",
+  "tools/run-questionnaire-scheduler-canary.cjs",
   "tools/questionnaire-stage-a-preflight-lib.cjs",
   "tools/preflight-questionnaire-stage-a-live.cjs",
   "tools/verify-sealed-questionnaire-release-worktree.cjs",
@@ -25,6 +32,22 @@ const rootTests = readdirSync(join(root, "tests"))
   .filter((name) => name.endsWith(".test.mjs"))
   .sort()
   .map((name) => `tests/${name}`);
+
+const requiredRootTests = [
+  "tests/questionnaire-index-two-pass-guard.test.mjs",
+  "tests/questionnaire-public-api-canary.test.mjs",
+  "tests/questionnaire-scheduler-canary.test.mjs"
+];
+const missingRequiredRootTests = requiredRootTests.filter(
+  (target) => !rootTests.includes(target)
+);
+if (missingRequiredRootTests.length > 0) {
+  console.error(
+    "STOP — tests obligatoires absents de la porte locale : "
+      + missingRequiredRootTests.join(", ")
+  );
+  process.exit(1);
+}
 
 const functionTests = readdirSync(join(root, "functions", "test"))
   .filter((name) => name.endsWith(".test.js"))

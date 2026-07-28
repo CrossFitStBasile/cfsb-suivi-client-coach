@@ -28,6 +28,7 @@ const {
   QuestionnaireServiceError,
   createQuestionnaireService
 } = require("./questionnaire-service");
+const questionnaireSchedulerSafety = require("./questionnaire-scheduler-safety");
 
 admin.initializeApp();
 
@@ -92,6 +93,14 @@ const QUESTIONNAIRE_TYPES = {
   }
 };
 const QUESTIONNAIRE_TAG = QUESTIONNAIRE_TYPES[DEFAULT_QUESTIONNAIRE_TYPE].ghlTag;
+const QUESTIONNAIRE_SCHEDULER_CANARY_SOURCE = "questionnaire_scheduler_canary";
+const QUESTIONNAIRE_SCHEDULER_CANARY_TARGET_PREFIX = "system_questionnaire_canary_";
+const QUESTIONNAIRE_SCHEDULER_CANARY_SCHEDULE_PREFIX = "system_questionnaire_schedule_canary_";
+const QUESTIONNAIRE_PROCESS_CANARY_SEND_PREFIX = "system_questionnaire_process_canary_";
+const QUESTIONNAIRE_SCHEDULER_CANARY_CONTROL_PATH = "questionnaireSchedulerCanaryControls/release";
+const QUESTIONNAIRE_SCHEDULER_JOB_NAME =
+  "projects/cfsb-dashboard-coach-aa9a4/locations/us-central1/jobs/"
+  + "firebase-schedule-scheduledQuestionnaireSendPlans-us-central1";
 const DASHBOARD_SHEET_ID = "18-S_a5L6fXYZXtcgHBlCKpcygmnr5Ekj_WM5358KZ7E";
 const QUESTIONNAIRE_RESPONSES_SHEET_ID = "11QO5GOQGHCpT8_nLEgKHqjFFsZ4emPwZEt2Vlu3WRJo";
 const FIREBASE_SYNC_SERVICE_ACCOUNT = "129233025317-compute@developer.gserviceaccount.com";
@@ -1316,7 +1325,7 @@ exports.processQuestionnaireSendRequest = onDocumentCreated(
   }
 );
 
-async function processQuestionnaireSendFromQueue({ sendRef, send, eventId }) {
+async function processQuestionnaireSendFromQueue({ sendRef, send, sendId = "", eventId }) {
   const claimedSend = await claimQueuedQuestionnaireSend(sendRef, {
     eventId,
     allowedSources: ["dashboard_questionnaire_send_click", "dashboard_questionnaire_scheduled"]
@@ -1334,8 +1343,14 @@ async function processQuestionnaireSendFromQueue({ sendRef, send, eventId }) {
     return;
   }
 
+  const canaryEnvelope = questionnaireSchedulerCanarySendEnvelopeAvailable({
+    send,
+    sendId: cleanString(sendId || sendRef.id),
+    clientId,
+    coachId: cleanString(send.coachId)
+  });
   const [clientSnap, profileSnap] = await Promise.all([
-    db.doc(`clients/${clientId}`).get(),
+    db.doc(`${canaryEnvelope ? "questionnaireCanaryTargets" : "clients"}/${clientId}`).get(),
     requestedByUid ? db.doc(`users/${requestedByUid}`).get() : Promise.resolve(null)
   ]);
 
@@ -1349,7 +1364,14 @@ async function processQuestionnaireSendFromQueue({ sendRef, send, eventId }) {
   }
 
   const client = clientSnap.data() || {};
-  if (!clientRecordAvailableForMatching(client)) {
+  const schedulerCanary = canaryEnvelope && questionnaireSchedulerCanarySendAvailable({
+    send,
+    sendId: cleanString(sendId || sendRef.id),
+    clientId,
+    client,
+    coachId: cleanString(send.coachId)
+  });
+  if (!clientRecordAvailableForMatching(client) && !schedulerCanary) {
     await markSend(sendRef, {
       status: "error",
       deliveryStatus: "client_ownership_blocked",
@@ -1378,6 +1400,14 @@ async function processQuestionnaireSendFromQueue({ sendRef, send, eventId }) {
   }
 
   const profile = profileSnap.data() || {};
+  if (schedulerCanary && profile.role !== "admin") {
+    await markSend(sendRef, {
+      status: "error",
+      deliveryStatus: "canary_requester_not_admin",
+      errorMessage: "Canari Scheduler refuse: administrateur actif requis."
+    });
+    return;
+  }
   if (!canPilotProfileActOnCoach(profile, coachId)) {
     await recordAccessIssue({
       source: "processQuestionnaireSendRequest",
@@ -1463,6 +1493,7 @@ async function processQuestionnaireSendFromQueue({ sendRef, send, eventId }) {
     return;
   }
 
+  let canaryExternalEffectClaimed = false;
   try {
     const contact = await findGhlContactByPhone({ token, locationId: GHL_LOCATION_ID, phoneNormalized });
     if (!contact?.id) {
@@ -1475,19 +1506,60 @@ async function processQuestionnaireSendFromQueue({ sendRef, send, eventId }) {
       return;
     }
 
+    if (schedulerCanary) {
+      const expectedContactId = questionnaireSchedulerCanaryExpectedGhlContactId(client.expectedGhlContactId);
+      if (!expectedContactId || cleanString(contact.id) !== expectedContactId) {
+        await markSend(sendRef, {
+          status: "error",
+          deliveryStatus: "canary_contact_mismatch",
+          errorMessage: "Canari Scheduler refuse: contact GHL synthetique inattendu."
+        });
+        return;
+      }
+      canaryExternalEffectClaimed = await claimQuestionnaireCanaryExternalEffect(sendRef, {
+        eventId,
+        expectedContactId,
+        targetRef: clientSnap.ref,
+        targetId: clientId,
+        releaseCommit: send.canaryReleaseCommit,
+        armedUntil: send.armedUntil
+      });
+      if (!canaryExternalEffectClaimed) {
+        const afterClaimSnap = await sendRef.get();
+        const afterClaim = afterClaimSnap.exists ? afterClaimSnap.data() || {} : {};
+        if (cleanString(afterClaim.externalEffectState)) {
+          return;
+        }
+        await markSend(sendRef, {
+          status: "error",
+          deliveryStatus: "canary_external_effect_already_claimed",
+          errorMessage: "Canari Scheduler bloque: effet externe deja reclame ou incertain."
+        });
+        return;
+      }
+    }
+
     await addGhlTag({ token, contactId: contact.id, tag: questionnaire.ghlTag });
     await markSend(sendRef, {
       status: "sent",
       deliveryStatus: "tag_added",
       sentAt: admin.firestore.FieldValue.serverTimestamp(),
       ghlContactId: contact.id,
-      ghlContactName: cleanString(contact.contactName || contact.fullName || contact.name)
+      ghlContactName: cleanString(contact.contactName || contact.fullName || contact.name),
+      ...(schedulerCanary ? {
+        externalEffectState: "completed",
+        externalEffectCompletedAt: admin.firestore.FieldValue.serverTimestamp()
+      } : {})
     });
   } catch (error) {
     await markSend(sendRef, {
       status: "error",
       deliveryStatus: "ghl_error",
-      errorMessage: humanizeGhlError(error)
+      errorMessage: humanizeGhlError(error),
+      ...(schedulerCanary && canaryExternalEffectClaimed ? {
+        externalEffectState: "uncertain",
+        externalEffectUncertainAt: admin.firestore.FieldValue.serverTimestamp()
+      } : {})
     });
   }
 }
@@ -1560,15 +1632,39 @@ exports.scheduledQuestionnaireSendPlans = onSchedule(
     memory: "512MiB"
   },
   async (event) => {
-    const today = todayIsoDate();
-    const snap = await db.collection("questionnaireSchedules")
-      .where("status", "==", "active")
-      .where("nextSendAt", "<=", today)
-      .limit(100)
-      .get();
+    const today = todayTorontoIsoDate();
+    const [controlSnap, snap] = await Promise.all([
+      db.doc(QUESTIONNAIRE_SCHEDULER_CANARY_CONTROL_PATH).get(),
+      db.collection("questionnaireSchedules")
+        .where("status", "==", "active")
+        .where("nextSendAt", "<=", today)
+        .limit(100)
+        .get()
+    ]);
+    const canaryDecision = questionnaireSchedulerCanaryControlDecision({
+      exists: controlSnap.exists,
+      control: controlSnap.exists ? controlSnap.data() || {} : {},
+      event,
+      docs: snap.docs
+    });
+    const canaryControl = canaryDecision.control;
+    if (canaryDecision.blocked) {
+      await recordQuestionnaireScheduleSyncRun({
+        today,
+        event,
+        status: "blocked",
+        dueSchedules: snap.size,
+        queued: 0,
+        skipped: snap.size,
+        canaryControl,
+        canaryBlocked: true
+      });
+      return;
+    }
     let queued = 0;
     let skipped = 0;
     const batch = db.batch();
+    let batchWrites = 0;
 
     for (const docSnap of snap.docs) {
       const schedule = docSnap.data() || {};
@@ -1576,24 +1672,44 @@ exports.scheduledQuestionnaireSendPlans = onSchedule(
       const coachId = cleanString(schedule.coachId);
       if (!clientId || !coachId) {
         skipped += 1;
-        batch.set(docSnap.ref, {
+        batch.update(docSnap.ref, {
           lastError: "Client ou coach manquant pour la planification.",
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
+        });
+        batchWrites += 1;
         continue;
       }
 
-      const clientSnap = await db.collection("clients").doc(clientId).get();
+      const canaryEnvelope = questionnaireSchedulerCanaryScheduleEnvelopeAvailable({
+        scheduleId: docSnap.id,
+        schedule,
+        clientId,
+        coachId
+      });
+      const clientSnap = await db
+        .collection(canaryEnvelope ? "questionnaireCanaryTargets" : "clients")
+        .doc(clientId)
+        .get();
       const client = clientSnap.exists ? clientSnap.data() || {} : {};
+      const schedulerCanary = canaryEnvelope
+        && clientSnap.exists
+        && questionnaireSchedulerCanaryScheduleAvailable({
+          scheduleId: docSnap.id,
+          schedule,
+          clientId,
+          client,
+          coachId
+        });
       if (!clientSnap.exists
         || cleanString(client.coachId || client.coachRxId) !== coachId
-        || !clientRecordAvailableForMatching(client)) {
+        || (!clientRecordAvailableForMatching(client) && !schedulerCanary)) {
         skipped += 1;
-        batch.set(docSnap.ref, {
+        batch.update(docSnap.ref, {
           status: "paused",
           lastError: "Planification suspendue: appartenance client a valider.",
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
+        });
+        batchWrites += 1;
         continue;
       }
 
@@ -1605,20 +1721,22 @@ exports.scheduledQuestionnaireSendPlans = onSchedule(
         });
       } catch (error) {
         skipped += 1;
-        batch.set(docSnap.ref, {
+        batch.update(docSnap.ref, {
           status: "paused",
           lastError: cleanString(error?.message || "Questionnaire publie introuvable.").slice(0, 240),
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
+        });
+        batchWrites += 1;
         continue;
       }
       if (!questionnaireDeliveryIsReady(questionnaire)) {
         skipped += 1;
-        batch.set(docSnap.ref, {
+        batch.update(docSnap.ref, {
           status: "paused",
           lastError: "Planification suspendue: workflow GHL non verifie pour ce questionnaire.",
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
+        });
+        batchWrites += 1;
         continue;
       }
       const usesLegacyScheduleBridge = !cleanString(schedule.formId)
@@ -1633,38 +1751,29 @@ exports.scheduledQuestionnaireSendPlans = onSchedule(
       );
       if (!scheduledClientPhone) {
         skipped += 1;
-        batch.set(docSnap.ref, {
+        batch.update(docSnap.ref, {
           status: "paused",
           lastError: "Planification suspendue: telephone client invalide ou incomplet.",
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
+        });
+        batchWrites += 1;
         continue;
       }
       if (!questionnaireScheduleFrequencyIsAllowed(questionnaire, schedule.frequency)) {
         skipped += 1;
-        batch.set(docSnap.ref, {
+        batch.update(docSnap.ref, {
           status: "paused",
           lastError: "Planification suspendue: cadence incompatible avec ce questionnaire.",
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
+        });
+        batchWrites += 1;
         continue;
       }
 
       const sendRef = db.collection("questionnaireSends").doc(`scheduled_${docSnap.id}_${today}`);
-      const sendSnap = await sendRef.get();
       const nextSendAt = nextQuestionnaireScheduleDate(schedule.frequency, today);
       const nextStatus = schedule.frequency === "once" ? "paused" : "active";
-      if (sendSnap.exists) {
-        skipped += 1;
-        batch.set(docSnap.ref, {
-          nextSendAt,
-          status: nextStatus,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-        continue;
-      }
-
-      batch.set(sendRef, {
+      const sendData = {
         coachId,
         coachRxId: cleanString(schedule.coachRxId),
         coachName: cleanString(schedule.coachName),
@@ -1686,29 +1795,50 @@ exports.scheduledQuestionnaireSendPlans = onSchedule(
         scheduledFor: today,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        source: "dashboard_questionnaire_scheduled"
-      });
-      batch.set(docSnap.ref, {
+        source: "dashboard_questionnaire_scheduled",
+        ...(schedulerCanary ? {
+          questionnaireCanaryOnly: true,
+          questionnaireCanarySource: QUESTIONNAIRE_SCHEDULER_CANARY_SOURCE,
+          questionnaireCanaryMode: "scheduler",
+          canaryReleaseCommit: cleanString(schedule.canaryReleaseCommit).toLowerCase(),
+          armedUntil: cleanString(schedule.armedUntil)
+        } : {})
+      };
+      const schedulePatch = {
         lastQueuedAt: admin.firestore.FieldValue.serverTimestamp(),
         lastQueuedSendId: sendRef.id,
         lastError: "",
         nextSendAt,
         status: nextStatus,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        triggeredByEventId: event?.id || ""
-      }, { merge: true });
+        triggeredByEventId: event?.id || "",
+        triggeredByJobName: cleanString(event?.jobName),
+        triggeredByScheduleTime: cleanString(event?.scheduleTime)
+      };
+      const queueResult = await queueQuestionnaireScheduleSendAtomically({
+        scheduleRef: docSnap.ref,
+        sendRef,
+        expectedSchedule: schedule,
+        today,
+        sendData,
+        schedulePatch
+      });
+      if (!queueResult.queued) {
+        skipped += 1;
+        continue;
+      }
       queued += 1;
     }
 
-    if (!snap.empty) await batch.commit();
-    await db.collection("syncRuns").doc(`questionnaire_schedules_${today}_${Date.now()}`).set({
-      source: "firebase_function_questionnaire_schedules",
+    if (batchWrites > 0) await batch.commit();
+    await recordQuestionnaireScheduleSyncRun({
+      today,
+      event,
       status: "success",
       dueSchedules: snap.size,
       queued,
       skipped,
-      syncedAt: admin.firestore.FieldValue.serverTimestamp(),
-      triggeredByEventId: event?.id || ""
+      canaryControl
     });
   }
 );
@@ -5050,6 +5180,246 @@ function clientRecordAvailableForMatching(data = {}) {
   return true;
 }
 
+function questionnaireSchedulerCanaryReleaseCommit(value) {
+  const releaseCommit = cleanString(value).toLowerCase();
+  return /^[a-f0-9]{40}$/.test(releaseCommit) ? releaseCommit : "";
+}
+
+function questionnaireSchedulerCanaryArmedUntil(value) {
+  const armedUntil = new Date(cleanString(value));
+  const armedUntilMs = armedUntil.getTime();
+  const now = Date.now();
+  if (!Number.isFinite(armedUntilMs) || armedUntilMs <= now || armedUntilMs > now + (30 * 60 * 1000)) {
+    return "";
+  }
+  return armedUntil.toISOString();
+}
+
+function questionnaireSchedulerCanaryExpectedGhlContactId(value) {
+  const contactId = cleanString(value);
+  return /^[A-Za-z0-9_-]{8,80}$/.test(contactId) ? contactId : "";
+}
+
+function questionnaireSchedulerCanaryPhone(value) {
+  const phone = validQuestionnairePhone(value);
+  return /^\d{3}55501\d{2}$/.test(phone) ? phone : "";
+}
+
+function questionnaireSchedulerCanaryControlDecision({
+  exists = false,
+  control = {},
+  event = {},
+  docs = []
+} = {}) {
+  return questionnaireSchedulerSafety.controlDecision({
+    exists,
+    control,
+    event,
+    docs
+  });
+}
+
+function questionnaireSchedulerCanaryTargetAvailable({
+  targetId = "",
+  target = {},
+  coachId = "",
+  releaseCommit = "",
+  armedUntil = ""
+} = {}) {
+  const cleanReleaseCommit = questionnaireSchedulerCanaryReleaseCommit(releaseCommit);
+  const cleanArmedUntil = questionnaireSchedulerCanaryArmedUntil(armedUntil);
+  if (!cleanReleaseCommit) return false;
+  if (!cleanArmedUntil) return false;
+  if (cleanString(coachId) !== "admin") return false;
+  if (cleanString(targetId) !== `${QUESTIONNAIRE_SCHEDULER_CANARY_TARGET_PREFIX}${cleanReleaseCommit.slice(0, 12)}`) {
+    return false;
+  }
+  if (cleanString(target.source) !== QUESTIONNAIRE_SCHEDULER_CANARY_SOURCE) return false;
+  if (target.questionnaireCanaryOnly !== true) return false;
+  if (cleanString(target.entityType) !== "system") return false;
+  if (cleanString(target.ownershipStatus) !== "canary") return false;
+  if (target.clientSelectable !== false) return false;
+  if (cleanString(target.status) !== "active") return false;
+  if (questionnaireSchedulerCanaryReleaseCommit(target.canaryReleaseCommit) !== cleanReleaseCommit) return false;
+  if (cleanString(target.coachId) !== "admin") return false;
+  if (questionnaireSchedulerCanaryArmedUntil(target.armedUntil) !== cleanArmedUntil) return false;
+  if (!questionnaireSchedulerCanaryExpectedGhlContactId(target.expectedGhlContactId)) return false;
+  return Boolean(questionnaireSchedulerCanaryPhone(clientPhone(target)));
+}
+
+function questionnaireSchedulerCanaryScheduleEnvelopeAvailable({
+  scheduleId = "",
+  schedule = {},
+  clientId = "",
+  coachId = ""
+} = {}) {
+  const releaseCommit = questionnaireSchedulerCanaryReleaseCommit(schedule.canaryReleaseCommit);
+  if (!releaseCommit) return false;
+  if (!questionnaireSchedulerCanaryArmedUntil(schedule.armedUntil)) return false;
+  if (cleanString(scheduleId) !== `${QUESTIONNAIRE_SCHEDULER_CANARY_SCHEDULE_PREFIX}${releaseCommit.slice(0, 12)}`) {
+    return false;
+  }
+  if (cleanString(clientId) !== `${QUESTIONNAIRE_SCHEDULER_CANARY_TARGET_PREFIX}${releaseCommit.slice(0, 12)}`) {
+    return false;
+  }
+  if (cleanString(schedule.source) !== QUESTIONNAIRE_SCHEDULER_CANARY_SOURCE) return false;
+  if (schedule.questionnaireCanaryOnly !== true) return false;
+  if (cleanString(coachId) !== "admin" || cleanString(schedule.coachId) !== "admin") return false;
+  if (cleanString(schedule.status) !== "active") return false;
+  if (cleanString(schedule.frequency) !== "once") return false;
+  if (cleanString(schedule.questionnaireType) !== DEFAULT_QUESTIONNAIRE_TYPE) return false;
+  if (cleanString(schedule.formId)) return false;
+  if (cleanString(schedule.nextSendAt) !== todayTorontoIsoDate()) return false;
+  if (!questionnaireSchedulerCanaryPhone(schedule.clientPhoneNormalized)) return false;
+  if (!cleanString(schedule.requestedByUid) || !cleanString(schedule.requestedByEmail)) return false;
+  return cleanString(schedule.clientId) === cleanString(clientId);
+}
+
+function questionnaireSchedulerCanaryScheduleAvailable({
+  scheduleId = "",
+  schedule = {},
+  clientId = "",
+  client: target = {},
+  coachId = ""
+} = {}) {
+  if (!questionnaireSchedulerCanaryScheduleEnvelopeAvailable({
+    scheduleId,
+    schedule,
+    clientId,
+    coachId
+  })) {
+    return false;
+  }
+  if (
+    questionnaireSchedulerCanaryPhone(schedule.clientPhoneNormalized)
+    !== questionnaireSchedulerCanaryPhone(clientPhone(target))
+  ) {
+    return false;
+  }
+  return questionnaireSchedulerCanaryTargetAvailable({
+    targetId: clientId,
+    target,
+    coachId,
+    releaseCommit: schedule.canaryReleaseCommit,
+    armedUntil: schedule.armedUntil
+  });
+}
+
+function questionnaireSchedulerCanarySendEnvelopeAvailable({
+  send = {},
+  sendId = "",
+  clientId = "",
+  coachId = ""
+} = {}) {
+  const releaseCommit = questionnaireSchedulerCanaryReleaseCommit(send.canaryReleaseCommit);
+  const mode = cleanString(send.questionnaireCanaryMode);
+  if (!releaseCommit) return false;
+  if (!questionnaireSchedulerCanaryArmedUntil(send.armedUntil)) return false;
+  if (cleanString(send.source) !== "dashboard_questionnaire_scheduled") return false;
+  if (send.questionnaireCanaryOnly !== true) return false;
+  if (cleanString(send.questionnaireCanarySource) !== QUESTIONNAIRE_SCHEDULER_CANARY_SOURCE) return false;
+  if (cleanString(clientId) !== `${QUESTIONNAIRE_SCHEDULER_CANARY_TARGET_PREFIX}${releaseCommit.slice(0, 12)}`) {
+    return false;
+  }
+  if (cleanString(coachId) !== "admin" || cleanString(send.coachId) !== "admin") return false;
+  if (cleanString(send.formId)) return false;
+  if (!questionnaireSchedulerCanaryPhone(send.clientPhoneNormalized)) return false;
+  if (!cleanString(send.requestedByUid) || !cleanString(send.requestedByEmail)) return false;
+  if (cleanString(send.clientId) !== cleanString(clientId)) return false;
+  if (mode === "scheduler") {
+    const scheduleId = `${QUESTIONNAIRE_SCHEDULER_CANARY_SCHEDULE_PREFIX}${releaseCommit.slice(0, 12)}`;
+    if (cleanString(sendId) !== `scheduled_${scheduleId}_${todayTorontoIsoDate()}`) return false;
+    if (cleanString(send.questionnaireScheduleId) !== scheduleId) return false;
+    if (cleanString(send.questionnaireType) !== DEFAULT_QUESTIONNAIRE_TYPE) return false;
+    return cleanString(send.scheduledFor) === todayTorontoIsoDate();
+  }
+  if (mode === "process") {
+    if (cleanString(sendId) !== `${QUESTIONNAIRE_PROCESS_CANARY_SEND_PREFIX}${releaseCommit.slice(0, 12)}`) {
+      return false;
+    }
+    if (cleanString(send.questionnaireScheduleId) || cleanString(send.scheduledFor)) return false;
+    return cleanString(send.questionnaireType) === "habitudes_quotidiennes";
+  }
+  return false;
+}
+
+function questionnaireSchedulerCanarySendAvailable({
+  send = {},
+  sendId = "",
+  clientId = "",
+  client: target = {},
+  coachId = ""
+} = {}) {
+  if (!questionnaireSchedulerCanarySendEnvelopeAvailable({
+    send,
+    sendId,
+    clientId,
+    coachId
+  })) {
+    return false;
+  }
+  return questionnaireSchedulerCanaryTargetAvailable({
+    targetId: clientId,
+    target,
+    coachId,
+    releaseCommit: send.canaryReleaseCommit,
+    armedUntil: send.armedUntil
+  });
+}
+
+function questionnaireScheduleQueueContract(schedule = {}) {
+  return questionnaireSchedulerSafety.scheduleQueueContract(schedule);
+}
+
+async function queueQuestionnaireScheduleSendAtomically({
+  scheduleRef,
+  sendRef,
+  expectedSchedule = {},
+  today = "",
+  sendData = {},
+  schedulePatch = {}
+} = {}) {
+  return questionnaireSchedulerSafety.queueScheduleSendAtomically({
+    db,
+    scheduleRef,
+    sendRef,
+    expectedSchedule,
+    today,
+    sendData,
+    schedulePatch
+  });
+}
+
+async function recordQuestionnaireScheduleSyncRun({
+  today = "",
+  event = {},
+  status = "success",
+  dueSchedules = 0,
+  queued = 0,
+  skipped = 0,
+  canaryControl = null,
+  canaryBlocked = false
+} = {}) {
+  await db.collection("syncRuns").doc(`questionnaire_schedules_${today}_${Date.now()}`).set({
+    source: "firebase_function_questionnaire_schedules",
+    status: cleanString(status) || "error",
+    dueSchedules: Number(dueSchedules || 0),
+    queued: Number(queued || 0),
+    skipped: Number(skipped || 0),
+    syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+    triggeredByEventId: event?.id || "",
+    triggeredByJobName: cleanString(event?.jobName),
+    triggeredByScheduleTime: cleanString(event?.scheduleTime),
+    ...(canaryControl ? {
+      questionnaireCanaryOnly: true,
+      questionnaireCanaryMode: canaryControl.mode,
+      canaryReleaseCommit: canaryControl.releaseCommit,
+      canaryNonce: canaryControl.nonce,
+      canaryBlocked: canaryBlocked === true
+    } : {})
+  });
+}
+
 function clientRecordAvailableForImportMatching(data = {}) {
   if (cleanString(data.entityType) !== "member") return false;
   if (cleanString(data.ownershipStatus) !== "confirmed") return false;
@@ -7915,6 +8285,10 @@ function todayIsoDate() {
   return startOfDay(new Date()).toISOString().slice(0, 10);
 }
 
+function todayTorontoIsoDate(value = new Date()) {
+  return questionnaireSchedulerSafety.todayTorontoIsoDate(value);
+}
+
 function nextQuestionnaireScheduleDate(frequency, fromIso) {
   if (frequency === "once") return "";
   const base = parseIsoDate(fromIso) || startOfDay(new Date());
@@ -8979,6 +9353,50 @@ async function claimQueuedQuestionnaireSend(ref, {
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
     return current;
+  });
+}
+
+async function claimQuestionnaireCanaryExternalEffect(ref, {
+  eventId = "",
+  expectedContactId = "",
+  targetRef = null,
+  targetId = "",
+  releaseCommit = "",
+  armedUntil = ""
+} = {}) {
+  const normalizedEventId = cleanString(eventId);
+  const normalizedContactId = questionnaireSchedulerCanaryExpectedGhlContactId(expectedContactId);
+  if (!normalizedContactId || !targetRef) return false;
+  return db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(ref);
+    const targetSnap = await transaction.get(targetRef);
+    if (!snap.exists || !targetSnap.exists) return false;
+    const current = snap.data() || {};
+    const target = targetSnap.data() || {};
+    if (
+      current.questionnaireCanaryOnly !== true
+      || cleanString(current.questionnaireCanarySource) !== QUESTIONNAIRE_SCHEDULER_CANARY_SOURCE
+      || cleanString(current.externalEffectState)
+      || questionnaireSchedulerCanaryExpectedGhlContactId(target.expectedGhlContactId)
+        !== normalizedContactId
+      || !questionnaireSchedulerCanarySendAvailable({
+        send: current,
+        sendId: ref.id,
+        clientId: targetId,
+        client: target,
+        coachId: "admin"
+      })
+    ) {
+      return false;
+    }
+    transaction.update(ref, {
+      externalEffectState: "started",
+      externalEffectEventId: normalizedEventId,
+      externalEffectExpectedGhlContactId: normalizedContactId,
+      externalEffectStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    return true;
   });
 }
 

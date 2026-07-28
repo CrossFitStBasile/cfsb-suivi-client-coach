@@ -643,6 +643,17 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Short-lived Scheduler canary targets are created only by the sealed
+    // release runner through the Admin REST API. They are never member records
+    // and must not be visible or writable from the Dashboard.
+    match /questionnaireCanaryTargets/{targetId} {
+      allow read, write: if false;
+    }
+
+    match /questionnaireSchedulerCanaryControls/{controlId} {
+      allow read, write: if false;
+    }
+
     match /questionnaireRateLimits/{rateLimitId} {
       allow read, write: if false;
     }

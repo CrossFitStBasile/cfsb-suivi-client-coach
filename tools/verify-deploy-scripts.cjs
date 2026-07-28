@@ -9,6 +9,50 @@ const files = {
   deployHosting: path.join(root, "deploy-hosting-dashboard.cmd"),
   deployQuestionnaireStageA: path.join(root, "deploy-questionnaire-stage-a.cmd"),
   deployQuestionnaireStageB: path.join(root, "deploy-questionnaire-stage-b.cmd"),
+  runQuestionnaireReleaseCanary: path.join(root, "run-questionnaire-release-canary.cmd"),
+  runQuestionnairePublicApiCanary: path.join(
+    root,
+    "run-questionnaire-public-api-canary.cmd"
+  ),
+  runQuestionnaireRulesEmulatorCanary: path.join(
+    root,
+    "run-questionnaire-firestore-rules-emulator-canary.cmd"
+  ),
+  questionnaireCanaryRunner: path.join(
+    root,
+    "tools",
+    "run-questionnaire-scheduler-canary.cjs"
+  ),
+  questionnaireCanaryLib: path.join(
+    root,
+    "tools",
+    "questionnaire-scheduler-canary-lib.cjs"
+  ),
+  questionnairePublicApiCanaryRunner: path.join(
+    root,
+    "tools",
+    "run-questionnaire-public-api-canary.cjs"
+  ),
+  questionnairePublicApiCanaryLib: path.join(
+    root,
+    "tools",
+    "questionnaire-public-api-canary-lib.cjs"
+  ),
+  questionnaireRulesEmulatorCanary: path.join(
+    root,
+    "tools",
+    "run-questionnaire-firestore-rules-emulator-canary.cjs"
+  ),
+  questionnaireFunctionRevisionReceipt: path.join(
+    root,
+    "tools",
+    "questionnaire-function-revision-receipt.cjs"
+  ),
+  questionnaireSchedulerSafety: path.join(
+    root,
+    "functions",
+    "questionnaire-scheduler-safety.js"
+  ),
   verifyQuestionnaireStageAIndexReady: path.join(
     root,
     "verify-questionnaire-stage-a-index-ready.cmd"
@@ -38,6 +82,11 @@ const files = {
     root,
     "firebase-dashboard",
     "QUESTIONNAIRE_RELEASE_RUNBOOK_20260728.md"
+  ),
+  questionnaireCandidateGate: path.join(
+    root,
+    "tools",
+    "verify-questionnaire-reconciled-candidate.mjs"
   ),
   openFirebaseConsole: path.join(root, "ouvrir-console-firebase.cmd"),
   login: path.join(root, "firebase-login-dashboard.cmd"),
@@ -354,6 +403,10 @@ check(
       "CFSB_QUESTIONNAIRE_LEGACY_CANARY_OK"
     )
     && hasShaBoundPredicate(
+      source.deployQuestionnaireStageA,
+      "CFSB_QUESTIONNAIRE_INDEX_DRY_RUN_REVIEWED"
+    )
+    && hasShaBoundPredicate(
       source.deployQuestionnaireStageB,
       "CFSB_QUESTIONNAIRE_INDEX_READY_OK"
     )
@@ -396,6 +449,7 @@ const shaBoundReleaseVariables = [
   "CFSB_QUESTIONNAIRE_RULES_CANARY_OK",
   "CFSB_QUESTIONNAIRE_ADDITIVE_CANARY_OK",
   "CFSB_QUESTIONNAIRE_LEGACY_CANARY_OK",
+  "CFSB_QUESTIONNAIRE_INDEX_DRY_RUN_REVIEWED",
   "CFSB_QUESTIONNAIRE_INDEX_READY_OK",
   "CFSB_QUESTIONNAIRE_SCHEDULER_CANARY_OK",
   "CFSB_QUESTIONNAIRE_STAGE_A_VERIFIED",
@@ -431,6 +485,147 @@ const stageAFirstPreflight = stageAPreflightPositions[0] ?? -1;
 const stageADryRun = source.deployQuestionnaireStageA.indexOf(stageADryRunCall);
 const stageASecondPreflight = stageAPreflightPositions[1] ?? -1;
 const stageADeploy = source.deployQuestionnaireStageA.indexOf(stageADeployCall);
+const stageAIndexReviewGate = source.deployQuestionnaireStageA.indexOf(
+  'if /I "%QUESTIONNAIRE_STAGE%"=="indexes" (',
+  stageADryRun
+);
+const stageAIndexReviewPredicate = source.deployQuestionnaireStageA.indexOf(
+  'if /I not "%CFSB_QUESTIONNAIRE_INDEX_DRY_RUN_REVIEWED%"=="%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" (',
+  stageAIndexReviewGate
+);
+const stageAIndexReviewStop = source.deployQuestionnaireStageA.indexOf(
+  "exit /b 1",
+  stageAIndexReviewPredicate
+);
+
+check(
+  "questionnaire index dry-run requires a reviewed second invocation",
+  stageAIndexReviewGate > stageADryRun
+    && stageAIndexReviewPredicate > stageAIndexReviewGate
+    && stageAIndexReviewStop > stageAIndexReviewPredicate
+    && stageAIndexReviewStop < stageASecondPreflight
+    && hasShaBoundPredicate(
+      source.deployQuestionnaireStageA,
+      "CFSB_QUESTIONNAIRE_INDEX_DRY_RUN_REVIEWED"
+    )
+    && source.deployQuestionnaireStageA.includes(
+      "set CFSB_QUESTIONNAIRE_INDEX_DRY_RUN_REVIEWED=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%"
+    )
+    && source.deployQuestionnaireStageA.includes(
+      "index-dry-run-%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%.receipt"
+    )
+    && source.deployQuestionnaireStageA.indexOf(
+      "premiere invocation indexes terminee sans mutation",
+      stageAIndexReviewGate
+    ) < stageAIndexReviewPredicate
+    && source.questionnaireCandidateGate.includes(
+      "tests/questionnaire-index-two-pass-guard.test.mjs"
+    ),
+  "A4 doit s'arrêter après son premier dry-run et exiger une preuve SHA avant une nouvelle invocation complète."
+);
+
+check(
+  "questionnaire release canaries are sealed, runnable and documented",
+  includesAll(source.runQuestionnaireReleaseCanary, [
+    "tools\\run-questionnaire-scheduler-canary.cjs",
+    "--release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%",
+    "--pin-contact",
+    "--execute-process",
+    "--execute-empty",
+    "--execute-positive",
+    "--cleanup"
+  ])
+    && includesAll(source.runQuestionnairePublicApiCanary, [
+      "tools\\run-questionnaire-public-api-canary.cjs",
+      "--release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%",
+      "--record-revision",
+      "--execute"
+    ])
+    && includesAll(source.runQuestionnaireRulesEmulatorCanary, [
+      "demo-cfsb-questionnaire-rules",
+      "run-questionnaire-firestore-rules-emulator-canary.cjs",
+      "verify-sealed-questionnaire-release-worktree.cjs"
+    ])
+    && includesAll(source.questionnaireCandidateGate, [
+      "functions/questionnaire-scheduler-safety.js",
+      "tools/questionnaire-public-api-canary-lib.cjs",
+      "tools/questionnaire-scheduler-canary-lib.cjs",
+      "tools/questionnaire-function-revision-receipt.cjs",
+      "tools/run-questionnaire-firestore-rules-emulator-canary.cjs",
+      "tools/run-questionnaire-public-api-canary.cjs",
+      "tools/run-questionnaire-scheduler-canary.cjs",
+      "tests/questionnaire-public-api-canary.test.mjs",
+      "tests/questionnaire-scheduler-canary.test.mjs"
+    ])
+    && includesAll(source.questionnaireCanaryRunner, [
+      "CFSB_QUESTIONNAIRE_RELEASE_GO",
+      "CFSB_COACH_NOTICE_CONFIRMED",
+      "CFSB_QUESTIONNAIRE_ADDITIVE_CANARY_OK",
+      "CFSB_QUESTIONNAIRE_LEGACY_CANARY_OK",
+      "CFSB_QUESTIONNAIRE_INDEX_READY_OK",
+      "CFSB_QUESTIONNAIRE_SCHEDULER_EMPTY_CANARY_OK",
+      "createCanaryControl(context, \"empty\")",
+      "createCanaryControl(context, \"positive\")",
+      "currentDocument.updateTime",
+      "discoverPinnedSyntheticContact",
+      "cleanupSyntheticGhlTag",
+      "CFSB_QUESTIONNAIRE_CANARY_CONTACT_FINGERPRINT",
+      "CFSB_QUESTIONNAIRE_RECOVERY_GO",
+      "positive_canary_release_already_attempted",
+      "firestoreRecoveryComplete"
+    ])
+    && includesAll(source.questionnairePublicApiCanaryRunner, [
+      "canary_response_already_exists",
+      "idempotent_replay_mutated_response",
+      "idempotency_conflict_mutated_response",
+      "revisionReceiptVerified: true",
+      "memberLinksDetected: 0"
+    ])
+    && includesAll(source.questionnairePublicApiCanaryLib, [
+      "CFSB_QUESTIONNAIRE_RULES_CANARY_OK",
+      "EXPECTED_INITIAL_FORMS",
+      "IDEMPOTENCY_CONFLICT"
+    ])
+    && includesAll(source.questionnaireRulesEmulatorCanary, [
+      "questionnaireCanaryTargets",
+      "questionnaireSchedulerCanaryControls",
+      "legacyCoachScheduleCreateReadEditPauseResume",
+      "externalWrites: 0"
+    ])
+    && includesAll(source.deployQuestionnaireStageA, [
+      "CFSB_QUESTIONNAIRE_RULES_EMULATOR_OK",
+      "run-questionnaire-firestore-rules-emulator-canary.cmd"
+    ])
+    && includesAll(source.deployQuestionnaireStageA, [
+      "questionnaire-function-revision-receipt.cjs",
+      "--record",
+      ":revision_receipt_failed"
+    ])
+    && includesAll(source.questionnaireCanaryRunner, [
+      "verifyLiveFunctionReceipt",
+      "--verify",
+      "live_function_revision_mismatch"
+    ])
+    && includesAll(source.questionnaireFunctionRevisionReceipt, [
+      "serviceConfig?.revision",
+      "buildConfig?.build",
+      "sourceProvenanceHash",
+      "allTrafficOnLatestRevision",
+      "function-revisions-"
+    ])
+    && !source.questionnaireCanaryRunner.includes("currentDocument.exists")
+  && includesAll(source.questionnaireReleaseRunbook, [
+      "run-questionnaire-firestore-rules-emulator-canary.cmd",
+      "run-questionnaire-public-api-canary.cmd --record-revision",
+      "run-questionnaire-public-api-canary.cmd --execute",
+      "run-questionnaire-release-canary.cmd --pin-contact",
+      "run-questionnaire-release-canary.cmd --execute-process",
+      "run-questionnaire-release-canary.cmd --execute-empty",
+      "run-questionnaire-release-canary.cmd --execute-positive",
+      "run-questionnaire-release-canary.cmd --cleanup"
+    ]),
+  "Le runner, son test, son module transactionnel, le wrapper et leurs commandes runbook doivent rester dans le candidat scellé."
+);
 
 check(
   "questionnaire Stage A runs the live guard before mutation",
