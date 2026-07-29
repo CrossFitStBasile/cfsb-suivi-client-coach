@@ -466,15 +466,32 @@ function isQuestionnaireScheduleIndex(
     && index.fields[2]?.order === "ASCENDING";
 }
 
+function isIndexFromCollectionGroup(
+  index,
+  {
+    projectId = DEFAULT_PROJECT_ID,
+    collectionId = DEFAULT_COLLECTION_ID
+  } = {}
+) {
+  const namePrefix =
+    `projects/${projectId}/databases/(default)/collectionGroups/`
+      + `${collectionId}/indexes/`;
+  return typeof index?.name === "string"
+    && index.name.startsWith(namePrefix);
+}
+
 function summarizeQuestionnaireScheduleIndexes(indexes, options = {}) {
   if (!Array.isArray(indexes)) {
     throw new TypeError("indexes must be an array");
   }
-  const matching = indexes.filter(
+  const collectionIndexes = indexes.filter(
+    (index) => isIndexFromCollectionGroup(index, options)
+  );
+  const matching = collectionIndexes.filter(
     (index) => isQuestionnaireScheduleIndex(index, options)
   );
   return Object.freeze({
-    indexes: indexes.length,
+    indexes: collectionIndexes.length,
     matching: matching.length,
     ready: matching.filter((index) => index.state === "READY").length,
     building: matching.filter((index) => index.state === "CREATING").length,

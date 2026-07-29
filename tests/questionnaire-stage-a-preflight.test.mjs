@@ -348,6 +348,19 @@ test("the exact questionnaire schedule index must be uniquely READY", () => {
   );
   assert.deepEqual(
     preflight.summarizeQuestionnaireScheduleIndexes([
+      expected,
+      {
+        ...expected,
+        name:
+          "projects/cfsb-dashboard-coach-aa9a4/databases/(default)/"
+            + "collectionGroups/tasks/indexes/unrelated-index"
+      }
+    ]),
+    { indexes: 1, matching: 1, ready: 1, building: 0, failed: 0 },
+    "the list API may return indexes from unrelated collection groups"
+  );
+  assert.deepEqual(
+    preflight.summarizeQuestionnaireScheduleIndexes([
       { ...expected, state: "CREATING" },
       { ...expected, state: "NEEDS_REPAIR" },
       {
