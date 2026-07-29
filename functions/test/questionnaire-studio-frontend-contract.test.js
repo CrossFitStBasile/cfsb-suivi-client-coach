@@ -18,7 +18,7 @@ const studioSourcePath = path.resolve(
 );
 const studioSource = fs.readFileSync(studioSourcePath, "utf8");
 
-function loadStudioPureFunctions() {
+function loadStudioPureFunctions({ location } = {}) {
   let source = studioSource;
   source = source.replace(
     /^import\s*\{[\s\S]*?\}\s*from\s*"https:\/\/www\.gstatic\.com\/firebasejs\/[^"]+";\s*/u,
@@ -28,10 +28,11 @@ function loadStudioPureFunctions() {
     "export function mountQuestionnaireStudio",
     "function mountQuestionnaireStudio"
   );
-  source += "\nmodule.exports = { normalizeForm, serializeDraft, defaultFeedbackForQuestion, feedbackValidationErrors };\n";
+  source += "\nmodule.exports = { normalizeForm, serializeDraft, defaultFeedbackForQuestion, feedbackValidationErrors, canonicalBaseUrl, canonicalPublicUrl };\n";
   const sandbox = {
     console,
     crypto: crypto.webcrypto,
+    location,
     module: { exports: {} },
     URL
   };
@@ -81,6 +82,22 @@ test("les métadonnées d'identité et d'URL produites par le Studio restent sû
   assert.equal(serialized.sections.every((section) =>
     section.fields.every((field) => /^[a-z][a-z0-9_]{0,63}$/.test(field.id))
   ), true);
+});
+
+test("le Studio conserve l'origine canonique web.app depuis l'alias firebaseapp.com", () => {
+  const { canonicalBaseUrl, canonicalPublicUrl } = loadStudioPureFunctions({
+    location: {
+      origin: "https://cfsb-dashboard-coach-aa9a4.firebaseapp.com"
+    }
+  });
+  assert.equal(
+    canonicalBaseUrl().toString(),
+    "https://cfsb-dashboard-coach-aa9a4.web.app/questionnaire/f/"
+  );
+  assert.equal(
+    canonicalPublicUrl("check-in-express"),
+    "https://cfsb-dashboard-coach-aa9a4.web.app/questionnaire/f/check-in-express"
+  );
 });
 
 test("le Studio distingue publication, changements non publiés et livraison GHL vérifiée", () => {

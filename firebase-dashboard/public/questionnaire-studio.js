@@ -62,6 +62,7 @@ const CALLABLE_NAMES = Object.freeze({
   duplicate: "duplicateQuestionnaireForm"
 });
 
+const PUBLIC_ORIGIN = "https://cfsb-dashboard-coach-aa9a4.web.app";
 const DEFAULT_PUBLIC_PATH = "/questionnaire/f/";
 const FORM_STATUS_ORDER = Object.freeze({ draft: 0, published: 1, archived: 2 });
 const CORE_SCHEMA_VERSION = "questionnaire-studio/v1";
@@ -703,10 +704,7 @@ function newForm(mode = "general", existingForms = []) {
 
 function canonicalBaseUrl(options = {}) {
   const configured = text(options.publicBaseUrl);
-  const fallbackOrigin = globalThis.location?.origin && globalThis.location.origin !== "null"
-    ? globalThis.location.origin
-    : "https://cfsb-dashboard-coach-aa9a4.web.app";
-  const url = new URL(configured || DEFAULT_PUBLIC_PATH, fallbackOrigin);
+  const url = new URL(configured || DEFAULT_PUBLIC_PATH, PUBLIC_ORIGIN);
   url.search = "";
   url.hash = "";
   if (!url.pathname.endsWith("/")) url.pathname = `${url.pathname}/`;

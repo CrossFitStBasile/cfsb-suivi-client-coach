@@ -53,7 +53,7 @@ const provider = new GoogleAuthProvider();
 let questionnaireStudioController = null;
 let questionnaireStudioModulePromise = null;
 provider.setCustomParameters({ prompt: "select_account" });
-const APP_VERSION = "20260728-questionnaire-studio-library";
+const APP_VERSION = "20260729-questionnaire-studio-canonical-url";
 window.__CFSB_DASHBOARD_VERSION = APP_VERSION;
 const RELEASE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 const USAGE_SESSION_ID = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -1419,7 +1419,7 @@ function renderDashboard() {
 
 async function mountQuestionnaireStudioView(studioRoot) {
   try {
-    questionnaireStudioModulePromise ||= import("./questionnaire-studio.js?v=20260728-questionnaire-studio-library");
+    questionnaireStudioModulePromise ||= import("./questionnaire-studio.js?v=20260729-questionnaire-studio-canonical-url");
     const { mountQuestionnaireStudio } = await questionnaireStudioModulePromise;
     if (
       state.tab !== "studio" ||

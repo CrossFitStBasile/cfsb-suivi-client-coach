@@ -77,8 +77,8 @@ test("the library is visible, versioned and responsive", () => {
     app,
     /data-action="openQuestionnaireLibrary" aria-haspopup="dialog">Formulaires a partager<\/button>/
   );
-  assert.match(index, /styles\.css\?v=20260728-questionnaire-studio-library/);
-  assert.match(index, /app\.js\?v=20260728-questionnaire-studio-library/);
+  assert.match(index, /styles\.css\?v=20260729-questionnaire-studio-canonical-url/);
+  assert.match(index, /app\.js\?v=20260729-questionnaire-studio-canonical-url/);
   assert.match(styles, /\.questionnaire-library-grid/);
   assert.match(styles, /\.questionnaire-library-actions/);
   assert.match(styles, /@media \(max-width: 680px\)/);
