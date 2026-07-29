@@ -3,6 +3,7 @@
 const DEFAULT_PROJECT_ID = "cfsb-dashboard-coach-aa9a4";
 const DEFAULT_COLLECTION_ID = "questionnaireSchedules";
 const DEFAULT_PAGE_SIZE = 100;
+const DEFAULT_INDEX_PAGE_SIZE = 0;
 const DEFAULT_TIMEOUT_MS = 30000;
 const DEFAULT_TOTAL_TIMEOUT_MS = 120000;
 const DEFAULT_MAX_PAGES = 1000;
@@ -259,7 +260,7 @@ async function listQuestionnaireScheduleDocuments({
 function buildListIndexesUrl({
   projectId = DEFAULT_PROJECT_ID,
   collectionId = DEFAULT_COLLECTION_ID,
-  pageSize = DEFAULT_PAGE_SIZE,
+  pageSize = DEFAULT_INDEX_PAGE_SIZE,
   pageToken = ""
 } = {}) {
   if (!/^[a-z0-9][a-z0-9-]{4,62}$/.test(projectId)) {
@@ -268,8 +269,8 @@ function buildListIndexesUrl({
   if (!/^[A-Za-z0-9_-]+$/.test(collectionId)) {
     throw new TypeError("collectionId is invalid");
   }
-  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 1000) {
-    throw new TypeError("pageSize must be between 1 and 1000");
+  if (pageSize !== DEFAULT_INDEX_PAGE_SIZE) {
+    throw new TypeError("index pageSize must use the API-supported value 0");
   }
 
   const encodedProject = encodeURIComponent(projectId);
@@ -288,7 +289,7 @@ async function fetchIndexPage({
   accessToken,
   projectId = DEFAULT_PROJECT_ID,
   collectionId = DEFAULT_COLLECTION_ID,
-  pageSize = DEFAULT_PAGE_SIZE,
+  pageSize = DEFAULT_INDEX_PAGE_SIZE,
   pageToken = "",
   timeoutMs = DEFAULT_TIMEOUT_MS
 } = {}) {
@@ -360,7 +361,7 @@ async function listQuestionnaireScheduleIndexes({
   accessToken,
   projectId = DEFAULT_PROJECT_ID,
   collectionId = DEFAULT_COLLECTION_ID,
-  pageSize = DEFAULT_PAGE_SIZE,
+  pageSize = DEFAULT_INDEX_PAGE_SIZE,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   totalTimeoutMs = DEFAULT_TOTAL_TIMEOUT_MS,
   maxPages = DEFAULT_MAX_PAGES
@@ -575,6 +576,7 @@ function schedulerWindowState(
 
 module.exports = {
   DEFAULT_COLLECTION_ID,
+  DEFAULT_INDEX_PAGE_SIZE,
   DEFAULT_MAX_DOCUMENTS,
   DEFAULT_MAX_PAGES,
   DEFAULT_PAGE_SIZE,

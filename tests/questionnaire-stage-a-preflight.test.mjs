@@ -462,7 +462,21 @@ test("index pagination is read-only and fails on malformed responses", async () 
     "/v1/projects/cfsb-dashboard-coach-aa9a4/databases/(default)/"
       + "collectionGroups/questionnaireSchedules/indexes"
   );
+  assert.equal(
+    urls[0].url.searchParams.get("pageSize"),
+    "0",
+    "Firestore Admin live accepts only the server-default index page size"
+  );
   assert.equal(urls[1].url.searchParams.get("pageToken"), "next-index-page");
+
+  await assert.rejects(
+    preflight.listQuestionnaireScheduleIndexes({
+      accessToken: "test-access-token",
+      pageSize: 100,
+      fetchImpl: async () => jsonResponse({ indexes: [] })
+    }),
+    /API-supported value 0/
+  );
 
   await assert.rejects(
     preflight.listQuestionnaireScheduleIndexes({
