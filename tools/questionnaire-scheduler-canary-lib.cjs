@@ -763,6 +763,20 @@ function decodeFirestoreDocument(document = {}) {
   return decoded;
 }
 
+function stableJsonStringify(value) {
+  return JSON.stringify(sortJsonKeys(value));
+}
+
+function sortJsonKeys(value) {
+  if (Array.isArray(value)) return value.map(sortJsonKeys);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.keys(value)
+      .sort()
+      .map((key) => [key, sortJsonKeys(value[key])])
+  );
+}
+
 function safeResultError(error) {
   return error instanceof CanaryError ? error.code : "unexpected_error";
 }
@@ -823,5 +837,6 @@ module.exports = {
   encodeFirestoreFields,
   decodeFirestoreValue,
   decodeFirestoreDocument,
+  stableJsonStringify,
   safeResultError
 };

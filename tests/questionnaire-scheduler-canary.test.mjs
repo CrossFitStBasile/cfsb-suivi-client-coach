@@ -63,6 +63,58 @@ test("deterministic canary IDs depend only on the sealed SHA", () => {
   );
 });
 
+test("stable JSON comparison ignores Firestore map key order but preserves arrays", () => {
+  const first = {
+    name: "schedule",
+    fields: {
+      status: { stringValue: "paused" },
+      nested: {
+        mapValue: {
+          fields: {
+            beta: { integerValue: "2" },
+            alpha: { integerValue: "1" }
+          }
+        }
+      },
+      values: [{ stringValue: "first" }, { stringValue: "second" }]
+    }
+  };
+  const reordered = {
+    fields: {
+      values: [{ stringValue: "first" }, { stringValue: "second" }],
+      nested: {
+        mapValue: {
+          fields: {
+            alpha: { integerValue: "1" },
+            beta: { integerValue: "2" }
+          }
+        }
+      },
+      status: { stringValue: "paused" }
+    },
+    name: "schedule"
+  };
+  const reversedArray = {
+    ...reordered,
+    fields: {
+      ...reordered.fields,
+      values: [{ stringValue: "second" }, { stringValue: "first" }]
+    }
+  };
+  assert.equal(
+    lib.stableJsonStringify(first),
+    lib.stableJsonStringify(reordered)
+  );
+  assert.notEqual(
+    lib.stableJsonStringify(first),
+    lib.stableJsonStringify(reversedArray)
+  );
+  assert.match(
+    runnerSource,
+    /\.update\(stableJsonStringify\(\s*documents/
+  );
+});
+
 test("synthetic GHL contact requires explicit name, tag, unique ID and valid phone", () => {
   const valid = {
     id: "syntheticContact01",

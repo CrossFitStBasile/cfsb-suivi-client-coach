@@ -44,6 +44,7 @@ const {
   canarySendHasUncertainExternalEffect,
   encodeFirestoreFields,
   decodeFirestoreDocument,
+  stableJsonStringify,
   safeResultError
 } = require("./questionnaire-scheduler-canary-lib.cjs");
 const {
@@ -878,7 +879,7 @@ async function assertScheduleTriggerState(context, {
     activeDue: activeDue.length,
     protectionThroughDateToronto: horizon,
     stateDigest: crypto.createHash("sha256")
-      .update(JSON.stringify(
+      .update(stableJsonStringify(
         documents
           .map((document) => ({
             name: document.name,
