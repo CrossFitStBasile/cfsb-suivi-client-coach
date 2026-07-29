@@ -833,3 +833,23 @@ test("runner preserves only aggregate evidence and exact synthetic cleanup", () 
   assert.doesNotMatch(runnerSource, /process\.stdout\.write\(.*phone/i);
   assert.equal(lib.safeResultError(new Error("private@example.com 5145550100")), "unexpected_error");
 });
+
+test("runner pagination keeps the reviewed Firestore bounds and token guard", () => {
+  const pageSize = Number(
+    runnerSource.match(/const PAGE_SIZE = (\d+);/)?.[1] || 0
+  );
+  const maxPages = Number(
+    runnerSource.match(/const MAX_PAGES = (\d+);/)?.[1] || 0
+  );
+  assert.equal(pageSize, 500);
+  assert.equal(maxPages, 30);
+  assert.match(runnerSource, /const seenPageTokens = new Set\(\);/);
+  assert.match(
+    runnerSource,
+    /throw new CanaryError\("firestore_pagination_token_repeated"\)/
+  );
+  assert.match(
+    runnerSource,
+    /throw new CanaryError\("firestore_pagination_limit"\)/
+  );
+});

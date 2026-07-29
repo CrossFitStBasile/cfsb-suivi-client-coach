@@ -67,7 +67,7 @@ const POLL_TIMEOUT_MS = 90_000;
 const POLL_INTERVAL_MS = 2_000;
 const MAX_BODY_BYTES = 1_500_000;
 const MAX_PAGES = 30;
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 500;
 const SYNC_RUN_SOURCE = "firebase_function_questionnaire_schedules";
 const EXPECTED_JOB_NAME = EXPECTED_SCHEDULER_JOB_NAME;
 const EXPECTED_JOB_SCHEDULE = "every day 07:15";
@@ -678,6 +678,7 @@ function runLivePreflight({ requireIndexReady }) {
 async function listDocuments(context, collectionId, fieldPaths = []) {
   const documents = [];
   let pageToken = "";
+  const seenPageTokens = new Set();
   for (let page = 0; page < MAX_PAGES; page += 1) {
     const params = new URLSearchParams({ pageSize: String(PAGE_SIZE) });
     if (pageToken) params.set("pageToken", pageToken);
@@ -689,6 +690,10 @@ async function listDocuments(context, collectionId, fieldPaths = []) {
     documents.push(...(Array.isArray(data.documents) ? data.documents : []));
     pageToken = String(data.nextPageToken || "");
     if (!pageToken) return documents;
+    if (seenPageTokens.has(pageToken)) {
+      throw new CanaryError("firestore_pagination_token_repeated");
+    }
+    seenPageTokens.add(pageToken);
   }
   throw new CanaryError("firestore_pagination_limit");
 }
