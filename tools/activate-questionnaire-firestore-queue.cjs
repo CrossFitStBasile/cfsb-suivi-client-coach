@@ -10,6 +10,11 @@ const bobConfigDir = path.join(bobRoot, "config");
 const bobGeneratedDir = path.join(bobRoot, "generated");
 const tokenPath = path.join(bobConfigDir, "token.json");
 const oauthClientPath = path.join(bobConfigDir, "oauth-client.json");
+const stagedReleaseGuardPath = path.join(
+  repoRoot,
+  "firebase-dashboard",
+  "QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md"
+);
 
 const questionnaireScriptId = "1RzTyLvUdw6NdVI2vsDoi7a2bjWGAZDXml94QYG4TCs9wF5KJdKm3HFBa";
 const datastoreScope = "https://www.googleapis.com/auth/datastore";
@@ -22,6 +27,13 @@ main().catch((error) => {
 });
 
 async function main() {
+  if (fs.existsSync(stagedReleaseGuardPath)) {
+    throw new Error(
+      "STOP: le pipeline Apps Script questionnaire v23 reste immuable pendant la release staged. "
+      + "Suivre QUESTIONNAIRE_RELEASE_RUNBOOK_20260728.md."
+    );
+  }
+
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   await fsp.mkdir(bobGeneratedDir, { recursive: true });
 

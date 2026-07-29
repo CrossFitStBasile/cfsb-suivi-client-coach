@@ -18,6 +18,10 @@ confirmation d'une écriture durable.
    - `/questionnaire/`;
    - `/questionnaire/check-in/`;
    - `/questionnaire/evaluation-habitudes-vie/`.
+   Le code et le déploiement de ce Web App restent immuables pendant cette
+   release : les runners `activate-questionnaire-firestore-queue.cjs` et
+   `deploy-questionnaire-appscript-version.cjs` s'arrêtent avant
+   authentification tant que le garde staged existe.
 2. Les nouvelles URL sont génériques : `/questionnaire/f/{slug}`. Aucune donnée
    membre, aucun téléphone et aucun identifiant ne sont placés dans l'URL.
 3. Une soumission n'est réussie que si l'API retourne `ok: true`,
@@ -42,11 +46,14 @@ Un GO local ne constitue pas un GO production. Avant l'étape A, il faut :
 - une session Firebase valide et les secrets requis;
 - une personne responsable du GO/STOP et du rollback;
 - une fenêtre calme, hors de la fenêtre protégée du Scheduler;
-- l'avis aux coachs envoyé avant la première mutation.
+- l'avis aux coachs publié dans Firestore avant la première mutation et
+  confirmé par `--maintenance-verify`; une variable de terminal seule ne
+  constitue jamais cette preuve;
 - zéro document `questionnaireSchedules` actif avec `nextSendAt` dû ou invalide.
 
 L'avis est obligatoire pour ce candidat parce que la sous-étape A3 redéploie
-trois fonctions déjà utilisées. Les règles ont finalement été exécutées avec le
+sept fonctions déjà utilisées et ajoute le reaper d'envoi. Les règles ont
+finalement été exécutées avec le
 Firestore Emulator et le JRE Temurin local : le canari a confirmé les opérations
 legacy coach (création, lecture, modification, pause et reprise), les droits
 admin et le refus total des deux collections canari privées. Pendant la fenêtre,
@@ -60,11 +67,11 @@ run-questionnaire-firestore-rules-emulator-canary.cmd
 set CFSB_QUESTIONNAIRE_RULES_EMULATOR_OK=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
 ```
 
-Avant A1, vérifier sans écriture externe les trois révisions Functions live, la
-cible Scheduler et le contact synthétique :
+Avant A1, vérifier sans écriture externe la cible Scheduler et le contact
+synthétique. Les révisions Functions pré-release sont scellées séparément par
+le snapshot obligatoire décrit plus bas :
 
 ```cmd
-node tools\questionnaire-function-revision-receipt.cjs --release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT% --preview
 run-questionnaire-release-canary.cmd --preview
 set CFSB_QUESTIONNAIRE_CANARY_CONTACT_FINGERPRINT=<EMPREINTE_AFFICHEE_PAR_PREVIEW>
 run-questionnaire-release-canary.cmd --pin-contact
@@ -134,9 +141,7 @@ Toutes les autorisations et preuves ci-dessous doivent être égales à ce SHA.
 Un nouveau commit de candidat invalide donc automatiquement les anciens GO,
 avis et canaris : il faut les reprendre pour le nouveau candidat.
 Chaque invocation susceptible de muter fait une passe `firebase deploy
---dry-run` avant la mutation. A4 ajoute volontairement une première invocation
-sans mutation afin que le delta d'index puisse être examiné avant de permettre
-une seconde invocation.
+--dry-run` avant la mutation.
 Chaque sous-étape exécute aussi le prévol live en lecture seule avant les portes,
 puis une seconde fois après le dry-run et immédiatement avant la mutation. Il
 parcourt toutes les pages de `questionnaireSchedules`, sans requête composite,
@@ -148,6 +153,55 @@ Ne lancer aucune commande `firebase deploy` manuelle depuis le candidat. Les
 hooks Firebase exécutent les tests, mais seuls les scripts Stage A/Stage B
 vérifient aussi l'ordre des sous-étapes, les GO, l'avis coach, le commit scellé
 et les preuves de canari.
+
+### Snapshot pré-release obligatoire
+
+Immédiatement avant A1, sceller l'état live réellement servi, et non une
+ancienne baseline Git. Le reçu contient seulement des identifiants techniques,
+des révisions et des empreintes : aucun contenu de règles, courriel, téléphone,
+secret ou donnée membre. Il lie au SHA candidat :
+
+- la version exacte du canal Hosting `live`;
+- le ruleset Firestore immuable actuellement publié;
+- les sept révisions Cloud Run servies par les Functions A2;
+- les sept révisions A3 pré-release exactes : `sendQuestionnaire`,
+  `processQuestionnaireSendRequest`, `scheduledQuestionnaireSendPlans`,
+  `syncDashboardFromSheets`, `scheduledDashboardSync`,
+  `scheduledQuestionnaireResponseSync` et `processSyncRequest`;
+- l'absence pré-release de la Function `scheduledQuestionnaireSendRecovery` et
+  de son job Cloud Scheduler exact
+  `firebase-schedule-scheduledQuestionnaireSendRecovery-us-central1`;
+- l'unique index `questionnaireSchedules` exact déjà dans l'état `READY`.
+
+Choisir un répertoire de récupération durable, puis exécuter les trois passes :
+
+```cmd
+set CFSB_QUESTIONNAIRE_ROLLBACK_DIR=C:\Users\micha\Documents\Codex\questionnaire-rollback-artifacts
+node tools\seal-questionnaire-pre-release-state.cjs --release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT% --preview
+set CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH=<PLAN_HASH_DU_RECU>
+node tools\seal-questionnaire-pre-release-state.cjs --release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT% --plan-hash=%CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH% --record
+node tools\seal-questionnaire-pre-release-state.cjs --release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT% --plan-hash=%CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH% --verify-receipt
+node tools\seal-questionnaire-pre-release-state.cjs --release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT% --plan-hash=%CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH% --verify
+```
+
+`--record` crée le reçu une seule fois avec une écriture locale exclusive;
+il refuse si le planHash observé n'est pas celui de la preview.
+`--verify-receipt` valide localement le fichier, son SHA, son snapshotHash et
+son planHash sans lire le live. `--verify` relit exactement le même état live.
+Le wrapper `rules` répète cette comparaison complète après son dry-run,
+immédiatement avant A1; les wrappers `additive` et `legacy`, dont le live a déjà
+changé intentionnellement, répètent plutôt `--verify-receipt`. Tous exigent
+aussi une réponse live `maintenancePublished: true` de :
+
+```cmd
+node tools\manage-questionnaire-release-announcements.cjs --release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT% --maintenance-verify
+```
+
+Copier le reçu avec l'archive candidate dans l'emplacement durable prévu. STOP
+sur reçu absent, planHash absent ou différent, avis de maintenance absent, ou
+toute différence de cible, de SHA, de version, de ruleset, de révision, de
+trafic ou d'index. Les anciennes références `2d9c1c0` et `76682dd` ne remplacent
+jamais ce snapshot pour A1, A2, A3 ou Hosting.
 
 ## Étape A — pont backend en quatre arrêts
 
@@ -205,7 +259,9 @@ La commande ne publie que :
 Contrôles obligatoires :
 
 - les quatre formulaires initiaux existent avec une version immuable;
-- les quatre ont `deliveryReady: false`;
+- les trois versions v1 déjà canariées conservent `deliveryReady: true`;
+- Repères CFSB v2 est créée avec `deliveryReady: false` jusqu’à son nouveau
+  canari GHL;
 - avant Stage B, utiliser directement
   `https://us-central1-cfsb-dashboard-coach-aa9a4.cloudfunctions.net/questionnairePublicApi?slug=<slug>`;
   le rewrite `/api/questionnaires` et le shell `/questionnaire/f/**` ne sont pas
@@ -219,18 +275,30 @@ Contrôles obligatoires :
 - un téléphone ambigu reste en validation.
 
 Après le déploiement A2, sceller les sept révisions additives live, puis lancer
-le canari public exact :
+la migration éducative v2 scellée avant le canari public exact. Cette migration
+ne remplace jamais la v1 : elle crée `reperes_cfsb_v2`, bascule atomiquement les
+pointeurs publics et remet obligatoirement `deliveryReady: false`.
 
 ```cmd
 run-questionnaire-public-api-canary.cmd --record-revision
+node tools\publish-reperes-v2.cjs --release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT% --preview
+```
+
+Suivre ensuite les portes GO et `planHash` exactes de
+`QUESTIONNAIRE_REPERES_V2_RELEASE_RUNBOOK.md`, puis exécuter :
+
+```cmd
+node tools\publish-reperes-v2.cjs --release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT% --verify
 run-questionnaire-public-api-canary.cmd --execute
 ```
 
 Le canari conserve une réponse synthétique non membre comme preuve. Il vérifie
-les quatre définitions et leurs empreintes, puis les quatre documents
+les quatre définitions et leurs empreintes — les trois parcours initiaux en v1
+et Repères CFSB en v2 — puis les quatre documents
 `questionnaireForms` et les quatre documents `questionnaireCatalog` exacts.
 Les deux collections doivent rester `published`, sur la version et l'empreinte
-attendues, avec `deliveryReady: false`. Il vérifie aussi l'accusé strict, le
+attendues, avec l’état de livraison exact : les trois v1 déjà actives restent
+à `true`, tandis que Repères v2 reste à `false`. Il vérifie aussi l'accusé strict, le
 rejeu idempotent, le conflit `409` sur contenu changé, l'absence de toute
 liaison client et la stabilité des sept révisions. Le `createTime`, le
 `updateTime` et l'empreinte du document Firestore doivent rester strictement
@@ -269,7 +337,32 @@ set CFSB_QUESTIONNAIRE_ADDITIVE_CANARY_OK=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
 STOP si le catalogue est incomplet, si une réponse est absente, si un faux
 succès apparaît ou si une identité ambiguë est rattachée.
 
-### A3 — pont des trois fonctions historiques en usage
+#### TTL des compteurs anti-abus
+
+La seule politique TTL autorisée par cette release cible le groupe de
+collections `questionnaireRateLimits` et son champ timestamp `expiresAt`.
+Elle ne cible jamais `questionnaireResponses` : les réponses suivent leur
+politique de conservation métier séparée et ne doivent pas être supprimées par
+TTL.
+
+La preview est read-only. L'activation exige un GO égal au SHA et utilise un
+`PATCH` limité par `updateMask=ttlConfig`; elle ne touche pas la configuration
+d'index du champ. `CREATING` est un état transitoire attendu, mais seule une
+vérification ultérieure `ACTIVE` constitue la preuve finale :
+
+```cmd
+node tools\manage-questionnaire-rate-limit-ttl.cjs --release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT% --preview
+set CFSB_QUESTIONNAIRE_TTL_GO=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
+node tools\manage-questionnaire-rate-limit-ttl.cjs --release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT% --enable
+node tools\manage-questionnaire-rate-limit-ttl.cjs --release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT% --verify
+```
+
+L'activation peut rendre immédiatement admissibles à la suppression les
+compteurs déjà expirés; Firestore effectue normalement ces suppressions de
+façon asynchrone. STOP sur `NEEDS_REPAIR` ou sur toute cible différente. Il
+n'existe aucun mode de désactivation ou de wildcard dans le runner.
+
+### A3 — pont d'envoi, synchronisation et récupération des baux
 
 ```cmd
 deploy-questionnaire-stage-a.cmd legacy
@@ -279,9 +372,20 @@ La commande ne redéploie que :
 
 - `sendQuestionnaire`;
 - `processQuestionnaireSendRequest`;
-- `scheduledQuestionnaireSendPlans`.
+- `scheduledQuestionnaireSendRecovery`;
+- `scheduledQuestionnaireSendPlans`;
+- `syncDashboardFromSheets`;
+- `scheduledDashboardSync`;
+- `scheduledQuestionnaireResponseSync`;
+- `processSyncRequest`.
 
-Après le succès Firebase, le script lit les trois Functions v2 et produit
+`sendQuestionnaire` ne fait plus d'appel GHL direct : le callable historique
+crée transactionnellement la même demande dans la file sûre que le Dashboard.
+Sa révision et celles des six autres Functions A3 préexistantes sont toutes
+scellées avant A1. Le même reçu prouve que la nouvelle Function de récupération
+et son job Scheduler exact n'existaient pas encore.
+
+Après le succès Firebase, le script lit les huit Functions v2 et produit
 automatiquement un reçu local lié au SHA avec, pour chacune, la révision Cloud
 Run, le build, l'heure de mise à jour et l'empreinte de provenance source. Le
 reçu exige `ACTIVE`, `GEN_2` et 100 % du trafic sur la dernière révision. Si ce
@@ -325,81 +429,37 @@ set CFSB_QUESTIONNAIRE_LEGACY_CANARY_OK=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
 STOP et rollback backend si une fonction historique régresse. Ne pas déclencher
 le Scheduler, ne pas créer l'index et ne pas publier Hosting.
 
-### A4 — index du Scheduler, isolé en dernier
+### A4 — index du Scheduler déjà `READY`, vérification seulement
 
-Le Scheduler quotidien tourne à 07:15 `America/Toronto`. La sous-étape A4 est
-interdite dans les six heures précédant ce passage et pendant les dix minutes
-qui le suivent. La fenêtre recommandée est de 08:00 à 12:00.
+L'index exact existe déjà en production et le prévol l'a observé une seule fois
+dans l'état `READY`. A4 n'est donc plus une sous-étape de déploiement pour ce
+candidat. Ne lancer ni `deploy-questionnaire-stage-a.cmd indexes`, ni
+`firebase deploy --only firestore:indexes`, ni même un dry-run d'index qui
+pourrait être interprété comme un delta à publier.
 
-```cmd
-deploy-questionnaire-stage-a.cmd indexes
-```
-
-La commande exige que `CFSB_QUESTIONNAIRE_LEGACY_CANARY_OK` soit égal au SHA
-scellé. Cette première invocation :
-
-1. exécute le prévol live à zéro suivi actif dû jusqu'au prochain passage de
-   07:15;
-2. exécute toutes les portes locales;
-3. fait le dry-run de `firestore:indexes` seulement;
-4. s'arrête obligatoirement sans publier d'index.
-
-Même si la variable de revue a été prépositionnée, la première invocation crée
-d'abord un reçu local SHA-bound après le dry-run puis s'arrête. Une invocation
-ultérieure exige à la fois ce reçu et la variable de revue.
-
-Examiner le journal affiché. STOP si ce dry-run annonce autre chose que la
-création de l'unique index `questionnaireSchedules` attendu. Un index historique
-manquant, une suppression ou toute autre création constitue un delta hors portée
-à examiner séparément. Si et seulement si la revue humaine est concluante,
-enregistrer la preuve liée au candidat scellé :
+Le Scheduler quotidien tourne à 07:15 `America/Toronto`. Dans une fenêtre sûre,
+après A3, exécuter uniquement les contrôles read-only suivants :
 
 ```cmd
-set CFSB_QUESTIONNAIRE_INDEX_DRY_RUN_REVIEWED=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
-```
-
-Cette preuve ne vaut que pour ce SHA. Relancer ensuite exactement la même
-commande :
-
-```cmd
-deploy-questionnaire-stage-a.cmd indexes
-```
-
-La seconde invocation :
-
-1. refait depuis le début le contrôle du commit et du worktree scellés,
-   l'authentification, le prévol live et toutes les portes locales;
-2. refait le dry-run de `firestore:indexes` seulement;
-   STOP si ce nouveau dry-run annonce autre chose que la création de l'unique index
-   `questionnaireSchedules` attendu; un index historique manquant ou toute autre
-   création constitue un delta hors portée à examiner séparément;
-3. refait le prévol live immédiatement et reconfirme le worktree scellé;
-4. publie uniquement `firestore:indexes`, en mode non interactif et sans
-   `--force` afin de ne supprimer aucun index existant;
-5. s'arrête sans déclarer Stage A réussie.
-
-Si le prévol échoue ou si l'état devient dangereux entre les deux lectures,
-aucun index n'est publié. Les sorties ne contiennent que des comptes agrégés,
-sans identifiant ni empreinte dérivée des données membre. La fenêtre protégée
-de six heures avant et dix minutes après est fixe; aucun argument de
-contournement n'existe.
-
-La CLI peut revenir avant la fin de construction. Attendre explicitement l'état
-`READY`, puis exécuter :
-
-```cmd
+node tools\preflight-questionnaire-stage-a-live.cjs --protect-through-next-scheduler --require-index-ready --require-safe-scheduler-window
+node tools\seal-questionnaire-pre-release-state.cjs --release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT% --plan-hash=%CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH% --verify-index-ready
 verify-questionnaire-stage-a-index-ready.cmd
 ```
 
-Ce contrôle post-index exige exactement un index `COLLECTION` composé de
-`status ASCENDING`, puis `nextSendAt ASCENDING`, dans l'état `READY`, ainsi que
-zéro suivi actif dû jusqu'au prochain passage de 07:15, à date invalide ou à
-statut inconnu. Le wrapper résout le runtime Node stable même quand `node` n'est
-pas présent dans le `PATH`. Il refuse aussi toute variante `unique`,
+Ces trois preuves liées au même SHA et au même planHash exigent exactement un
+index `COLLECTION`
+composé de `status ASCENDING`, puis `nextSendAt ASCENDING`, dans l'état `READY`,
+ainsi que zéro suivi actif dû jusqu'au prochain passage de 07:15, à date
+invalide ou à statut inconnu. Elles refusent aussi toute variante `unique`,
 `multikey`, de recherche, à densité autre que `SPARSE_ALL` ou avec un nombre de
-shards non standard.
+shards non standard. Le reçu pré-release conserve le nom et les champs exacts
+de l'index, sans identifiant de membre.
 
-Contrôles obligatoires après `READY`, dans cet ordre :
+STOP si la preuve diffère du snapshot ou si l'index n'est plus uniquement
+`READY`. Une telle différence exige un nouveau diagnostic; elle n'autorise
+jamais un redéploiement automatique d'index.
+
+Contrôles obligatoires après la preuve `READY`, dans cet ordre :
 
 1. vérifier qu'aucun `questionnaireSends` inattendu n'a été créé et qu'aucun tag
    GHL n'a été ajouté;
@@ -499,8 +559,11 @@ deploy-questionnaire-stage-b.cmd
 ```
 
 Le script vérifie à nouveau le commit, le worktree, les portes locales et le
-dry-run, puis appelle uniquement `firebase deploy --only hosting`. Il ne touche
-ni Functions, ni Firestore, ni Storage.
+reçu pré-release SHA/planHash, ainsi que `maintenancePublished: true` dans le
+live avant d'appeler le wrapper Hosting et son dry-run. Il publie uniquement
+`firebase deploy --only hosting`; il ne touche ni Functions, ni Firestore, ni
+Storage. Si l'avis a été archivé ou repris trop tôt, Stage B échoue avant
+Hosting.
 
 Contrôles immédiats :
 
@@ -528,6 +591,9 @@ Pour chaque nouveau formulaire :
    - `cfsb-check-in-express-v1`;
    - `cfsb-evaluation-habitudes-vie-v1`;
    - `cfsb-reperes-v1`;
+   Le suffixe historique du tag Repères reste `v1` pour préserver le workflow
+   déjà configuré; l’URL fixe résout toutefois la version active v2. Toute
+   preuve de livraison antérieure à cette v2 est invalidée.
 2. créer un workflow GHL distinct qui envoie exactement l'URL générique;
 3. n'ajouter aucun champ de contact à l'URL;
 4. permettre la réinscription et retirer le tag déclencheur en fin de workflow;
@@ -550,96 +616,97 @@ Après au moins 24 heures stables :
 ## Retour arrière exact
 
 Ne jamais faire `git reset --hard` ou `git checkout --` dans le worktree candidat.
-Créer un worktree détaché séparé et le conserver comme preuve.
+Le rollback A1, A2, A3 et Hosting doit utiliser le reçu
+`pre-release-state-<SHA>.receipt.json` créé juste avant A1. Les références
+historiques `2d9c1c0` et `76682dd` ne décrivent pas l'état live pré-release
+complet et ne doivent pas être utilisées pour ces scopes.
 
-La CLI `firebase` n'est pas dans le `PATH` de tous les postes CFSB. Dans le
-terminal CMD de rollback, préparer d'abord la CLI locale :
+Le runner fait d'abord une preview read-only, exige que chaque version,
+ruleset et révision scellés existe encore, puis demande deux preuves pour
+muter : le SHA et le `planHash` exact du reçu. Les scopes sont indépendants :
 
-```cmd
-for /d %D in ("%USERPROFILE%\.cache\cfsb-dashboard-tools\node-v22\node-v*-win-x64") do set "PATH=%~fD;%PATH%"
-set "FIREBASE_BIN=%USERPROFILE%\.cache\cfsb-dashboard-tools\firebase-tools-clean\node_modules\.bin\firebase.cmd"
-```
+- `hosting` crée une nouvelle release du canal `live` vers exactement l'ancien
+  `versionName`, sans reconstruire les fichiers;
+- `rules` repointe la release Firestore vers exactement l'ancien ruleset
+  immuable;
+- `a2` route 100 % du trafic des sept services A2 vers leurs révisions
+  pré-release exactes;
+- `a3` route 100 % du trafic des sept services A3 préexistants vers leurs
+  révisions pré-release exactes, vérifie cette restauration, puis retire la
+  Function et le job Scheduler additifs uniquement si leur absence pré-release
+  est scellée.
 
-### Rollback Hosting
-
-Provenance :
-
-- tag : `dashboard-hosting-live-20260728-questionnaire-library-provenance`;
-- commit : `2d9c1c0dbb08bdf6838c05c5c5781e2c70198525`;
-- arbre public : `b318a719139a8464595420eb4ecb804f95957ae5`;
-- ZIP CoachRx 0.7.0 :
-  `6d365bfa818c8a3b793e8a5825638380b4e4b2d0dd0cfd6d9d16a150e11d2326`.
-
-```cmd
-git worktree add --detach C:\Users\micha\Documents\Codex\questionnaire-rollback-hosting-20260728 dashboard-hosting-live-20260728-questionnaire-library-provenance
-cd /d C:\Users\micha\Documents\Codex\questionnaire-rollback-hosting-20260728
-call "%FIREBASE_BIN%" deploy --dry-run --project cfsb-dashboard-coach-aa9a4 --only hosting
-call "%FIREBASE_BIN%" deploy --project cfsb-dashboard-coach-aa9a4 --only hosting
-```
-
-`tests/questionnaire-continuity.test.mjs` protège les hashes dans le candidat
-local; il ne prouve pas à lui seul les réponses HTTP live. Vérifier ensuite le
-live avec `tools/verify-questionnaire-live-continuity.mjs`, puis ouvrir les trois
-parcours historiques et exécuter une soumission de contrôle.
-
-### Préparer le worktree backend de rollback
-
-Baseline :
-`76682dd77e7b4cf695ed61f63c29aae234ba1d66`.
+Exemple pour les scopes réellement publiés :
 
 ```cmd
-git worktree add --detach C:\Users\micha\Documents\Codex\questionnaire-rollback-backend-20260728 76682dd77e7b4cf695ed61f63c29aae234ba1d66
-cd /d C:\Users\micha\Documents\Codex\questionnaire-rollback-backend-20260728
-if not exist functions\package-lock.json exit /b 1
-call npm ci --prefix functions
+set CFSB_QUESTIONNAIRE_ROLLBACK_DIR=C:\Users\micha\Documents\Codex\questionnaire-rollback-artifacts
+set CFSB_QUESTIONNAIRE_ROLLBACK_PLAN_HASH=%CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH%
+node tools\rollback-questionnaire-pre-release-state.cjs --release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT% --plan-hash=%CFSB_QUESTIONNAIRE_ROLLBACK_PLAN_HASH% --scope=hosting --scope=rules --scope=a2 --scope=a3 --preview
+set CFSB_QUESTIONNAIRE_ROLLBACK_GO=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
+node tools\rollback-questionnaire-pre-release-state.cjs --release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT% --plan-hash=%CFSB_QUESTIONNAIRE_ROLLBACK_PLAN_HASH% --scope=hosting --scope=rules --scope=a2 --scope=a3 --execute
+node tools\rollback-questionnaire-pre-release-state.cjs --release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT% --plan-hash=%CFSB_QUESTIONNAIRE_ROLLBACK_PLAN_HASH% --scope=hosting --scope=rules --scope=a2 --scope=a3 --verify
 ```
 
-Le bundle Git scellé doit contenir ce commit : il n'existe actuellement dans
-aucune branche distante confirmée. Ne lancer aucune étape production tant que le
-bundle de récupération n'est pas copié dans l'emplacement durable prévu.
+Ne jamais ajouter un scope qui n'a pas été publié. Si Stage B a été publié,
+restaurer Hosting en premier; le runner respecte cet ordre. Le rollback de
+trafic Cloud Run restaure immédiatement le code servi par l'ancienne révision,
+mais laisse la révision plus récente disponible pour diagnostic. Une
+stabilisation permanente par redéploiement constitue ensuite une nouvelle
+release.
+
+Après un rollback Hosting, exécuter
+`tools/verify-questionnaire-live-continuity.mjs`, ouvrir les trois parcours
+historiques et confirmer leur comportement. Après un rollback de règles ou de
+Functions, refaire les lectures Dashboard et les canaris non destructifs
+appropriés avant tout message de reprise.
+
+### Archive Git de secours séparée
+
+L'archive Git historique reste un secours séparé pour diagnostic hors ligne.
+Elle n'est pas le mécanisme de rollback A3, ne prouve pas l'état live juste
+avant cette release et ne doit lancer aucun redéploiement pendant le retour
+arrière. La restauration primaire est exclusivement le reçu
+`pre-release-state-<SHA>.receipt.json`, qui contient les sept révisions A3
+réellement servies et les deux absences additives. Toute stabilisation ultérieure
+par redéploiement depuis une archive Git constitue une nouvelle release avec son
+propre candidat, ses tests, ses canaris et son GO.
 
 ### Rollback A1 — règles seulement
 
-À utiliser si la sous-étape `rules` a changé le comportement :
-
-```cmd
-call "%FIREBASE_BIN%" deploy --dry-run --project cfsb-dashboard-coach-aa9a4 --only firestore:rules
-call "%FIREBASE_BIN%" deploy --project cfsb-dashboard-coach-aa9a4 --only firestore:rules
-```
-
-Aucun index n'est créé en A1.
+Utiliser seulement `--scope=rules` dans le runner du snapshot. Il repointe la
+release vers le ruleset immuable pré-release et vérifie le même
+`rulesetName`. Ne redéployer aucune règle depuis `76682`. Aucun index n'est
+créé, modifié ou supprimé.
 
 ### Rollback A2 — fonctions additives seulement
 
-Si l'autorité de rollback couvre explicitement la suppression des exports
-effectivement créés à A2 :
+Utiliser seulement `--scope=a2`. Le runner vérifie les sept révisions
+pré-release et y remet 100 % du trafic. Ne supprimer aucun export, formulaire,
+catalogue, slug, version ou réponse : ces suppressions seraient des migrations
+destructives distinctes et ne font pas partie du rollback de code.
 
-```cmd
-call "%FIREBASE_BIN%" functions:delete listQuestionnaireForms saveQuestionnaireDraft publishQuestionnaireForm setQuestionnaireDeliveryReady archiveQuestionnaireForm duplicateQuestionnaireForm questionnairePublicApi --region us-central1 --force --project cfsb-dashboard-coach-aa9a4
-```
+### Rollback A3 — fonctions d'envoi et récupération
 
-Sans cette autorité, les laisser déployés mais inutilisés. Ne supprimer
-automatiquement ni index additif, ni formulaire, ni version, ni réponse :
-ces données sont inoffensives et leur suppression serait une migration
-destructive distincte.
+Utiliser uniquement `--scope=a3` avec le SHA et le `planHash` du reçu. Le runner
+restaure et vérifie d'abord 100 % du trafic des sept services A3 sur leurs
+révisions pré-release exactes. Tant que cette postcondition n'est pas vraie, il
+ne supprime rien.
 
-### Rollback A3 — trois fonctions historiques seulement
+Après cette vérification seulement, le runner relit la paire additive et exige
+sa configuration exacte. Si elle existe, il utilise le chemin de suppression
+Firebase pour retirer ensemble la Function `scheduledQuestionnaireSendRecovery`
+et son job Cloud Scheduler
+`firebase-schedule-scheduledQuestionnaireSendRecovery-us-central1`, puis attend
+et vérifie que les deux ressources sont absentes. Si elles sont déjà toutes deux
+absentes, la suppression est un no-op vérifié. Une seule ressource présente, une
+cible, une cadence, un fuseau, une URL, une identité OIDC ou un label inattendu
+provoque un STOP fermé. Ne lancer aucune commande manuelle de suppression ou de
+redéploiement pendant ce rollback.
 
-À utiliser si le pont legacy régresse :
+### A4 — aucun rollback d'index
 
-```cmd
-call "%FIREBASE_BIN%" deploy --dry-run --project cfsb-dashboard-coach-aa9a4 --only "functions:sendQuestionnaire,functions:processQuestionnaireSendRequest,functions:scheduledQuestionnaireSendPlans"
-call "%FIREBASE_BIN%" deploy --project cfsb-dashboard-coach-aa9a4 --only "functions:sendQuestionnaire,functions:processQuestionnaireSendRequest,functions:scheduledQuestionnaireSendPlans"
-```
-
-Appliquer seulement les rollbacks des sous-étapes réellement publiées. Si Stage
-B a aussi été publié, restaurer Hosting en premier pour retirer immédiatement
-les nouveaux parcours de la circulation.
-
-### STOP opérationnel A4 — index
-
-La présence d'un index additif ne modifie pas les règles ni les documents. Le
-risque vient du prochain passage Scheduler. Si A4 échoue :
+L'index était déjà `READY` avant cette release et A4 n'effectue aucune mutation.
+Il n'existe donc aucun rollback d'index à exécuter. Si sa vérification échoue :
 
 - ne pas lever le gel des nouvelles planifications;
 - garder ou remettre à `paused` toute planification réelle due;
@@ -647,10 +714,11 @@ risque vient du prochain passage Scheduler. Si A4 échoue :
 - ne pas publier Hosting;
 - conserver le relevé des `questionnaireSends` avant/après.
 
-Supprimer un index ou désactiver un job Scheduler est une mutation de production
-distincte. Ne pas l'automatiser depuis ce candidat : obtenir un GO explicite,
-identifier la ressource exacte en lecture seule, puis conserver la preuve de la
-suppression ou de la désactivation avant de lever le gel.
+Ne jamais tenter de « corriger » ce constat avec
+`firebase deploy --only firestore:indexes`. Supprimer un index ou désactiver un
+job Scheduler est une mutation de production distincte : obtenir un GO
+explicite, identifier la ressource exacte en lecture seule, puis conserver la
+preuve avant de lever le gel.
 
 ## Communication aux coachs
 

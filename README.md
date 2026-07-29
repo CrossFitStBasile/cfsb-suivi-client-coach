@@ -1,146 +1,59 @@
-# Suivi client-coach - GitHub Pages
+# CFSB — Dashboard Coach et questionnaires
 
-Version statique du prototype visuel du questionnaire client-coach.
+Le dépôt contient le Dashboard Coach Firebase, les questionnaires historiques,
+le Questionnaire Studio et les fonctions privées qui relient Dashboard,
+Firestore et GoHighLevel.
 
 ## But
 
-Publier une expérience client plus proche d'une web app que d'un Google Form standard, afin que les coachs puissent tester le vrai feeling du questionnaire.
+Permettre à l'administration de publier des questionnaires, aux coachs de les
+envoyer ou de les planifier et aux membres d'y répondre à partir d'une URL fixe
+qui ne contient aucune donnée personnelle.
 
-## Fichier principal
+## Architecture de production actuelle
 
-`index.html`
-
-## Déploiement GitHub Pages
-
-1. Créer un dépôt GitHub, par exemple :
-
-   `cfsb-suivi-client-coach`
-
-2. Ajouter `index.html` et `README.md` à la racine du dépôt.
-
-3. Dans GitHub :
-
-   `Settings > Pages`
-
-4. Choisir :
-
-   - Source : `Deploy from a branch`
-   - Branch : `main`
-   - Folder : `/root`
-
-5. Attendre que GitHub publie le site.
-
-L'URL ressemblera à :
+URL du Dashboard :
 
 ```text
-https://USERNAME.github.io/cfsb-suivi-client-coach/
+https://cfsb-dashboard-coach-aa9a4.web.app
 ```
 
-## Note importante
+Parcours d'envoi :
 
-Cette version est d'abord une version de test d'expérience utilisateur. Sans endpoint configuré, elle ne transmet pas encore les réponses au Google Sheet ou au dashboard.
+1. Le coach choisit un questionnaire publié dans le Dashboard.
+2. Le navigateur crée une demande dans `questionnaireSends`.
+3. `processQuestionnaireSendRequest` valide l'utilisateur, le membre, le
+   formulaire, le téléphone exact et le contact GHL unique.
+4. La Function ajoute le tag propre au formulaire.
+5. Le workflow GHL envoie l'URL canonique puis retire le tag.
+6. Le membre saisit lui-même son identité dans le formulaire.
+7. `questionnairePublicApi` valide et enregistre la réponse.
+8. Le serveur rapproche la réponse avec un seul `internalClientId` admissible;
+   toute absence, ambiguïté ou contradiction va dans `questionnaire_review`.
 
-## Mode d'intégration
+Contrat d'URL :
 
-Le questionnaire prépare déjà un payload normalisé pour le dashboard coach.
+- aucune URL GHL ne contient le téléphone, le nom, le coach ou un jeton client;
+- les paramètres et fragments sont retirés de l'URL canonique;
+- chaque formulaire publié possède un chemin fixe
+  `/questionnaire/f/<slug>`;
+- un formulaire futur nécessite un workflow GHL dédié, avec réinscription
+  permise et retrait du tag après l'envoi.
 
-En mode test :
+Contrat d'identité :
 
-```text
-https://crossfitstbasile.github.io/cfsb-suivi-client-coach/
-```
+- `internalClientId` est l'identité Dashboard durable;
+- le téléphone sert uniquement de preuve de rapprochement;
+- une réponse ne crée jamais automatiquement un membre;
+- une décision `matched_manual` reste autoritaire durant les synchronisations;
+- le coach propriétaire ne peut changer que par un transfert Dashboard
+  explicite et audité.
 
-En mode intégré, ajouter un endpoint URL-encodé :
-
-```text
-https://crossfitstbasile.github.io/cfsb-suivi-client-coach/?endpoint=ENDPOINT_URL_ENCODED
-```
-
-Paramètres déjà supportés :
-
-```text
-endpoint
-submission_token
-token
-phone
-client_phone
-client_name
-client_email
-coach_name
-lock_context=1
-```
-
-Exemple :
-
-```text
-https://crossfitstbasile.github.io/cfsb-suivi-client-coach/?submission_token=TOKEN123&endpoint=https%3A%2F%2Fexample.com%2Fendpoint
-```
-
-Le POST est envoyé en `text/plain;charset=utf-8` avec `mode: no-cors`, ce qui rend l'intégration plus compatible avec un endpoint Apps Script.
-
-## Payload envoyé
-
-Le payload respecte le contrat dashboard :
-
-```text
-source
-schema_version
-submission_token
-response_id
-submitted_at
-answers
-triage
-meta
-```
-
-Valeurs fixes :
-
-```text
-source = cfsb-client-coach-questionnaire
-schema_version = 1.0
-Content-Type = text/plain;charset=utf-8
-```
-
-Le backend doit dériver `client_id`, `client_name`, `coach_id`, `coach_name` et `service_type` à partir de `submission_token`.
-
-## Coachs
-
-Ne pas publier de roster coach dans GitHub Pages.
-
-En production avec GoHighLevel, le lien peut être très simple et contenir seulement le téléphone du contact :
-
-```text
-https://crossfitstbasile.github.io/cfsb-suivi-client-coach/?phone={{contact.phone_raw}}
-```
-
-Le formulaire utilise un endpoint par défaut et envoie le téléphone dans le payload. Le dashboard pourra ensuite rapprocher la réponse avec `CORE_Clients` par téléphone normalisé.
-
-Si le dashboard envoie lui-même le lien, il peut aussi ajouter `coach_name` et `lock_context=1` pour préremplir puis masquer le champ coach.
-
-Champs dans `answers` :
-
-```text
-client_name_entered
-client_email_entered
-client_phone_entered
-coach_name_entered
-followup_type
-general_state
-motivation_level
-goal_status
-goal_clarity_score
-progress_toward_goal
-recent_success
-current_challenges
-upcoming_changes
-upcoming_changes_details
-program_fit
-improvements_requested
-pain_status
-open_note
-final_position
-contact_request
-```
+Les anciennes routes `/questionnaire/`, `/questionnaire/check-in/` et
+`/questionnaire/evaluation-habitudes-vie/` demeurent supportées. Les anciens
+paramètres GitHub Pages (`phone`, `client_name`, `coach_name`,
+`submission_token`, `lock_context`) sont historiques et ne doivent pas être
+utilisés pour les questionnaires Studio.
 
 ## Tests dashboard
 
@@ -183,23 +96,24 @@ https://cfsb-dashboard-coach-aa9a4.web.app
 
 ### Backend prive pour l'envoi questionnaire
 
-L'envoi du questionnaire ne doit pas etre fait directement depuis le navigateur, parce que le token GoHighLevel ne doit jamais etre publie dans GitHub Pages ou Firebase Hosting.
+Le token GoHighLevel ne doit jamais être publié dans Firebase Hosting. Le
+bouton `Envoyer` crée donc seulement une demande Firestore. La Function
+`processQuestionnaireSendRequest` prend ensuite un bail de traitement, valide
+le membre et ajoute le tag GHL exact.
 
-Le bouton `Envoyer questionnaire` appelle donc la Cloud Function callable:
+Le processeur :
 
-```text
-sendQuestionnaire
-```
+- protège chaque tentative avec une clé Firestore et un bail expirant;
+- récupère une panne survenue avant l'effet GHL;
+- ne rejoue jamais automatiquement un effet GHL commencé ou incertain;
+- confirme le tag exact dans le reçu GHL;
+- avance une planification seulement après cette confirmation;
+- place une planification en pause avec une erreur visible si la livraison
+  échoue ou demeure incertaine.
 
-La Function:
-
-- verifie que l'utilisateur est connecte et actif dans `users/{uid}`;
-- verifie que le client appartient au coach selectionne, sauf pour un admin;
-- utilise le telephone normalise comme source de matching;
-- cherche le contact dans GoHighLevel;
-- ajoute le tag `dashboardcoach`;
-- journalise chaque tentative dans `questionnaireSends`;
-- retourne une erreur claire si le token GHL, le location ID ou le contact sont introuvables.
+`scheduledQuestionnaireSendRecovery` inspecte périodiquement les baux expirés.
+La Function historique `sendQuestionnaire` demeure déployée pour compatibilité,
+mais le Dashboard courant ne l'appelle plus directement.
 
 Secret Firebase requis:
 
@@ -212,14 +126,14 @@ Le location ID GoHighLevel du centre est configure dans la Function, parce qu'il
 Deploiement frontend seulement, a utiliser pour les ajustements visuels et UX:
 
 ```powershell
-cd "C:\Users\micha\Documents\Codex\2026-05-08\j-ai-un-gros-projet-d\generated\github-pages-repo"
+cd "<clone-du-depot>"
 .\deploy-hosting-dashboard.cmd
 ```
 
 Validation locale avant deploiement:
 
 ```powershell
-cd "C:\Users\micha\Documents\Codex\2026-05-08\j-ai-un-gros-projet-d\generated\github-pages-repo"
+cd "<clone-du-depot>"
 .\verify-dashboard-before-deploy.cmd
 ```
 
@@ -228,7 +142,7 @@ Cette validation verifie la syntaxe front-end/back-end, les helpers d'import Goo
 Deploiement complet, seulement quand la Cloud Function ou les regles Firestore changent:
 
 ```powershell
-cd "C:\Users\micha\Documents\Codex\2026-05-08\j-ai-un-gros-projet-d\generated\github-pages-repo"
+cd "<clone-du-depot>"
 .\deploy-dashboard-complet.cmd
 ```
 

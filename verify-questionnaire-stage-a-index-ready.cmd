@@ -19,9 +19,21 @@ if "%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%"=="" (
   echo Definis CFSB_QUESTIONNAIRE_RELEASE_COMMIT avec le SHA exact du candidat.
   exit /b 1
 )
+if "%CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH%"=="" (
+  echo STOP: planHash du recu pre-release manquant.
+  echo Definis CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH avec le planHash exact.
+  exit /b 1
+)
 "%NODE_EXE%" "%~dp0tools\verify-sealed-questionnaire-release-worktree.cjs" "%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%"
 if errorlevel 1 (
   echo STOP: impossible de confirmer le commit scelle et le worktree propre.
+  exit /b 1
+)
+
+"%NODE_EXE%" "%~dp0tools\seal-questionnaire-pre-release-state.cjs" "--release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" "--plan-hash=%CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH%" --verify-index-ready
+if errorlevel 1 (
+  echo.
+  echo STOP: la preuve A4 ne correspond pas au recu SHA/planHash scelle.
   exit /b 1
 )
 

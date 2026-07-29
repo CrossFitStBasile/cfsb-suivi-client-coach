@@ -7,6 +7,11 @@ const zlib = require("zlib");
 const root = path.resolve(__dirname, "..");
 const publicDir = path.join(root, "firebase-dashboard", "public");
 const firebaseConfigPath = path.join(root, "firebase.json");
+const stagedReleaseGuardPath = path.join(
+  root,
+  "firebase-dashboard",
+  "QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md"
+);
 const cliConfigPath = path.join(os.homedir(), ".config", "configstore", "firebase-tools.json");
 const projectId = "cfsb-dashboard-coach-aa9a4";
 const siteId = "cfsb-dashboard-coach-aa9a4";
@@ -21,19 +26,43 @@ function sha256Hex(buffer) {
 }
 
 function collectFiles(dir) {
-  return fs.readdirSync(dir)
-    .filter((name) => fs.statSync(path.join(dir, name)).isFile())
-    .map((name) => {
-      const absolutePath = path.join(dir, name);
+  const baseDir = path.resolve(dir);
+  const files = [];
+
+  function walk(currentDir) {
+    for (const name of fs.readdirSync(currentDir).sort()) {
+      const absolutePath = path.join(currentDir, name);
+      const stat = fs.lstatSync(absolutePath);
+      if (stat.isSymbolicLink()) {
+        throw new Error(`Lien symbolique refuse dans le dossier public: ${absolutePath}`);
+      }
+      if (stat.isDirectory()) {
+        walk(absolutePath);
+        continue;
+      }
+      if (!stat.isFile()) continue;
+
+      const relativePath = path.relative(baseDir, absolutePath);
+      if (
+        !relativePath
+        || relativePath.startsWith("..")
+        || path.isAbsolute(relativePath)
+      ) {
+        throw new Error("Chemin Hosting hors du dossier public.");
+      }
       const content = fs.readFileSync(absolutePath);
       const gzipped = zlib.gzipSync(content);
-      return {
+      files.push({
         absolutePath,
-        path: `/${name}`,
+        path: `/${relativePath.split(path.sep).join("/")}`,
         hash: sha256Hex(gzipped),
         gzipped
-      };
-    });
+      });
+    }
+  }
+
+  walk(baseDir);
+  return files;
 }
 
 function hostingConfigFromFirebaseJson(config) {
@@ -90,6 +119,12 @@ async function uploadFile(accessToken, uploadUrl, hash, gzipped) {
 }
 
 async function main() {
+  if (fs.existsSync(stagedReleaseGuardPath)) {
+    throw new Error(
+      "Publication Hosting API bloquee: utilise deploy-questionnaire-stage-b.cmd."
+    );
+  }
+
   const cliConfig = readJson(cliConfigPath);
   const accessToken = cliConfig.tokens && cliConfig.tokens.access_token;
   if (!accessToken) {
@@ -143,7 +178,14 @@ async function main() {
   }, null, 2));
 }
 
-main().catch((error) => {
-  console.error(error.message);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error.message);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  collectFiles,
+  main
+};

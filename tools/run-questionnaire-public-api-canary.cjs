@@ -749,7 +749,13 @@ async function executeCanary({
     formsVerified: EXPECTED_INITIAL_FORMS.length,
     formDocumentsVerified: EXPECTED_INITIAL_FORMS.length,
     catalogDocumentsVerified: EXPECTED_INITIAL_FORMS.length,
-    deliveryReadyFalseVerified: EXPECTED_INITIAL_FORMS.length,
+    deliveryStatesVerified: EXPECTED_INITIAL_FORMS.length,
+    deliveryReadyVerified: EXPECTED_INITIAL_FORMS.filter(
+      (form) => form.deliveryReady === true
+    ).length,
+    deliveryClosedVerified: EXPECTED_INITIAL_FORMS.filter(
+      (form) => form.deliveryReady === false
+    ).length,
     catalogStable: true,
     functionRevisionsVerified: A2_FUNCTION_IDS.length,
     acknowledgementsVerified,

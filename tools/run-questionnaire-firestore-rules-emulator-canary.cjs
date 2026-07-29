@@ -78,6 +78,39 @@ async function main() {
         status: "published",
         deliveryReady: false
       });
+      const responseBase = {
+        coachId: "15935",
+        clientId: "member-one",
+        internalClientId: "member-one",
+        clientName: "Membre",
+        processingStatus: "to_read",
+        sourceResponseConflict: false
+      };
+      await setDoc(doc(db, "questionnaireResponses", "identity-review"), {
+        ...responseBase,
+        identityMatchReviewRequired: true
+      });
+      await setDoc(doc(db, "questionnaireResponses", "source-review"), {
+        ...responseBase,
+        sourceResponseConflict: true,
+        sourceResponseConflictResolvedAt: ""
+      });
+      await setDoc(doc(db, "questionnaireResponses", "source-resolved"), {
+        ...responseBase,
+        sourceResponseConflict: true,
+        sourceResponseConflictResolvedAt: nowTimestamp()
+      });
+      await setDoc(doc(db, "questionnaireResponses", "ordinary-response"), {
+        ...responseBase
+      });
+      await setDoc(doc(db, "tasks", "blocked-questionnaire-task"), {
+        coachId: "15935",
+        clientId: "member-one",
+        clientName: "Membre",
+        type: "questionnaire_followup",
+        sourceResponseId: "identity-review",
+        status: "open"
+      });
     });
 
     const admin = testEnv.authenticatedContext("admin-user", {
@@ -124,6 +157,42 @@ async function main() {
       "legacy-schedule"
     );
     const now = Timestamp.now();
+    const legacySendPayload = {
+      coachId: "15935",
+      clientId: "member-one",
+      clientName: "Membre",
+      clientPhoneNormalized: "5145550101",
+      coachName: "Coach",
+      status: "pending",
+      deliveryStatus: "firestore_queue_pending",
+      errorMessage: "",
+      questionnaireType: "suivi_global",
+      questionnaireLabel: "Questionnaire historique",
+      requestedByUid: "coach-user",
+      requestedByEmail: "coach@example.invalid",
+      createdAt: now,
+      updatedAt: now,
+      source: "dashboard_questionnaire_send_click"
+    };
+    await assertSucceeds(setDoc(
+      doc(coach, "questionnaireSends", "legacy-send-before-hosting"),
+      legacySendPayload
+    ));
+    await assertSucceeds(setDoc(
+      doc(coach, "questionnaireSends", "new-send-after-hosting"),
+      { ...legacySendPayload, externalEffectState: "not_started" }
+    ));
+    await assertFails(setDoc(
+      doc(coach, "questionnaireSends", "unsafe-send-effect-started"),
+      { ...legacySendPayload, externalEffectState: "started" }
+    ));
+    await assertSucceeds(deleteDoc(
+      doc(admin, "questionnaireSends", "legacy-send-before-hosting")
+    ));
+    await assertSucceeds(deleteDoc(
+      doc(admin, "questionnaireSends", "new-send-after-hosting")
+    ));
+
     await assertSucceeds(setDoc(scheduleRef, {
       coachId: "15935",
       coachRxId: "15935",
@@ -166,6 +235,85 @@ async function main() {
       doc(admin, "questionnaireSchedules", "legacy-schedule")
     ));
 
+    await assertFails(updateDoc(
+      doc(coach, "questionnaireResponses", "identity-review"),
+      {
+        processingStatus: "read",
+        readAt: Timestamp.now(),
+        readByUid: "coach-user",
+        readByEmail: "coach@example.invalid",
+        updatedAt: Timestamp.now()
+      }
+    ));
+    await assertFails(updateDoc(
+      doc(coach, "questionnaireResponses", "source-review"),
+      {
+        processingStatus: "read",
+        readAt: Timestamp.now(),
+        readByUid: "coach-user",
+        readByEmail: "coach@example.invalid",
+        updatedAt: Timestamp.now()
+      }
+    ));
+    for (const responseId of ["source-resolved", "ordinary-response"]) {
+      await assertSucceeds(updateDoc(
+        doc(coach, "questionnaireResponses", responseId),
+        {
+          processingStatus: "read",
+          readAt: Timestamp.now(),
+          readByUid: "coach-user",
+          readByEmail: "coach@example.invalid",
+          updatedAt: Timestamp.now()
+        }
+      ));
+    }
+    const linkedTaskPayload = {
+      coachId: "15935",
+      clientId: "member-one",
+      clientName: "Membre",
+      type: "questionnaire_followup",
+      status: "open"
+    };
+    await assertFails(setDoc(
+      doc(coach, "tasks", "coach-task-blocked"),
+      {
+        ...linkedTaskPayload,
+        questionnaireResponseId: "source-review"
+      }
+    ));
+    await assertSucceeds(setDoc(
+      doc(coach, "tasks", "coach-task-resolved"),
+      {
+        ...linkedTaskPayload,
+        questionnaireResponseId: "source-resolved"
+      }
+    ));
+    await assertFails(updateDoc(
+      doc(coach, "tasks", "blocked-questionnaire-task"),
+      { status: "done" }
+    ));
+    await assertFails(deleteDoc(
+      doc(coach, "tasks", "blocked-questionnaire-task")
+    ));
+    await assertSucceeds(updateDoc(
+      doc(admin, "questionnaireResponses", "identity-review"),
+      {
+        identityMatchReviewRequired: false,
+        identityMatchConflict: false,
+        identityMatchConflictReason: ""
+      }
+    ));
+    await assertSucceeds(updateDoc(
+      doc(coach, "tasks", "blocked-questionnaire-task"),
+      { status: "done" }
+    ));
+    await assertSucceeds(deleteDoc(
+      doc(admin, "tasks", "blocked-questionnaire-task")
+    ));
+    await assertSucceeds(deleteDoc(
+      doc(admin, "tasks", "coach-task-resolved")
+    ));
+
     await assertSucceeds(
       getDoc(doc(coach, "questionnaireCatalog", "published-form"))
     );
@@ -178,13 +326,22 @@ async function main() {
       ok: true,
       check: "questionnaire_firestore_rules_emulator",
       privateCanaryCollectionsDeniedForAllClients: true,
+      legacyAndNewSendPayloadsAcceptedDuringStagedHosting: true,
+      unsafeExternalEffectStateDenied: true,
       legacyCoachScheduleCreateReadEditPauseResume: true,
       legacyCoachDeleteDenied: true,
       adminDeleteAllowed: true,
+      unresolvedQuestionnaireCoachActionsDenied: true,
+      adminIdentityResolutionRemainsAllowed: true,
+      resolvedQuestionnaireCoachActionsAllowed: true,
       catalogCompatibilityVerified: true,
       externalWrites: 0
     }, null, 2)}\n`);
   } finally {
     await testEnv.cleanup();
   }
+}
+
+function nowTimestamp() {
+  return Timestamp.now();
 }

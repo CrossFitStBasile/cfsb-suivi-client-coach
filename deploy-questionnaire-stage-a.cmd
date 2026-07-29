@@ -17,6 +17,20 @@ if not exist "%NODE_EXE%" set "NODE_EXE=node"
 if "%~1"=="" goto :usage
 set "QUESTIONNAIRE_STAGE=%~1"
 
+if /I "%QUESTIONNAIRE_STAGE%"=="indexes" (
+  echo STOP: le mode indexes est desactive pour ce candidat.
+  echo L'index Scheduler exact est deja READY en production et A4 est
+  echo strictement une verification en lecture seule.
+  echo.
+  echo Apres les canaris A3, execute uniquement:
+  echo node tools\preflight-questionnaire-stage-a-live.cjs --protect-through-next-scheduler --require-index-ready --require-safe-scheduler-window
+  echo node tools\seal-questionnaire-pre-release-state.cjs --release-commit=%%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%% --plan-hash=%%CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH%% --verify-index-ready
+  echo call verify-questionnaire-stage-a-index-ready.cmd
+  echo.
+  echo Aucun dry-run ni deploy d'index n'est autorise par ce script.
+  exit /b 1
+)
+
 if /I not "%CFSB_QUESTIONNAIRE_RELEASE_GO%"=="%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" (
   echo STOP: autorisation explicite manquante.
   echo.
@@ -41,9 +55,32 @@ if "%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%"=="" (
   echo Definis CFSB_QUESTIONNAIRE_RELEASE_COMMIT avec le SHA exact du candidat.
   exit /b 1
 )
+if "%CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH%"=="" (
+  echo STOP: planHash du recu pre-release manquant.
+  echo Copie le planHash exact retourne par --preview, puis definis:
+  echo set CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH=^<64 caracteres hexadecimaux^>
+  exit /b 1
+)
 "%NODE_EXE%" "%~dp0tools\verify-sealed-questionnaire-release-worktree.cjs" "%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%"
 if errorlevel 1 (
   echo STOP: impossible de confirmer le commit scelle et le worktree propre.
+  exit /b 1
+)
+
+echo.
+echo Verification locale du recu pre-release exact...
+"%NODE_EXE%" "%~dp0tools\seal-questionnaire-pre-release-state.cjs" "--release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" "--plan-hash=%CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH%" --verify-receipt
+if errorlevel 1 (
+  echo STOP: recu pre-release absent, invalide ou lie a un autre SHA/planHash.
+  exit /b 1
+)
+
+echo.
+echo Verification live de l'avis de maintenance...
+"%NODE_EXE%" "%~dp0tools\manage-questionnaire-release-announcements.cjs" "--release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" --maintenance-verify
+if errorlevel 1 (
+  echo STOP: maintenancePublished n'est pas confirme live pour ce SHA.
+  echo Aucun dry-run ni deploy Stage A lance.
   exit /b 1
 )
 
@@ -80,20 +117,9 @@ if /I "%QUESTIONNAIRE_STAGE%"=="legacy" (
     echo set CFSB_QUESTIONNAIRE_ADDITIVE_CANARY_OK=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
     exit /b 1
   )
-  set "DEPLOY_ONLY=functions:sendQuestionnaire,functions:processQuestionnaireSendRequest,functions:scheduledQuestionnaireSendPlans"
+  set "DEPLOY_ONLY=functions:sendQuestionnaire,functions:processQuestionnaireSendRequest,functions:scheduledQuestionnaireSendRecovery,functions:scheduledQuestionnaireSendPlans,functions:syncDashboardFromSheets,functions:scheduledDashboardSync,functions:scheduledQuestionnaireResponseSync,functions:processSyncRequest"
   set "LIVE_PREFLIGHT_ARGS="
   set "NEXT_PROOF=CFSB_QUESTIONNAIRE_LEGACY_CANARY_OK"
-  goto :stage_selected
-)
-
-if /I "%QUESTIONNAIRE_STAGE%"=="indexes" (
-  if /I not "%CFSB_QUESTIONNAIRE_LEGACY_CANARY_OK%"=="%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" (
-    echo STOP: confirme d'abord les canaris des trois fonctions historiques:
-    echo set CFSB_QUESTIONNAIRE_LEGACY_CANARY_OK=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
-    exit /b 1
-  )
-  set "DEPLOY_ONLY=firestore:indexes"
-  set "LIVE_PREFLIGHT_ARGS=--protect-through-next-scheduler --require-safe-scheduler-window"
   goto :stage_selected
 )
 
@@ -168,62 +194,6 @@ if not "%DRY_RUN_CODE%"=="0" (
   exit /b 1
 )
 
-if /I "%QUESTIONNAIRE_STAGE%"=="indexes" (
-  if "%LOCALAPPDATA%"=="" (
-    echo STOP: LOCALAPPDATA est indisponible; impossible de produire le recu
-    echo local obligatoire de la premiere passe index.
-    exit /b 1
-  )
-  set "INDEX_REVIEW_RECEIPT=%LOCALAPPDATA%\CFSB\questionnaire-release\index-dry-run-%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%.receipt"
-  if not exist "%LOCALAPPDATA%\CFSB\questionnaire-release\index-dry-run-%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%.receipt" (
-    if not exist "%LOCALAPPDATA%\CFSB\questionnaire-release" mkdir "%LOCALAPPDATA%\CFSB\questionnaire-release"
-    > "%LOCALAPPDATA%\CFSB\questionnaire-release\index-dry-run-%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%.receipt" echo %CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
-    if not exist "%LOCALAPPDATA%\CFSB\questionnaire-release\index-dry-run-%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%.receipt" (
-      echo STOP: le recu local de premiere passe n'a pas pu etre cree.
-      exit /b 1
-    )
-    echo.
-    echo STOP: premiere invocation indexes terminee sans mutation.
-    echo Un recu local lie au SHA a ete produit apres le dry-run reussi.
-    echo La variable de revue, meme prepositionnee, ne peut jamais contourner
-    echo cette premiere invocation.
-    echo.
-    echo Examine le journal de dry-run:
-    echo %DRY_RUN_LOG%
-    echo.
-    echo Si le delta contient uniquement l'index questionnaireSchedules
-    echo attendu, lie ensuite la revue au SHA et relance la commande.
-    exit /b 1
-  )
-  setlocal EnableDelayedExpansion
-  set "INDEX_REVIEW_RECEIPT_SHA="
-  set /p INDEX_REVIEW_RECEIPT_SHA=<"%LOCALAPPDATA%\CFSB\questionnaire-release\index-dry-run-%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%.receipt"
-  if /I not "!INDEX_REVIEW_RECEIPT_SHA!"=="%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" (
-    echo STOP: le recu local de premiere passe ne correspond pas au SHA scelle.
-    endlocal
-    exit /b 1
-  )
-  endlocal
-  if /I not "%CFSB_QUESTIONNAIRE_INDEX_DRY_RUN_REVIEWED%"=="%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" (
-    echo.
-    echo STOP: le recu de premiere passe existe, mais sa revue n'est pas
-    echo confirmee pour le SHA scelle. Aucun index n'a ete publie.
-    echo.
-    echo Examine le journal de dry-run et confirme qu'il propose uniquement
-    echo l'ajout de l'index questionnaireSchedules attendu, sans suppression
-    echo ni autre changement:
-    echo %DRY_RUN_LOG%
-    echo.
-    echo Si cette revue humaine est concluante, lie la preuve au SHA scelle:
-    echo set CFSB_QUESTIONNAIRE_INDEX_DRY_RUN_REVIEWED=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
-    echo.
-    echo Relance ensuite cette meme commande. La seconde invocation repetera
-    echo tous les prevols, le dry-run et la preuve du worktree scelle avant
-    echo toute mutation.
-    exit /b 1
-  )
-)
-
 echo.
 echo Second prevol live immediatement avant la mutation Stage A...
 "%NODE_EXE%" "%~dp0tools\preflight-questionnaire-stage-a-live.cjs" %LIVE_PREFLIGHT_ARGS%
@@ -238,6 +208,28 @@ echo Confirmation finale du candidat scelle avant mutation...
 "%NODE_EXE%" "%~dp0tools\verify-sealed-questionnaire-release-worktree.cjs" "%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%"
 if errorlevel 1 (
   echo STOP: le candidat a change depuis le dry-run. Aucun deploy lance.
+  exit /b 1
+)
+
+echo.
+echo Confirmation finale de l'avis de maintenance live...
+"%NODE_EXE%" "%~dp0tools\manage-questionnaire-release-announcements.cjs" "--release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" --maintenance-verify
+if errorlevel 1 (
+  echo STOP: l'avis de maintenance n'est plus publie. Aucun deploy lance.
+  exit /b 1
+)
+
+echo.
+if /I "%QUESTIONNAIRE_STAGE%"=="rules" (
+  echo Comparaison complete du recu pre-release avec le live juste avant A1...
+  "%NODE_EXE%" "%~dp0tools\seal-questionnaire-pre-release-state.cjs" "--release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" "--plan-hash=%CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH%" --verify
+) else (
+  echo Confirmation locale du meme recu SHA/planHash avant mutation...
+  "%NODE_EXE%" "%~dp0tools\seal-questionnaire-pre-release-state.cjs" "--release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" "--plan-hash=%CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH%" --verify-receipt
+)
+if errorlevel 1 (
+  echo STOP: preuve pre-release exacte invalide pour cette sous-etape.
+  echo Aucun deploy lance.
   exit /b 1
 )
 
@@ -260,7 +252,6 @@ if /I "%QUESTIONNAIRE_STAGE%"=="legacy" (
 echo.
 echo Sous-etape "%QUESTIONNAIRE_STAGE%" publiee. ARRET HUMAIN OBLIGATOIRE.
 echo Execute les canaris correspondants du runbook avant toute sous-etape suivante.
-if /I "%QUESTIONNAIRE_STAGE%"=="indexes" goto :indexes_published
 echo Quand les preuves sont conservees, confirme:
 echo set %NEXT_PROOF%=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%
 echo.
@@ -270,17 +261,6 @@ if /I "%QUESTIONNAIRE_STAGE%"=="legacy" (
 ) else (
   echo Ne lance pas automatiquement la sous-etape suivante.
 )
-exit /b 0
-
-:indexes_published
-echo.
-echo La creation de l'index est demandee, mais Stage A N'EST PAS verifiee.
-echo Attends l'etat READY, puis relance le controle lecture seule exact:
-echo call "%~dp0verify-questionnaire-stage-a-index-ready.cmd"
-echo.
-echo Ensuite, execute les canaris scheduler du runbook. Ne definis
-echo CFSB_QUESTIONNAIRE_STAGE_A_VERIFIED qu'apres les preuves index READY,
-echo zero suivi actif du et zero envoi inattendu.
 exit /b 0
 
 :deploy_failed
@@ -302,8 +282,9 @@ echo Usage:
 echo   deploy-questionnaire-stage-a.cmd rules
 echo   deploy-questionnaire-stage-a.cmd additive
 echo   deploy-questionnaire-stage-a.cmd legacy
-echo   deploy-questionnaire-stage-a.cmd indexes
 echo.
 echo Ordre obligatoire:
-echo rules, canari, additive, canari, legacy, canari, indexes, READY, canaris.
+echo rules, canari, additive, canari, legacy, canari, puis controles A4
+echo strictement read-only et canaris Scheduler selon le runbook.
+echo Le mode indexes echoue toujours ferme pour ce candidat.
 exit /b 1

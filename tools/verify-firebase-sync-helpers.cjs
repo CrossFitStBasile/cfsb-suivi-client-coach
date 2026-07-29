@@ -132,6 +132,11 @@ globalThis.__helpers = {
   buildImpactRecords,
   buildAlumniRecords,
   buildQuestionnaireResponseRecords,
+  buildQuestionnaireTaskRecords,
+  questionnaireResponseRequiresIdentityReviewData,
+  questionnaireSourceConflictResolutionMatches,
+  buildQuestionnairePhoneRoutingIndex,
+  annotateQuestionnaireRowsByPhone,
   questionnaireRowBelongsToCoach,
   rowBelongsToCoach,
   mergeSheetRows,
@@ -276,6 +281,386 @@ const previouslyArchivedCoachNamedManualQuestionnaires = h.buildQuestionnaireRes
     processingStatus: "archived",
     sourceInvalidReason: "coach_as_unmatched_client"
   }]])
+});
+const dashboardOnlyQuestionnaireClient = {
+  id: "15935_dashboard_only_questionnaire_member",
+  data: {
+    internalClientId: "internal_dashboard_only_questionnaire_member",
+    coachId: marc.id,
+    dashboardOwnerCoachId: marc.id,
+    coachName: marc.name,
+    name: "Membre Dashboard Seulement",
+    phoneNormalized: "5145558080",
+    status: "manual",
+    source: "firebase_app_manual",
+    entityType: "member",
+    ownershipStatus: "confirmed",
+    clientSelectable: true
+  }
+};
+const dashboardOnlyQuestionnaireRows = h.rowsFromValues([
+  ["response_id", "submitted_at", "client_name", "client_phone_normalized", "triage_status", "open_note"],
+  ["resp-dashboard-only-manual-match", "2026-06-11T19:00:00Z", "Nom fourni par le membre", "5145558080", "orange", "Premiere importation"]
+]);
+const dashboardOnlyQuestionnaireInitial = h.buildQuestionnaireResponseRecords({
+  coach: marc,
+  rows: dashboardOnlyQuestionnaireRows,
+  clients: [dashboardOnlyQuestionnaireClient],
+  existingById: new Map()
+})[0];
+const dashboardOnlyQuestionnaireManualExisting = {
+  ...dashboardOnlyQuestionnaireInitial.data,
+  coachId: marc.id,
+  coachRxId: "",
+  coachName: marc.name,
+  dashboardOwnerCoachId: marc.id,
+  clientId: dashboardOnlyQuestionnaireClient.id,
+  internalClientId: dashboardOnlyQuestionnaireClient.data.internalClientId,
+  clientName: dashboardOnlyQuestionnaireClient.data.name,
+  clientPhoneNormalized: dashboardOnlyQuestionnaireClient.data.phoneNormalized,
+  routingStatus: "matched_manual",
+  routingSource: "admin_confirmed_internal_client",
+  processingStatus: "to_read",
+  matchedManuallyAt: "2026-06-11T19:05:00.000Z",
+  matchedManuallyByUid: "admin-questionnaire-test",
+  matchedManuallyByEmail: "admin@example.test",
+  manualMatchNote: "Lien confirme vers une fiche Dashboard sans CoachRx",
+  history: [{ action: "client_linked", at: "2026-06-11T19:05:00.000Z" }],
+  manualMatchHistory: [{ action: "matched_manual", internalClientId: dashboardOnlyQuestionnaireClient.data.internalClientId }]
+};
+const dashboardOnlyQuestionnaireFirstReplay = h.buildQuestionnaireResponseRecords({
+  coach: marc,
+  rows: dashboardOnlyQuestionnaireRows,
+  clients: [dashboardOnlyQuestionnaireClient],
+  existingById: new Map([[dashboardOnlyQuestionnaireInitial.id, dashboardOnlyQuestionnaireManualExisting]])
+})[0];
+const dashboardOnlyQuestionnaireSecondReplay = h.buildQuestionnaireResponseRecords({
+  coach: marc,
+  rows: dashboardOnlyQuestionnaireRows,
+  clients: [dashboardOnlyQuestionnaireClient],
+  existingById: new Map([[dashboardOnlyQuestionnaireInitial.id, dashboardOnlyQuestionnaireFirstReplay.data]])
+})[0];
+const conflictingQuestionnaireClient = {
+  id: "15928_conflicting_questionnaire_member",
+  data: {
+    internalClientId: "internal_conflicting_questionnaire_member",
+    coachId: iheb.id,
+    dashboardOwnerCoachId: iheb.id,
+    coachName: iheb.name,
+    name: "Autre membre",
+    phoneNormalized: "5145558080",
+    status: "active",
+    source: "direct_coachrx_extension",
+    entityType: "member",
+    ownershipStatus: "confirmed",
+    clientSelectable: true
+  }
+};
+const conflictingQuestionnaireRows = h.rowsFromValues([
+  [
+    "response_id",
+    "submitted_at",
+    "client_name",
+    "client_phone_normalized",
+    "triage_status",
+    "open_note",
+    "questionnaire_routing_status",
+    "questionnaire_routed_coach_id",
+    "questionnaire_routed_coach_name",
+    "questionnaire_routed_client_id",
+    "questionnaire_routed_client_name",
+    "questionnaire_routing_candidate_client_ids"
+  ],
+  [
+    "resp-dashboard-only-manual-match",
+    "2026-06-11T19:00:00Z",
+    "Nom fourni par le membre",
+    "5145558080",
+    "orange",
+    "Preuve source maintenant contradictoire",
+    "matched",
+    iheb.id,
+    iheb.name,
+    conflictingQuestionnaireClient.id,
+    conflictingQuestionnaireClient.data.name,
+    conflictingQuestionnaireClient.id
+  ]
+]);
+const dashboardOnlyQuestionnaireConflictReplay = h.buildQuestionnaireResponseRecords({
+  coach: iheb,
+  rows: conflictingQuestionnaireRows,
+  clients: [conflictingQuestionnaireClient],
+  existingById: new Map([[dashboardOnlyQuestionnaireInitial.id, dashboardOnlyQuestionnaireSecondReplay.data]])
+})[0];
+const dashboardOnlyQuestionnaireConflictStickyReplay = h.buildQuestionnaireResponseRecords({
+  coach: marc,
+  rows: dashboardOnlyQuestionnaireRows,
+  clients: [dashboardOnlyQuestionnaireClient],
+  existingById: new Map([[
+    dashboardOnlyQuestionnaireInitial.id,
+    dashboardOnlyQuestionnaireConflictReplay.data
+  ]])
+})[0];
+const dashboardOnlyQuestionnaireResolvedReplay = h.buildQuestionnaireResponseRecords({
+  coach: marc,
+  rows: dashboardOnlyQuestionnaireRows,
+  clients: [dashboardOnlyQuestionnaireClient],
+  existingById: new Map([[
+    dashboardOnlyQuestionnaireInitial.id,
+    {
+      ...dashboardOnlyQuestionnaireConflictReplay.data,
+      identityMatchConflict: false,
+      identityMatchReviewRequired: false,
+      identityMatchConflictReason: "",
+      identityMatchConflictRoutingStatus: "",
+      identityMatchConflictCandidateClientIds: [],
+      identityMatchConflictSourcePhone: "",
+      identityMatchConflictSourcePhones: [],
+      manualMatchConflict: false,
+      manualMatchReviewRequired: false,
+      manualMatchConflictReason: "",
+      manualMatchConflictRoutingStatus: "",
+      manualMatchConflictCandidateClientIds: [],
+      manualMatchConflictSourcePhone: "",
+      manualMatchConflictSourcePhones: [],
+      identityMatchResolvedAt: "2026-06-11T19:10:00.000Z",
+      manualMatchConflictResolvedAt: "2026-06-11T19:10:00.000Z"
+    }
+  ]])
+})[0];
+const ambiguousQuestionnaireRows = h.rowsFromValues([
+  [
+    "response_id",
+    "submitted_at",
+    "client_name",
+    "client_phone_normalized",
+    "triage_status",
+    "questionnaire_routing_status",
+    "questionnaire_routing_candidate_client_ids"
+  ],
+  [
+    "resp-dashboard-only-manual-match",
+    "2026-06-11T19:00:00Z",
+    "Nom fourni par le membre",
+    "5145558080",
+    "orange",
+    "conflict",
+    `${dashboardOnlyQuestionnaireClient.id},${conflictingQuestionnaireClient.id}`
+  ]
+]);
+const dashboardOnlyQuestionnaireAmbiguousReplay = h.buildQuestionnaireResponseRecords({
+  coach: { id: "questionnaire_review", name: "Questionnaires a valider" },
+  rows: ambiguousQuestionnaireRows,
+  clients: [dashboardOnlyQuestionnaireClient, conflictingQuestionnaireClient],
+  existingById: new Map([[dashboardOnlyQuestionnaireInitial.id, dashboardOnlyQuestionnaireSecondReplay.data]])
+})[0];
+const automaticConfirmedQuestionnaireExisting = {
+  ...dashboardOnlyQuestionnaireInitial.data,
+  coachId: marc.id,
+  coachRxId: marc.coachRxId,
+  coachName: marc.name,
+  dashboardOwnerCoachId: marc.id,
+  clientId: dashboardOnlyQuestionnaireClient.id,
+  internalClientId: dashboardOnlyQuestionnaireClient.data.internalClientId,
+  clientName: dashboardOnlyQuestionnaireClient.data.name,
+  clientPhoneNormalized: dashboardOnlyQuestionnaireClient.data.phoneNormalized,
+  routingStatus: "matched",
+  routingSource: "client_phone_normalized",
+  processingStatus: "to_read",
+  history: [{ action: "matched_from_phone", at: "2026-06-11T19:01:00.000Z" }]
+};
+const automaticConfirmedQuestionnaireReplay = h.buildQuestionnaireResponseRecords({
+  coach: marc,
+  rows: dashboardOnlyQuestionnaireRows,
+  clients: [dashboardOnlyQuestionnaireClient],
+  existingById: new Map([[dashboardOnlyQuestionnaireInitial.id, automaticConfirmedQuestionnaireExisting]])
+})[0];
+const automaticConfirmedQuestionnaireConflictReplay = h.buildQuestionnaireResponseRecords({
+  coach: iheb,
+  rows: conflictingQuestionnaireRows,
+  clients: [conflictingQuestionnaireClient],
+  existingById: new Map([[dashboardOnlyQuestionnaireInitial.id, automaticConfirmedQuestionnaireExisting]])
+})[0];
+const automaticConfirmedQuestionnaireConflictStickyReplay = h.buildQuestionnaireResponseRecords({
+  coach: marc,
+  rows: dashboardOnlyQuestionnaireRows,
+  clients: [dashboardOnlyQuestionnaireClient],
+  existingById: new Map([[
+    dashboardOnlyQuestionnaireInitial.id,
+    automaticConfirmedQuestionnaireConflictReplay.data
+  ]])
+})[0];
+const automaticConfirmedQuestionnaireConflictTasksForOriginalCoach = h.buildQuestionnaireTaskRecords({
+  coach: marc,
+  responses: [automaticConfirmedQuestionnaireConflictReplay]
+});
+const automaticConfirmedQuestionnaireConflictTasksForRoutedCoach = h.buildQuestionnaireTaskRecords({
+  coach: iheb,
+  responses: [automaticConfirmedQuestionnaireConflictReplay]
+});
+const sourceCollisionClientA = {
+  id: "15935_source_collision_member_a",
+  data: {
+    internalClientId: "internal_source_collision_member_a",
+    coachId: marc.id,
+    dashboardOwnerCoachId: marc.id,
+    coachName: marc.name,
+    name: "Membre collision A",
+    phoneNormalized: "5145558181",
+    status: "active",
+    source: "direct_coachrx_extension",
+    entityType: "member",
+    ownershipStatus: "confirmed",
+    clientSelectable: true
+  }
+};
+const sourceCollisionClientB = {
+  id: "15928_source_collision_member_b",
+  data: {
+    internalClientId: "internal_source_collision_member_b",
+    coachId: iheb.id,
+    dashboardOwnerCoachId: iheb.id,
+    coachName: iheb.name,
+    name: "Membre collision B",
+    phoneNormalized: "5145558282",
+    status: "active",
+    source: "direct_coachrx_extension",
+    entityType: "member",
+    ownershipStatus: "confirmed",
+    clientSelectable: true
+  }
+};
+const contradictorySourceResponseRows = h.rowsFromValues([
+  ["response_id", "submitted_at", "client_name", "client_phone_normalized", "triage_status", "open_note", "source_questionnaire_tab"],
+  ["resp-source-id-collision", "2026-06-11T20:00:00Z", "Membre collision A", "5145558181", "vert", "Contenu A", "Formulaire A"],
+  ["resp-source-id-collision", "2026-06-11T20:05:00Z", "Membre collision B", "5145558282", "rouge", "Contenu B", "Formulaire B"]
+]);
+const sourceCollisionClients = [sourceCollisionClientA, sourceCollisionClientB];
+const sourceCollisionRoutingIndex = h.buildQuestionnairePhoneRoutingIndex(
+  sourceCollisionClients,
+  coaches
+);
+const annotatedContradictorySourceRows = h.annotateQuestionnaireRowsByPhone(
+  contradictorySourceResponseRows,
+  sourceCollisionRoutingIndex
+);
+const contradictorySourceResponsesForward = h.buildQuestionnaireResponseRecords({
+  coach: { id: "questionnaire_review", name: "Questionnaires a valider" },
+  rows: annotatedContradictorySourceRows,
+  clients: sourceCollisionClients,
+  existingById: new Map()
+});
+const contradictorySourceResponsesReverse = h.buildQuestionnaireResponseRecords({
+  coach: { id: "questionnaire_review", name: "Questionnaires a valider" },
+  rows: [...annotatedContradictorySourceRows].reverse(),
+  clients: sourceCollisionClients,
+  existingById: new Map()
+});
+const identicalSourceResponseRows = [
+  contradictorySourceResponseRows[0],
+  { ...contradictorySourceResponseRows[0] }
+];
+const identicalSourceResponses = h.buildQuestionnaireResponseRecords({
+  coach: marc,
+  rows: identicalSourceResponseRows,
+  clients: [sourceCollisionClientA],
+  existingById: new Map()
+});
+const sourceCollisionInitialConfirmed = h.buildQuestionnaireResponseRecords({
+  coach: marc,
+  rows: [contradictorySourceResponseRows[0]],
+  clients: [sourceCollisionClientA],
+  existingById: new Map()
+})[0];
+const sourceCollisionAgainstConfirmedHistory = h.buildQuestionnaireResponseRecords({
+  coach: { id: "questionnaire_review", name: "Questionnaires a valider" },
+  rows: annotatedContradictorySourceRows,
+  clients: sourceCollisionClients,
+  existingById: new Map([[sourceCollisionInitialConfirmed.id, {
+    ...sourceCollisionInitialConfirmed.data,
+    processingStatus: "to_read",
+    history: [{ action: "matched_from_phone" }]
+  }]])
+})[0];
+const sourceCollisionStickyReplay = h.buildQuestionnaireResponseRecords({
+  coach: marc,
+  rows: [contradictorySourceResponseRows[0]],
+  clients: [sourceCollisionClientA],
+  existingById: new Map([[
+    sourceCollisionInitialConfirmed.id,
+    sourceCollisionAgainstConfirmedHistory.data
+  ]])
+})[0];
+const sourceCollisionResolvedExisting = {
+  ...sourceCollisionAgainstConfirmedHistory.data,
+  routingStatus: "matched_manual",
+  routingSource: "admin_confirmed_internal_client",
+  matchedManuallyAt: "2026-06-11T20:30:00.000Z",
+  matchedManuallyByUid: "admin-test",
+  matchedManuallyByEmail: "admin@example.test",
+  manualMatchNote: "Contenu A et client A confirmes dans la source",
+  identityMatchConflict: false,
+  identityMatchReviewRequired: false,
+  identityMatchConflictReason: "",
+  manualMatchConflict: false,
+  manualMatchReviewRequired: false,
+  manualMatchConflictReason: "",
+  sourceResponseConflictResolvedAt: "2026-06-11T20:30:00.000Z",
+  sourceResponseConflictResolvedByUid: "admin-test",
+  sourceResponseConflictResolvedByEmail: "admin@example.test",
+  sourceResponseConflictResolutionStatus: "resolved_admin_content_and_client_confirmed",
+  sourceResponseConflictResolutionNote: "Contenu A et client A confirmes dans la source",
+  sourceResponseConflictResolutionFingerprints:
+    sourceCollisionAgainstConfirmedHistory.data.sourceResponseConflictFingerprints,
+  sourceResponseConflictContentConfirmed: true,
+  sourceResponseConflictClientConfirmed: true,
+  sourceResponseConflictKeptClientId: sourceCollisionClientA.id,
+  sourceResponseConflictKeptInternalClientId:
+    sourceCollisionClientA.data.internalClientId,
+  sourceResponseConflictResolutionHistory: [{
+    action: "source_content_and_client_adjudicated",
+    fingerprints:
+      sourceCollisionAgainstConfirmedHistory.data.sourceResponseConflictFingerprints
+  }]
+};
+const sourceCollisionResolvedStickyReplay = h.buildQuestionnaireResponseRecords({
+  coach: { id: "questionnaire_review", name: "Questionnaires a valider" },
+  rows: annotatedContradictorySourceRows,
+  clients: sourceCollisionClients,
+  existingById: new Map([[
+    sourceCollisionInitialConfirmed.id,
+    sourceCollisionResolvedExisting
+  ]])
+})[0];
+const changedContradictorySourceRows = h.rowsFromValues([
+  ["response_id", "submitted_at", "client_name", "client_phone_normalized", "triage_status", "open_note", "source_questionnaire_tab"],
+  ["resp-source-id-collision", "2026-06-11T20:00:00Z", "Membre collision A", "5145558181", "vert", "Contenu A", "Formulaire A"],
+  ["resp-source-id-collision", "2026-06-11T20:05:00Z", "Membre collision B", "5145558282", "rouge", "Contenu B", "Formulaire B"],
+  ["resp-source-id-collision", "2026-06-11T20:10:00Z", "Membre collision B", "5145558282", "rouge", "Contenu C nouveau", "Formulaire B"]
+]);
+const changedAnnotatedContradictorySourceRows = h.annotateQuestionnaireRowsByPhone(
+  changedContradictorySourceRows,
+  sourceCollisionRoutingIndex
+);
+const sourceCollisionChangedFingerprintReplay = h.buildQuestionnaireResponseRecords({
+  coach: { id: "questionnaire_review", name: "Questionnaires a valider" },
+  rows: changedAnnotatedContradictorySourceRows,
+  clients: sourceCollisionClients,
+  existingById: new Map([[
+    sourceCollisionInitialConfirmed.id,
+    sourceCollisionResolvedExisting
+  ]])
+})[0];
+const sourceCollisionChangedFingerprintTasks = h.buildQuestionnaireTaskRecords({
+  coach: marc,
+  responses: [{
+    ...sourceCollisionChangedFingerprintReplay,
+    data: {
+      ...sourceCollisionChangedFingerprintReplay.data,
+      triageStatus: "orange",
+      processingStatus: "to_read"
+    }
+  }]
 });
 const existingManualClients = new Map([
   ["15935_manual_alex_turcotte", {
@@ -563,6 +948,28 @@ const results = {
   coachNamedManualQuestionnaireInvalidReason: coachNamedManualQuestionnaires[0]?.data?.sourceInvalidReason || "",
   coachNamedManualReopenedStatus: previouslyArchivedCoachNamedManualQuestionnaires[0]?.data?.processingStatus || "",
   coachNamedManualReopenedInvalidReason: previouslyArchivedCoachNamedManualQuestionnaires[0]?.data?.sourceInvalidReason || "",
+  manualQuestionnaireFirstReplay: dashboardOnlyQuestionnaireFirstReplay?.data || {},
+  manualQuestionnaireSecondReplay: dashboardOnlyQuestionnaireSecondReplay?.data || {},
+  manualQuestionnaireConflictReplay: dashboardOnlyQuestionnaireConflictReplay?.data || {},
+  manualQuestionnaireConflictStickyReplay: dashboardOnlyQuestionnaireConflictStickyReplay?.data || {},
+  manualQuestionnaireResolvedReplay: dashboardOnlyQuestionnaireResolvedReplay?.data || {},
+  manualQuestionnaireAmbiguousReplay: dashboardOnlyQuestionnaireAmbiguousReplay?.data || {},
+  automaticQuestionnaireReplay: automaticConfirmedQuestionnaireReplay?.data || {},
+  automaticQuestionnaireConflictReplay: automaticConfirmedQuestionnaireConflictReplay?.data || {},
+  automaticQuestionnaireConflictStickyReplay:
+    automaticConfirmedQuestionnaireConflictStickyReplay?.data || {},
+  automaticQuestionnaireConflictTaskCount:
+    automaticConfirmedQuestionnaireConflictTasksForOriginalCoach.length
+    + automaticConfirmedQuestionnaireConflictTasksForRoutedCoach.length,
+  sourceCollisionAnnotatedRows: annotatedContradictorySourceRows,
+  sourceCollisionForward: contradictorySourceResponsesForward,
+  sourceCollisionReverse: contradictorySourceResponsesReverse,
+  identicalSourceResponses,
+  sourceCollisionAgainstConfirmedHistory: sourceCollisionAgainstConfirmedHistory?.data || {},
+  sourceCollisionStickyReplay: sourceCollisionStickyReplay?.data || {},
+  sourceCollisionResolvedStickyReplay: sourceCollisionResolvedStickyReplay?.data || {},
+  sourceCollisionChangedFingerprintReplay: sourceCollisionChangedFingerprintReplay?.data || {},
+  sourceCollisionChangedFingerprintTaskCount: sourceCollisionChangedFingerprintTasks.length,
   manualMergeClientId: manualMergeClients[0]?.id || "",
   manualMergePhone: manualMergeClients[0]?.data?.phoneNormalized || "",
   manualMergeMembershipEnd: manualMergeClients[0]?.data?.manualMembershipEndDate || "",
@@ -709,6 +1116,204 @@ if (results.coachNamedManualRowsMatched !== 1) failures.push("Une reponse questi
 if (results.coachNamedManualQuestionnaireClientId !== "15935_4383995269") failures.push("La reponse questionnaire d'un client manuel doit etre liee a sa fiche Firestore.");
 if (results.coachNamedManualQuestionnaireStatus !== "to_read" || results.coachNamedManualQuestionnaireInvalidReason) failures.push("Une reponse de client manuel matchee ne doit pas etre archivee comme bruit coach.");
 if (results.coachNamedManualReopenedStatus !== "to_read" || results.coachNamedManualReopenedInvalidReason) failures.push("Une reponse archivee par erreur comme coach_as_unmatched_client doit etre rouverte si le client est retrouve par telephone.");
+for (const [label, replay] of [
+  ["premiere relecture", results.manualQuestionnaireFirstReplay],
+  ["seconde relecture", results.manualQuestionnaireSecondReplay]
+]) {
+  if (replay.clientId !== dashboardOnlyQuestionnaireClient.id
+      || replay.internalClientId !== dashboardOnlyQuestionnaireClient.data.internalClientId) {
+    failures.push(`Un lien questionnaire manuel doit conserver clientId/internalClientId apres la ${label}.`);
+  }
+  if (replay.coachId !== marc.id
+      || replay.coachName !== marc.name
+      || replay.dashboardOwnerCoachId !== marc.id) {
+    failures.push(`Un lien questionnaire manuel doit conserver la responsabilite Dashboard explicite apres la ${label}.`);
+  }
+  if (replay.routingStatus !== "matched_manual"
+      || replay.routingSource !== "admin_confirmed_internal_client"
+      || replay.processingStatus !== "to_read") {
+    failures.push(`Un lien questionnaire manuel doit conserver ses statuts manuels apres la ${label}.`);
+  }
+  if (replay.matchedManuallyByUid !== "admin-questionnaire-test"
+      || replay.matchedManuallyByEmail !== "admin@example.test"
+      || replay.manualMatchNote !== "Lien confirme vers une fiche Dashboard sans CoachRx"
+      || replay.history?.length !== 1
+      || replay.manualMatchHistory?.length !== 1) {
+    failures.push(`Un lien questionnaire manuel doit conserver ses metadonnees et historiques apres la ${label}.`);
+  }
+  if (replay.manualMatchConflict || replay.manualMatchReviewRequired) {
+    failures.push(`Une relecture identique d'un questionnaire manuellement relie ne doit pas creer un faux conflit (${label}).`);
+  }
+}
+for (const [label, replay, expectedReason] of [
+  ["preuve routee vers un autre client", results.manualQuestionnaireConflictReplay, "phone_routes_to_different_client"],
+  ["telephone partage entre plusieurs clients", results.manualQuestionnaireAmbiguousReplay, "phone_matches_multiple_clients"]
+]) {
+  if (replay.clientId !== dashboardOnlyQuestionnaireClient.id
+      || replay.internalClientId !== dashboardOnlyQuestionnaireClient.data.internalClientId
+      || replay.coachId !== marc.id
+      || replay.dashboardOwnerCoachId !== marc.id) {
+    failures.push(`Une ${label} doit signaler une revue sans reattribuer le lien questionnaire manuel.`);
+  }
+  if (replay.routingStatus !== "matched_manual"
+      || replay.processingStatus !== "to_read"
+      || replay.matchedManuallyByUid !== "admin-questionnaire-test"
+      || replay.history?.length !== 1) {
+    failures.push(`Une ${label} doit conserver les statuts et l'historique du lien questionnaire manuel.`);
+  }
+  if (replay.manualMatchConflict !== true
+      || replay.manualMatchReviewRequired !== true
+      || replay.manualMatchConflictReason !== expectedReason
+      || !replay.manualMatchConflictSourcePhone
+      || !replay.manualMatchConflictCandidateClientIds?.length) {
+    failures.push(`Une ${label} doit etre placee en revue avec la preuve contradictoire, sans choix heuristique.`);
+  }
+}
+if (results.manualQuestionnaireConflictStickyReplay.identityMatchReviewRequired !== true
+    || results.manualQuestionnaireConflictStickyReplay.manualMatchReviewRequired !== true
+    || results.manualQuestionnaireConflictStickyReplay.identityMatchConflictReason
+      !== "phone_routes_to_different_client"
+    || results.manualQuestionnaireConflictStickyReplay.clientId
+      !== dashboardOnlyQuestionnaireClient.id) {
+  failures.push("Un conflit manuel historique doit rester en revue apres une passe source redevenue concordante.");
+}
+if (results.manualQuestionnaireResolvedReplay.identityMatchReviewRequired
+    || results.manualQuestionnaireResolvedReplay.manualMatchReviewRequired
+    || results.manualQuestionnaireResolvedReplay.identityMatchConflict
+    || results.manualQuestionnaireResolvedReplay.manualMatchConflict) {
+  failures.push("Une resolution admin explicite doit permettre a une passe concordante de conserver le conflit ferme.");
+}
+if (results.automaticQuestionnaireReplay.clientId !== dashboardOnlyQuestionnaireClient.id
+    || results.automaticQuestionnaireReplay.internalClientId !== dashboardOnlyQuestionnaireClient.data.internalClientId
+    || results.automaticQuestionnaireReplay.coachId !== marc.id
+    || results.automaticQuestionnaireReplay.routingStatus !== "matched"
+    || results.automaticQuestionnaireReplay.processingStatus !== "to_read"
+    || results.automaticQuestionnaireReplay.identityMatchConflict
+    || results.automaticQuestionnaireReplay.history?.length !== 1) {
+  failures.push("Une relecture identique doit conserver un lien questionnaire historique confirme sans faux conflit.");
+}
+if (results.automaticQuestionnaireConflictReplay.clientId !== dashboardOnlyQuestionnaireClient.id
+    || results.automaticQuestionnaireConflictReplay.internalClientId !== dashboardOnlyQuestionnaireClient.data.internalClientId
+    || results.automaticQuestionnaireConflictReplay.coachId !== marc.id
+    || results.automaticQuestionnaireConflictReplay.dashboardOwnerCoachId !== marc.id
+    || results.automaticQuestionnaireConflictReplay.routingStatus !== "matched"
+    || results.automaticQuestionnaireConflictReplay.processingStatus !== "to_read"
+    || results.automaticQuestionnaireConflictReplay.identityMatchConflict !== true
+    || results.automaticQuestionnaireConflictReplay.identityMatchReviewRequired !== true
+    || results.automaticQuestionnaireConflictReplay.identityMatchConflictReason !== "phone_routes_to_different_client"
+    || results.automaticQuestionnaireConflictReplay.history?.length !== 1) {
+  failures.push("Une preuve contradictoire ne doit jamais reattribuer un lien questionnaire historique confirme.");
+}
+if (results.automaticQuestionnaireConflictStickyReplay.identityMatchReviewRequired !== true
+    || results.automaticQuestionnaireConflictStickyReplay.identityMatchConflict !== true
+    || results.automaticQuestionnaireConflictStickyReplay.identityMatchConflictReason
+      !== "phone_routes_to_different_client"
+    || results.automaticQuestionnaireConflictStickyReplay.clientId
+      !== dashboardOnlyQuestionnaireClient.id) {
+  failures.push("Un conflit identitaire automatique doit rester sticky jusqu'a une resolution admin explicite.");
+}
+if (results.automaticQuestionnaireConflictTaskCount !== 0) {
+  failures.push("Une preuve identitaire contradictoire ne doit creer de mission ni pour l'ancien coach ni pour le coach suggere heuristiquement.");
+}
+if (results.sourceCollisionAnnotatedRows.length !== 2
+    || results.sourceCollisionAnnotatedRows.some((row) =>
+      row.questionnaireroutingstatus !== "conflict"
+      || row.questionnaireroutingsource !== "duplicate_source_response_id"
+      || row.questionnairesourceresponseconflict !== "true"
+    )) {
+  failures.push("Deux contenus contradictoires avec le meme sourceResponseId doivent etre routes vers la quarantaine avant toute attribution coach.");
+}
+for (const [label, collisionResponses] of [
+  ["ordre source", results.sourceCollisionForward],
+  ["ordre source inverse", results.sourceCollisionReverse]
+]) {
+  const response = collisionResponses[0]?.data || {};
+  if (collisionResponses.length !== 1
+      || response.clientId
+      || response.internalClientId
+      || response.coachId !== "questionnaire_review"
+      || response.routingStatus !== "conflict"
+      || response.processingStatus !== "unmatched"
+      || response.sourceResponseConflict !== true
+      || response.sourceResponseConflictReason !== "duplicate_source_response_id"
+      || response.sourceResponseConflictCount !== 2
+      || response.sourceResponseConflictFingerprints?.length !== 2
+      || response.sourceResponseConflictPhones?.length !== 2
+      || Object.keys(response.answers || {}).length !== 0) {
+    failures.push(`Une collision source doit produire une seule reponse neutre et non attribuee (${label}).`);
+  }
+}
+const sourceCollisionForwardData = results.sourceCollisionForward[0]?.data || {};
+const sourceCollisionReverseData = results.sourceCollisionReverse[0]?.data || {};
+for (const field of [
+  "coachId",
+  "clientId",
+  "internalClientId",
+  "routingStatus",
+  "processingStatus",
+  "sourceResponseConflictReason",
+  "sourceResponseConflictCount"
+]) {
+  if (JSON.stringify(sourceCollisionForwardData[field]) !== JSON.stringify(sourceCollisionReverseData[field])) {
+    failures.push(`La quarantaine source ne doit pas dependre de l'ordre des lignes (${field}).`);
+  }
+}
+if (JSON.stringify(sourceCollisionForwardData.answers) !== JSON.stringify(sourceCollisionReverseData.answers)
+    || JSON.stringify(sourceCollisionForwardData.sourceResponseConflictFingerprints)
+      !== JSON.stringify(sourceCollisionReverseData.sourceResponseConflictFingerprints)
+    || JSON.stringify(sourceCollisionForwardData.sourceResponseConflictPhones)
+      !== JSON.stringify(sourceCollisionReverseData.sourceResponseConflictPhones)) {
+  failures.push("La collision source ne doit jamais conserver arbitrairement le contenu de la derniere ligne.");
+}
+if (results.identicalSourceResponses.length !== 1
+    || results.identicalSourceResponses[0]?.data?.sourceResponseConflict
+    || results.identicalSourceResponses[0]?.data?.clientId !== sourceCollisionClientA.id) {
+  failures.push("Deux copies strictement identiques d'une reponse source doivent rester un seul effet idempotent, sans faux conflit.");
+}
+if (results.sourceCollisionAgainstConfirmedHistory.clientId !== sourceCollisionClientA.id
+    || results.sourceCollisionAgainstConfirmedHistory.internalClientId !== sourceCollisionClientA.data.internalClientId
+    || results.sourceCollisionAgainstConfirmedHistory.coachId !== marc.id
+    || results.sourceCollisionAgainstConfirmedHistory.routingStatus !== "matched"
+    || results.sourceCollisionAgainstConfirmedHistory.processingStatus !== "to_read"
+    || results.sourceCollisionAgainstConfirmedHistory.identityMatchReviewRequired !== true
+    || results.sourceCollisionAgainstConfirmedHistory.identityMatchConflictReason !== "duplicate_source_response_id"
+    || results.sourceCollisionAgainstConfirmedHistory.sourceResponseConflict !== true
+    || results.sourceCollisionAgainstConfirmedHistory.answers?.open_note !== "Contenu A") {
+  failures.push("Une collision source doit conserver le lien et le contenu historiques confirmes tout en exigeant une revue.");
+}
+if (results.sourceCollisionStickyReplay.clientId !== sourceCollisionClientA.id
+    || results.sourceCollisionStickyReplay.sourceResponseConflict !== true
+    || results.sourceCollisionStickyReplay.identityMatchReviewRequired !== true
+    || results.sourceCollisionStickyReplay.identityMatchConflictReason !== "duplicate_source_response_id"
+    || results.sourceCollisionStickyReplay.answers?.open_note !== "Contenu A") {
+  failures.push("Une collision de contenu source doit rester en revue si une passe suivante ne contient plus qu'une variante.");
+}
+if (results.sourceCollisionResolvedStickyReplay.clientId !== sourceCollisionClientA.id
+    || results.sourceCollisionResolvedStickyReplay.internalClientId
+      !== sourceCollisionClientA.data.internalClientId
+    || results.sourceCollisionResolvedStickyReplay.identityMatchReviewRequired
+    || results.sourceCollisionResolvedStickyReplay.manualMatchReviewRequired
+    || !results.sourceCollisionResolvedStickyReplay.sourceResponseConflictResolvedAt
+    || results.sourceCollisionResolvedStickyReplay.sourceResponseConflictResolutionStatus
+      !== "resolved_admin_content_and_client_confirmed"
+    || results.sourceCollisionResolvedStickyReplay.sourceResponseConflictResolutionFingerprints?.length !== 2
+    || results.sourceCollisionResolvedStickyReplay.answers?.open_note !== "Contenu A") {
+  failures.push("Une adjudication admin doit rester collante quand les empreintes source sont strictement identiques.");
+}
+if (results.sourceCollisionChangedFingerprintReplay.clientId !== sourceCollisionClientA.id
+    || results.sourceCollisionChangedFingerprintReplay.internalClientId
+      !== sourceCollisionClientA.data.internalClientId
+    || results.sourceCollisionChangedFingerprintReplay.identityMatchReviewRequired !== true
+    || results.sourceCollisionChangedFingerprintReplay.manualMatchReviewRequired !== true
+    || results.sourceCollisionChangedFingerprintReplay.sourceResponseConflictResolvedAt
+    || results.sourceCollisionChangedFingerprintReplay.sourceResponseConflictResolutionStatus
+      !== "reopened_source_fingerprints_changed"
+    || results.sourceCollisionChangedFingerprintReplay.sourceResponseConflictFingerprints?.length !== 3
+    || results.sourceCollisionChangedFingerprintReplay.sourceResponseConflictPreviousResolutionFingerprints?.length !== 2
+    || results.sourceCollisionChangedFingerprintReplay.sourceResponseConflictReopenedFingerprints?.length !== 3
+    || results.sourceCollisionChangedFingerprintTaskCount !== 0) {
+  failures.push("Une nouvelle empreinte source doit rouvrir la revue, conserver l'identite interne et interdire toute mission generee.");
+}
 if (results.manualMergeClientId === "15935_manual_alex_turcotte") failures.push("Un import CoachRx ne doit jamais fusionner avec un client manuel par nom seul.");
 if (results.manualMergePhone !== "5145552020") failures.push("La fusion client manuel -> CoachRx devrait ajouter le telephone importe.");
 if (results.manualMergeMembershipEnd || results.manualMergeKiloRecurrenceEnd || results.manualMergeRiskLevel || results.manualMergeNotes || results.manualMergeLinkedFromManual) failures.push("Un appariement refuse par nom ne doit pas copier les champs de la fiche manuelle homonyme.");

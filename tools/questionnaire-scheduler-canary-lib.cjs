@@ -569,6 +569,7 @@ function buildProcessCanarySend({
     coachName: "Admin",
     status: "pending",
     deliveryStatus: "firestore_queue_pending",
+    externalEffectState: "not_started",
     errorMessage: "",
     questionnaireType: PROCESS_QUESTIONNAIRE_TYPE,
     formId: "",

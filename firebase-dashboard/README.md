@@ -39,8 +39,10 @@ dans le front-end. Les trois parcours historiques utilisent encore leurs tags
 GHL existants (`dashboardcoach`, `suiviregulier`, `evaluationnutrition`). Les
 formulaires Studio utilisent des tags uniques, sans donnee client dans l'URL, et
 restent interdits d'envoi tant que `deliveryReady` n'a pas ete confirme apres
-deux canaris. La Cloud Function `sendQuestionnaire` utilise le secret Firebase
-`GHL_PRIVATE_TOKEN` sans publier de token dans l'application.
+deux canaris. Le callable de compatibilite `sendQuestionnaire` ne contacte plus
+GHL directement : il cree transactionnellement la meme file Firestore que le
+Dashboard. Seul le processeur de cette file utilise `GHL_PRIVATE_TOKEN`, sans
+publier de token dans l'application.
 
 Le pilote IA suit la meme regle: le navigateur ne contient aucune cle de modele. Il cree une demande privee dans Firestore; une Function verifie de nouveau l'identite admin, construit un contexte minimal et appelle Vertex AI cote serveur. Une demande generale reste en lecture seule. Depuis `+ Mission`, l'admin peut ecrire ou dicter sa demande. Le vocal est transporte temporairement par morceaux prives, transcrit cote serveur, puis supprime. L'IA prepare une proposition `task.create`, mais seul le backend peut creer la mission apres une confirmation explicite et une seconde validation des droits. Voir `ASSISTANT_ADMIN_PILOT.md`.
 
@@ -110,9 +112,16 @@ Depuis la racine du repo, utiliser de preference les scripts Windows:
 Voir aussi `DEPLOY_RUNBOOK.md` pour la procedure detaillee et les commandes `cmd` a utiliser.
 
 Exception obligatoire pour le candidat Questionnaire Studio du 2026-07-28 :
-`deploy-dashboard-complet.cmd` et le Hosting direct sont bloques. Utiliser
+`deploy-dashboard-complet.cmd`, le Hosting direct et le raccourci Hosting API
+sont bloques. Utiliser
 `deploy-questionnaire-stage-a.cmd rules`, puis `additive`, puis `legacy`, avec
-un canari et un arret humain entre chaque sous-etape; utiliser ensuite
+un canari et un arret humain entre chaque sous-etape. Le mode `indexes` échoue
+fermé : l'index Scheduler exact étant déjà `READY`, A4 passe uniquement par les
+contrôles read-only du runbook et `verify-questionnaire-stage-a-index-ready.cmd`.
+Chaque wrapper exige le reçu pré-release durable lié au SHA et à
+`CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH`, ainsi que la preuve live
+`maintenancePublished: true`; A1 compare en plus tout le snapshot au live
+immédiatement avant la mutation. Utiliser ensuite
 `deploy-questionnaire-stage-b.cmd` avec un GO distinct. Le garde reste en place
 jusqu'a une decision de generalisation separee.
 

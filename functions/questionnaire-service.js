@@ -18,7 +18,8 @@ const PUBLIC_ORIGIN = "https://cfsb-dashboard-coach-aa9a4.web.app";
 const INITIAL_PUBLISHED_AT = "2026-07-23T00:00:00.000Z";
 const MAX_PUBLIC_BODY_BYTES = 64 * 1024;
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
-const RATE_LIMIT_MAX = 30;
+const RATE_LIMIT_IP_MAX = 60;
+const RATE_LIMIT_FORM_PHONE_MAX = 8;
 const FORM_ID_PATTERN = /^[A-Za-z0-9_-]{8,80}$/;
 
 const INITIAL_FORM_META = Object.freeze({
@@ -635,6 +636,10 @@ function createQuestionnaireService({
         deliveryVerifiedByUid: "",
         deliveryVerifiedByEmail: "",
         deliveryVerificationNote: "",
+        deliveryVerifiedVersionId: "",
+        deliveryVerifiedVersionHash: "",
+        deliveryVerifiedGhlTag: "",
+        deliveryVerifiedPublicUrl: "",
         status: "published",
         hasUnpublishedChanges: false,
         activeDraftFingerprint: fingerprint,
@@ -690,6 +695,10 @@ function createQuestionnaireService({
         deliveryVerifiedByUid: "",
         deliveryVerifiedByEmail: "",
         deliveryVerificationNote: "",
+        deliveryVerifiedVersionId: "",
+        deliveryVerifiedVersionHash: "",
+        deliveryVerifiedGhlTag: "",
+        deliveryVerifiedPublicUrl: "",
         archivedAt: now,
         archivedByUid: actor.uid,
         updatedAt: now,
@@ -736,20 +745,74 @@ function createQuestionnaireService({
         throw new QuestionnaireServiceError("FORM_NOT_FOUND", "Formulaire introuvable.", { status: 404 });
       }
       const form = formSnap.data() || {};
-      if (
-        form.status !== "published"
-        || !cleanString(form.activeVersionId)
-        || form.hasUnpublishedChanges === true
-      ) {
-        throw new QuestionnaireServiceError(
-          "FORM_NOT_READY_FOR_DELIVERY",
-          "Publie d'abord la version exacte a verifier dans GHL.",
-          { status: 409 }
-        );
-      }
       const ghlTag = cleanString(form.ghlTag);
       const publicUrl = cleanString(form.publicUrl);
+      const activeVersionId = cleanString(form.activeVersionId);
+      const activeVersion = cleanString(form.activeVersion);
+      const activeVersionHash = cleanString(form.activeVersionHash);
       if (ready) {
+        if (
+          form.status !== "published"
+          || !activeVersionId
+          || !activeVersion
+          || !activeVersionHash
+          || form.hasUnpublishedChanges === true
+        ) {
+          throw new QuestionnaireServiceError(
+            "FORM_NOT_READY_FOR_DELIVERY",
+            "Publie d'abord la version exacte a verifier dans GHL.",
+            { status: 409 }
+          );
+        }
+        const versionRef = db.collection("questionnaireFormVersions").doc(activeVersionId);
+        const catalogRef = db.collection("questionnaireCatalog").doc(formId);
+        const tagRef = db.collection("questionnaireGhlTags").doc(
+          ghlTagReservationId(ghlTag)
+        );
+        const [versionSnap, catalogSnap, tagSnap] = await Promise.all([
+          transaction.get(versionRef),
+          transaction.get(catalogRef),
+          transaction.get(tagRef)
+        ]);
+        let snapshot;
+        try {
+          snapshot = versionSnap.exists
+            ? publishedDefinitionFromDoc(versionSnap.data() || {})
+            : null;
+        } catch (_error) {
+          snapshot = null;
+        }
+        const catalog = catalogSnap.exists ? catalogSnap.data() || {} : {};
+        const expectedPublicUrl = snapshot
+          ? canonicalPublicUrl(snapshot.canonicalPath)
+          : "";
+        if (
+          !snapshot
+          || cleanString(versionSnap.get("formId")) !== formId
+          || cleanString(versionSnap.get("versionId")) !== activeVersionId
+          || cleanString(versionSnap.get("version")) !== activeVersion
+          || cleanString(versionSnap.get("versionHash")) !== activeVersionHash
+          || snapshot.version !== activeVersion
+          || snapshot.versionHash !== activeVersionHash
+          || normalizedGhlTag(snapshot.ghlTag) !== normalizedGhlTag(ghlTag)
+          || expectedPublicUrl !== publicUrl
+          || catalog.status !== "published"
+          || cleanString(catalog.activeVersionId) !== activeVersionId
+          || cleanString(catalog.activeVersion) !== activeVersion
+          || cleanString(catalog.activeVersionHash) !== activeVersionHash
+          || normalizedGhlTag(catalog.ghlTag) !== normalizedGhlTag(ghlTag)
+          || cleanString(catalog.publicUrl) !== publicUrl
+          || !tagSnap.exists
+          || cleanString(tagSnap.get("formId")) !== formId
+          || normalizedGhlTag(tagSnap.get("normalizedTag")) !== normalizedGhlTag(ghlTag)
+          || cleanString(tagSnap.get("status")) !== "reserved"
+        ) {
+          throw new QuestionnaireServiceError(
+            "DELIVERY_PUBLISHED_VERSION_MISMATCH",
+            "La version publiée, le catalogue ou la réservation GHL ne concordent pas.",
+            { status: 409 }
+          );
+        }
         if (
           normalizedGhlTag(input.confirmedGhlTag) !== normalizedGhlTag(ghlTag)
           || cleanString(input.confirmedPublicUrl) !== publicUrl
@@ -775,6 +838,10 @@ function createQuestionnaireService({
         deliveryVerifiedByUid: ready ? actor.uid : "",
         deliveryVerifiedByEmail: ready ? actor.email : "",
         deliveryVerificationNote: ready ? verificationNote : "",
+        deliveryVerifiedVersionId: ready ? activeVersionId : "",
+        deliveryVerifiedVersionHash: ready ? activeVersionHash : "",
+        deliveryVerifiedGhlTag: ready ? ghlTag : "",
+        deliveryVerifiedPublicUrl: ready ? publicUrl : "",
         updatedAt: now
       };
       transaction.update(formRef, {
@@ -798,6 +865,8 @@ function createQuestionnaireService({
           {
             ghlTag,
             publicUrl,
+            versionId: ready ? activeVersionId : "",
+            versionHash: ready ? activeVersionHash : "",
             verificationNote: ready ? verificationNote : ""
           }
         )
@@ -952,16 +1021,29 @@ function createQuestionnaireService({
     };
   }
 
-  async function enforceRateLimit(context = {}) {
-    const ip = cleanString(context.ip || "unknown").slice(0, 160);
-    const userAgent = cleanString(context.userAgent).slice(0, 240);
+  async function enforceRateLimit({
+    scope = "",
+    subject = "",
+    max = 1
+  } = {}) {
+    const normalizedScope = cleanString(scope).slice(0, 40);
+    const normalizedSubject = cleanString(subject).slice(0, 320);
+    if (!normalizedScope || !normalizedSubject) {
+      throw new QuestionnaireServiceError(
+        "RATE_LIMIT_CONTEXT_MISSING",
+        "Le contrôle anti-abus ne peut pas être évalué.",
+        { status: 500 }
+      );
+    }
     const bucket = Math.floor(Date.now() / RATE_LIMIT_WINDOW_MS);
-    const rateId = sha256(`${ip}|${userAgent}|${bucket}`).slice(0, 48);
+    const rateId = sha256(
+      `${normalizedScope}|${normalizedSubject}|${bucket}`
+    ).slice(0, 48);
     const rateRef = db.collection("questionnaireRateLimits").doc(rateId);
     await db.runTransaction(async (transaction) => {
       const snap = await transaction.get(rateRef);
       const count = Number(snap.get("count") || 0);
-      if (count >= RATE_LIMIT_MAX) {
+      if (count >= Math.max(1, Number(max) || 1)) {
         throw new QuestionnaireServiceError(
           "RATE_LIMITED",
           "Trop de tentatives ont ete recues. Reessaie dans quelques minutes.",
@@ -970,6 +1052,7 @@ function createQuestionnaireService({
       }
       transaction.set(rateRef, {
         count: count + 1,
+        scope: normalizedScope,
         bucket,
         expiresAt: admin.firestore.Timestamp.fromMillis(
           (bucket + 2) * RATE_LIMIT_WINDOW_MS
@@ -1032,7 +1115,6 @@ function createQuestionnaireService({
   }
 
   async function submitPublicForm(slugInput, bodyInput, context = {}) {
-    await enforceRateLimit(context);
     const bodyBytes = Buffer.byteLength(JSON.stringify(bodyInput || {}), "utf8");
     if (bodyBytes > MAX_PUBLIC_BODY_BYTES) {
       throw new QuestionnaireServiceError(
@@ -1041,10 +1123,30 @@ function createQuestionnaireService({
         { status: 413 }
       );
     }
-    const requestedVersion = cleanString(bodyInput?.meta?.definitionVersion);
+    const ip = cleanString(context.ip || "unknown").slice(0, 160);
+    await enforceRateLimit({
+      scope: "ip",
+      subject: ip,
+      max: RATE_LIMIT_IP_MAX
+    });
+    if (cleanString(bodyInput?.companyWebsite)) {
+      throw new QuestionnaireServiceError(
+        "INVALID_SUBMISSION",
+        "La réponse ne peut pas être traitée.",
+        { status: 400 }
+      );
+    }
+    const sanitizedBody = { ...(bodyInput || {}) };
+    delete sanitizedBody.companyWebsite;
+    const requestedVersion = cleanString(sanitizedBody?.meta?.definitionVersion);
     const loaded = await loadPublishedBySlug(slugInput, requestedVersion);
-    const validated = validateSubmission(loaded.snapshot, bodyInput);
+    const validated = validateSubmission(loaded.snapshot, sanitizedBody);
     const phoneNormalized = cleanString(validated.identity.phoneNormalized);
+    await enforceRateLimit({
+      scope: "form_phone",
+      subject: `${loaded.snapshot.slug}|${phoneNormalized}`,
+      max: RATE_LIMIT_FORM_PHONE_MAX
+    });
     const candidates = await matchingClients(phoneNormalized);
     const uniqueCandidateSnap = candidates.length === 1 ? candidates[0] : null;
     const uniqueCandidate = uniqueCandidateSnap?.data() || {};
@@ -1116,6 +1218,8 @@ function createQuestionnaireService({
       submissionFingerprint: idempotencyRecord.submissionFingerprint,
       sourceUrl: validated.canonicalPath,
       source: "questionnaire_studio_public",
+      retentionClass: "member_coaching_questionnaire",
+      retentionPolicyStatus: "pending_privacy_owner_approval",
       submittedAtIso,
       createdAtIso: submittedAtIso
     };

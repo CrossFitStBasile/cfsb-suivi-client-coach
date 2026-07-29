@@ -1160,12 +1160,17 @@ check(
     && app.includes("questionnaireSendActionHint")
     && app.includes("Verifier que le contact existe dans GHL avec exactement ce telephone.")
     && app.includes("secret serveur GHL")
+    && app.includes("loadQuestionnaireSendAttempt(attemptKey)")
+    && app.includes("saveQuestionnaireSendAttempt(attemptKey, sendId)")
+    && app.includes("await runTransaction(db")
+    && app.includes("transaction.set(attemptRef, attempt)")
     && functions.includes('document: "questionnaireSends/{sendId}"')
     && functions.includes("processQuestionnaireSendFromQueue")
     && functions.includes('deliveryStatus: "ghl_pending"')
     && functions.includes("request.data?.sendId")
+    && functions.includes("sendId stable manquant ou invalide")
     && functions.includes("Cette tentative questionnaire ne correspond pas au client.")
-    && functions.includes("await sendRef.set(baseAttempt, { merge: true })"),
+    && functions.includes("transaction.create(sendRef, baseAttempt)"),
   "Chaque clic d'envoi doit creer une trace Firestore visible, meme si Firebase Functions ou GHL echoue."
 );
 

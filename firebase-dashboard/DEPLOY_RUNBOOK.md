@@ -8,7 +8,7 @@ C:\Users\micha\Documents\Codex\2026-05-08\j-ai-un-gros-projet-d\generated\github
 
 Le controle `tools/verify-hosting-deploy-provenance.cjs` doit passer avant toute publication. Il confirme le projet, le site, le dossier public, la taille du bundle moderne, les fonctions mobiles essentielles et l'alignement du cache-buster. Ne jamais publier le Dashboard Coach depuis `cfsb-suivi-client-coach-live`; ce depot sert maintenant seulement de contexte historique et de projet Roadmap depuis son sous-dossier `firebase-roadmap`.
 
-Etat live confirme: Hosting `app.js?v=20260715-firebase-questionnaire-suite`; frontend `APP_VERSION = 20260715-firebase-questionnaire-suite`. Le pipeline local passe et la verification live stricte passe 9/9. Pour une publication Hosting Google-only, produire un instantane prive, valider `cloudbuild.google-only-preview.yaml`, puis lancer `cloudbuild.google-only-live.yaml`. Pour un changement Functions/regles/indexes, conserver temporairement `deploy-dashboard-complet.cmd` jusqu'a la phase backend Google-only. Si Firebase exige une nouvelle session locale, utiliser `firebase login --reauth`.
+Etat live confirme: Hosting `app.js?v=20260715-firebase-questionnaire-suite`; frontend `APP_VERSION = 20260715-firebase-questionnaire-suite`. Le pipeline local passe et la verification live stricte passe 9/9. Le chemin Google-only reste disponible pour les validations sans mutation, mais `cloudbuild.google-only-live.yaml` echoue volontairement tant que `QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md` existe. Pour le candidat Questionnaire Studio, la production doit suivre `QUESTIONNAIRE_RELEASE_RUNBOOK_20260728.md`: Stage A (`rules`, `additive`, `legacy`), controles A4 read-only et canaris, puis Stage B. Si Firebase exige une nouvelle session locale, utiliser `firebase login --reauth`.
 
 ## Pipeline Hosting Google-only
 
@@ -19,8 +19,11 @@ Le pipeline valide ne lit pas GitHub et n'utilise aucune cle de compte de servic
 3. Executer `cloudbuild.google-only.yaml` pour les contrats source et Functions.
 4. Executer `cloudbuild.google-only-preview.yaml` avec le compte `dashboard-deployer@cfsb-dashboard-coach-aa9a4.iam.gserviceaccount.com`.
 5. Verifier la previsualisation, `/questionnaire/` et `/questionnaire/coaches.json`.
-6. Executer `cloudbuild.google-only-live.yaml` seulement apres cette validation.
-7. Executer `verify-dashboard-live.cmd` apres la publication.
+6. Tant que `firebase-dashboard/QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md` existe, ne pas executer `cloudbuild.google-only-live.yaml`: il s'arrete avant toute mutation Hosting et ne constitue pas une preuve Stage B.
+7. Suivre `QUESTIONNAIRE_RELEASE_RUNBOOK_20260728.md` et executer `deploy-questionnaire-stage-a.cmd rules`, puis `additive`, puis `legacy`, avec les canaris prescrits.
+8. Executer les controles A4 read-only et les canaris Scheduler; aucun index n'est publie par Stage A pour ce candidat.
+9. Executer `deploy-questionnaire-stage-b.cmd` seulement avec le meme SHA, le meme `planHash` et toutes les preuves requises.
+10. Executer `verify-dashboard-live.cmd` apres la publication.
 
 Preuve du 15 juillet 2026: preview `52274fe8-5a5e-4c48-b82b-1b2a7b41a340`, production `e36078a3-e63f-4c3e-8fbe-a0c83929b9da`, restauration 146/146 sans divergence, live 9/9 et Google-only 7/7.
 
@@ -73,6 +76,11 @@ Le script de deploy complet verifie maintenant les secrets requis avant de lance
 Si un secret manque, le script s'arrete avant le deploy Functions. C'est voulu: l'echec est plus rapide et explique quoi faire au lieu de laisser Cloud Build echouer plus tard.
 
 ## Option A - Publication depuis un terminal deja connecte
+
+Les options generiques A/B ci-dessous sont conservees comme reference historique.
+Elles ne s'appliquent pas au candidat Questionnaire Studio tant que
+`firebase-dashboard/QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md` existe; utiliser
+exclusivement le parcours Stage A/A4/Stage B ci-dessus.
 
 Ouvrir un terminal dans ce dossier:
 
@@ -251,5 +259,4 @@ Lire dans `Guide`:
 - clients sans telephone.
 
 Ne pas modifier l'UX avant d'avoir confirme si la source contient vraiment des lignes exploitables pour ce coach.
-
 

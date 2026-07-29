@@ -3,6 +3,9 @@ const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_SECTIONS = 50;
 const MAX_FIELDS = 250;
 const MAX_OPTIONS = 100;
+const PRIVACY_POLICY_URL = "https://crossfitstbasilelegrand.com/privacy/";
+const PENDING_RESPONSE_STORAGE_PREFIX = "cfsb:questionnaire:pending:";
+const RESPONSE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
 const SUPPORTED_TYPES = new Set([
   "info",
   "short_text",
@@ -604,18 +607,25 @@ function createField(field, section) {
   return record;
 }
 
+function createPageTitle(text) {
+  const title = createElement("h2", "", text);
+  title.tabIndex = -1;
+  return title;
+}
+
 function createIdentityPage() {
   const page = createElement("section", "form-page");
   page.dataset.pageKind = "identity";
   const heading = createElement("div", "page-heading");
   heading.append(
-    createElement("h2", "", "Avant de commencer"),
+    createPageTitle("Avant de commencer"),
     createElement(
       "p",
       "",
       "Ces renseignements servent à relier ta réponse à la bonne fiche membre. Tu n’as pas à sélectionner ton coach."
     )
   );
+  const privacyNotice = createPrivacyNotice();
   const fields = createElement("div", "fields identity-fields");
 
   const identityDefinitions = [
@@ -683,7 +693,7 @@ function createIdentityPage() {
     state.identity[definition.key] = input;
   }
 
-  page.append(heading, fields);
+  page.append(heading, privacyNotice, fields);
   return {
     kind: "identity",
     title: "Identification",
@@ -691,12 +701,44 @@ function createIdentityPage() {
   };
 }
 
+function createPrivacyNotice() {
+  const notice = createElement("aside", "privacy-notice");
+  notice.setAttribute("role", "note");
+  notice.setAttribute("aria-labelledby", "privacyNoticeTitle");
+
+  const title = createElement("h3", "", "Confidentialité");
+  title.id = "privacyNoticeTitle";
+  const purpose = createElement(
+    "p",
+    "",
+    "CrossFit St-Basile recueille ton nom, tes coordonnées et tes réponses afin de relier ce questionnaire à ta fiche membre et de permettre à ton entraîneur ainsi qu’aux personnes autorisées de l’équipe CFSB de faire ton suivi."
+  );
+  const rights = createElement("p");
+  const policyLink = createElement("a", "", "politique de confidentialité");
+  policyLink.href = PRIVACY_POLICY_URL;
+  policyLink.target = "_blank";
+  policyLink.rel = "noopener noreferrer";
+  policyLink.setAttribute(
+    "aria-label",
+    "Politique de confidentialité (ouvre un nouvel onglet)"
+  );
+  rights.append(
+    document.createTextNode("Consulte notre "),
+    policyLink,
+    document.createTextNode(
+      " pour savoir comment tes renseignements sont traités. Pour demander l’accès à tes renseignements, leur rectification ou poser une question sur leur utilisation, utilise les coordonnées qui y sont indiquées."
+    )
+  );
+  notice.append(title, purpose, rights);
+  return notice;
+}
+
 function createSectionPage(section) {
   const page = createElement("section", "form-page");
   page.dataset.pageKind = "section";
   page.dataset.sectionId = section.id;
   const heading = createElement("div", "page-heading");
-  heading.append(createElement("h2", "", section.title));
+  heading.append(createPageTitle(section.title));
   if (section.description) heading.append(createElement("p", "", section.description));
   const fieldsRoot = createElement("div", "fields");
   for (const field of section.fields) {
@@ -718,7 +760,7 @@ function createReviewPage() {
   page.dataset.pageKind = "review";
   const heading = createElement("div", "page-heading");
   heading.append(
-    createElement("h2", "", "Vérifie tes réponses"),
+    createPageTitle("Vérifie tes réponses"),
     createElement("p", "", "Tu peux revenir en arrière avant l’envoi.")
   );
   const review = createElement("div", "review-list");
@@ -1231,6 +1273,7 @@ function renderReview() {
   appendReviewRow(identitySection, "Téléphone", state.identity.phone.value.trim());
   const identityEdit = createElement("button", "review-edit", "Modifier");
   identityEdit.type = "button";
+  identityEdit.setAttribute("aria-label", "Modifier l’identification");
   identityEdit.addEventListener("click", () => goToPage(0));
   identitySection.append(identityEdit);
   reviewPage.review.append(identitySection);
@@ -1250,6 +1293,7 @@ function renderReview() {
     if (rowCount === 0) sectionNode.append(createElement("p", "field-help", "Aucune réponse dans cette section."));
     const edit = createElement("button", "review-edit", "Modifier");
     edit.type = "button";
+    edit.setAttribute("aria-label", `Modifier la section ${page.title}`);
     edit.addEventListener("click", () => goToPage(pageIndex));
     sectionNode.append(edit);
     reviewPage.review.append(sectionNode);
@@ -1306,6 +1350,57 @@ function createResponseId() {
   return `questionnaire-${Date.now()}-${random}`;
 }
 
+function pendingResponseStorageKey(slug, version) {
+  return (
+    PENDING_RESPONSE_STORAGE_PREFIX
+    + `${encodeURIComponent(String(slug))}:${encodeURIComponent(String(version))}`
+  );
+}
+
+function pendingResponseStorage() {
+  try {
+    return window.sessionStorage || null;
+  } catch {
+    return null;
+  }
+}
+
+function loadOrCreateResponseId(slug, version) {
+  const storage = pendingResponseStorage();
+  const storageKey = pendingResponseStorageKey(slug, version);
+  if (storage) {
+    try {
+      const storedResponseId = String(storage.getItem(storageKey) || "").trim();
+      if (RESPONSE_ID_PATTERN.test(storedResponseId)) return storedResponseId;
+    } catch {
+      // Le formulaire reste utilisable lorsque le stockage du navigateur est bloqué.
+    }
+  }
+
+  const responseId = createResponseId();
+  if (storage) {
+    try {
+      storage.setItem(storageKey, responseId);
+    } catch {
+      // La clé demeure au moins stable en mémoire pour cette page.
+    }
+  }
+  return responseId;
+}
+
+function clearPendingResponseId(slug, version, responseId) {
+  const storage = pendingResponseStorage();
+  if (!storage) return;
+  const storageKey = pendingResponseStorageKey(slug, version);
+  try {
+    if (storage.getItem(storageKey) === responseId) {
+      storage.removeItem(storageKey);
+    }
+  } catch {
+    // L’accusé durable est valide même si le navigateur refuse le nettoyage local.
+  }
+}
+
 function submissionAnswers() {
   const answers = {};
   for (const [fieldId, record] of state.fields) {
@@ -1331,6 +1426,7 @@ function buildSubmission() {
   if (state.definition.versionHash) meta.versionHash = state.definition.versionHash;
 
   return {
+    companyWebsite: elements.honeypot.value,
     idempotencyKey: state.responseId,
     identity,
     answers: submissionAnswers(),
@@ -1347,7 +1443,7 @@ function submissionErrorMessage(error) {
     return "Le questionnaire a été mis à jour. Recharge la page avant de répondre.";
   }
   if (code.includes("IDEMPOTENCY") || code.includes("REPLAY")) {
-    return "Cette tentative ne correspond plus à la réponse initiale. Recharge la page et réessaie.";
+    return "Une réponse liée à cette tentative semble déjà avoir été reçue, mais son contenu ne correspond plus. Ne l’envoie pas de nouveau; communique avec l’équipe CFSB pour la faire vérifier.";
   }
   if (code.includes("VALIDATION") || code.includes("ANSWER") || code.includes("FIELD")) {
     return "Certaines réponses ne sont pas valides. Vérifie le formulaire et réessaie.";
@@ -1412,6 +1508,11 @@ async function submitQuestionnaire() {
         "Le serveur n’a pas confirmé l’enregistrement de la réponse."
       );
     }
+    clearPendingResponseId(
+      state.slug,
+      state.definition.version,
+      state.responseId
+    );
     showSuccess();
   } catch (error) {
     showFormError(submissionErrorMessage(error));
@@ -1436,12 +1537,14 @@ function showLoadError(error) {
   hideAllStates();
   if (error?.inactive) {
     elements.inactive.hidden = false;
+    elements.inactive.focus?.();
     return;
   }
   elements.errorTitle.textContent = "Le questionnaire n’a pas pu être chargé.";
   elements.errorMessage.textContent =
     error?.message || "Vérifie ta connexion, puis réessaie.";
   elements.error.hidden = false;
+  elements.error.focus?.();
 }
 
 async function loadQuestionnaire() {
@@ -1452,7 +1555,7 @@ async function loadQuestionnaire() {
     prepareCanonicalLocation(state.slug);
     const payload = await requestJson(apiUrl(state.slug), { method: "GET" });
     const definition = normalizeDefinition(payload);
-    state.responseId = createResponseId();
+    state.responseId = loadOrCreateResponseId(state.slug, definition.version);
     renderDefinition(definition);
   } catch (error) {
     showLoadError(error);

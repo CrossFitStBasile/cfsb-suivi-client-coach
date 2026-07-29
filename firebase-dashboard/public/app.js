@@ -22,6 +22,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -53,7 +54,7 @@ const provider = new GoogleAuthProvider();
 let questionnaireStudioController = null;
 let questionnaireStudioModulePromise = null;
 provider.setCustomParameters({ prompt: "select_account" });
-const APP_VERSION = "20260729-questionnaire-studio-canonical-url";
+const APP_VERSION = "20260729-questionnaire-studio-stabilized";
 window.__CFSB_DASHBOARD_VERSION = APP_VERSION;
 const RELEASE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 const USAGE_SESSION_ID = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -73,6 +74,9 @@ const CSM_PRIORITY_SHEET_URL = "https://docs.google.com/spreadsheets/d/1a2j7IFiD
 const ACCOMPLISHMENTS_DRIVE_URL = "https://drive.google.com/drive/folders/12xoQUUqo0jpOdG9MARgwZMzA5cynyL45";
 const QUESTIONNAIRE_BASE_URL = "https://cfsb-dashboard-coach-aa9a4.web.app/questionnaire/";
 const DEFAULT_QUESTIONNAIRE_TYPE = "suivi_global";
+const QUESTIONNAIRE_SEND_ATTEMPT_STORAGE_PREFIX =
+  "cfsb.questionnaireSendAttempt.v1";
+const questionnaireSendAttemptMemory = new Map();
 const QUESTIONNAIRE_TYPES = [
   {
     type: "suivi_global",
@@ -320,6 +324,7 @@ const state = {
     questionnaireSchedules: [],
     questionnaireCatalog: [],
     questionnaireReviewResponses: [],
+    questionnaireIdentityReviewResponses: [],
     rebookings: [],
     checkups: [],
     impacts: [],
@@ -777,7 +782,10 @@ function subscribeCoachData() {
   subscribeAnnouncementAcknowledgements();
   subscribePilotAcceptances();
   subscribeQuestionnaireCatalog();
-  if (isInfoAdmin()) subscribeQuestionnaireReviewQueue();
+  if (isInfoAdmin()) {
+    subscribeQuestionnaireReviewQueue();
+    subscribeQuestionnaireIdentityReviewQueue();
+  }
   const coachId = state.selectedCoachId;
   if (!coachId) {
     render();
@@ -875,6 +883,7 @@ function resetCoachData() {
   state.data.questionnaireSchedules = [];
   state.data.questionnaireCatalog = [];
   state.data.questionnaireReviewResponses = [];
+  state.data.questionnaireIdentityReviewResponses = [];
   state.data.rebookings = [];
   state.data.checkups = [];
   state.data.impacts = [];
@@ -947,6 +956,36 @@ function subscribeQuestionnaireReviewQueue() {
     state.data.questionnaireReviewResponses = [];
     state.data.loaded.questionnaireReviewResponses = true;
     console.warn("Questionnaire review queue subscription failed.", error);
+    scheduleRender();
+  }
+}
+
+function subscribeQuestionnaireIdentityReviewQueue() {
+  try {
+    const unsubscribe = onSnapshot(
+      query(
+        collection(db, "questionnaireResponses"),
+        where("identityMatchReviewRequired", "==", true)
+      ),
+      (snap) => {
+        state.data.questionnaireIdentityReviewResponses = snap.docs
+          .map(fromDoc)
+          .sort((a, b) => dateValue(b.submittedAt || b.createdAt) - dateValue(a.submittedAt || a.createdAt));
+        state.data.loaded.questionnaireIdentityReviewResponses = true;
+        scheduleRender();
+      },
+      (error) => {
+        state.data.questionnaireIdentityReviewResponses = [];
+        state.data.loaded.questionnaireIdentityReviewResponses = true;
+        console.warn("Questionnaire identity review queue unavailable.", error);
+        scheduleRender();
+      }
+    );
+    state.unsubscribers.push(unsubscribe);
+  } catch (error) {
+    state.data.questionnaireIdentityReviewResponses = [];
+    state.data.loaded.questionnaireIdentityReviewResponses = true;
+    console.warn("Questionnaire identity review queue subscription failed.", error);
     scheduleRender();
   }
 }
@@ -1419,7 +1458,7 @@ function renderDashboard() {
 
 async function mountQuestionnaireStudioView(studioRoot) {
   try {
-    questionnaireStudioModulePromise ||= import("./questionnaire-studio.js?v=20260729-questionnaire-studio-canonical-url");
+    questionnaireStudioModulePromise ||= import("./questionnaire-studio.js?v=20260729-questionnaire-studio-stabilized");
     const { mountQuestionnaireStudio } = await questionnaireStudioModulePromise;
     if (
       state.tab !== "studio" ||
@@ -2170,7 +2209,10 @@ function renderQuestionnaires() {
   const sentWaiting = questionnaireSendsWaitingForResponse();
   const schedules = portfolioQuestionnaireSchedules();
   const activeSchedules = schedules.filter((schedule) => (schedule.status || "active") === "active");
-  const rawArchived = responses.filter((item) => ["read", "archived", "validated"].includes(item.processingStatus));
+  const rawArchived = responses.filter((item) =>
+    ["read", "archived", "validated"].includes(item.processingStatus)
+    && !questionnaireResponseCoachActionsBlocked(item)
+  );
   const recentSends = recentQuestionnaireSends();
   const sendClients = selectableClientsForCoach().sort(sortQuestionnaireSendClients);
   const active = state.filter.questionnaire;
@@ -3375,7 +3417,11 @@ function renderAdmin() {
   const openTasks = state.data.tasks.filter(isOpenTask);
   const questionnaireResponses = portfolioQuestionnaireResponses();
   const questionnaireToRead = questionnaireResponses.filter((response) => response.processingStatus === "to_read");
-  const questionnaireToValidate = questionnaireResponses.filter((response) => !response.clientId || response.processingStatus === "unmatched");
+  const questionnaireToValidate = questionnaireResponses.filter((response) =>
+    !response.clientId
+    || response.processingStatus === "unmatched"
+    || questionnaireRequiresIdentityReview(response)
+  );
   const openRebookings = portfolioRebookings().filter((item) => rebookingStatus(item) === "open");
   const missingPhones = activeClients().filter((client) => !clientPhone(client));
   const blockedRelations = blockedOperationalRecordsByCollection();
@@ -3786,9 +3832,17 @@ function renderAdminCleanupQueue({ missingPhones = [], openRebookings = [], ques
             id: response.id,
             clientId: response.clientId || "",
             title: response.clientName || response.name || "Reponse non reliee",
-            detail: `${questionnairePrioritySummary(response).label} · ${formatDate(response.submittedAt || response.createdAt) || "date inconnue"}`,
-            action: selectableClientForCoach(response.clientId) ? "openClient" : "openQuestionnaireLinkClient",
-            actionLabel: selectableClientForCoach(response.clientId) ? "Client" : "Relier"
+            detail: questionnaireRequiresIdentityReview(response)
+              ? `Identite a verifier · ${questionnaireIdentityReviewReason(response)}`
+              : `${questionnairePrioritySummary(response).label} · ${formatDate(response.submittedAt || response.createdAt) || "date inconnue"}`,
+            action: questionnaireRequiresIdentityReview(response) || !selectableClientForCoach(response.clientId)
+              ? "openQuestionnaireLinkClient"
+              : "openClient",
+            actionLabel: questionnaireRequiresIdentityReview(response)
+              ? "Verifier"
+              : selectableClientForCoach(response.clientId)
+                ? "Client"
+                : "Relier"
           }))
         })}
         ${renderAdminCleanupColumn({
@@ -5099,7 +5153,8 @@ function pilotValidationBlockers({ coach, clients, missingPhones, syncStatus, re
 function questionnaireResponsesToRead() {
   return portfolioQuestionnaireResponses().filter((item) => {
     const status = item.processingStatus || "to_read";
-    return status === "to_read" || status === "assigned";
+    return (status === "to_read" || status === "assigned")
+      && !questionnaireResponseCoachActionsBlocked(item);
   });
 }
 
@@ -6146,6 +6201,9 @@ function taskQuestionnaireResponseId(task) {
 }
 
 function taskActionButtons(task) {
+  if (questionnaireTaskRequiresIdentityReview(task)) {
+    return `<button class="secondary" type="button" disabled>Revue admin requise</button>`;
+  }
   const primary = taskPrimaryActionButton(task);
   const voice = taskVoiceNote(task)
     ? taskVoicePlaybackButton(task, "\u25B6 Ecouter", "task-voice-direct")
@@ -6317,8 +6375,31 @@ function renderQuestionnaireItemCard(item) {
   return renderQuestionnaireCard(item);
 }
 
+function renderQuestionnaireQuarantineCard(response) {
+  const admin = isInfoAdmin();
+  return `
+    <article class="card operational-card questionnaire-card questionnaire-card-compact source-review">
+      <div class="operational-card-main">
+        <h4>${escapeHtml(response.clientName || response.name || "Réponse en quarantaine")}</h4>
+        <div class="operational-meta-line">
+          <span class="pill red">Revue admin requise</span>
+        </div>
+        <p class="meta">Aucune mission, lecture ou archivage coach n'est permis avant la résolution du conflit.</p>
+      </div>
+      <div class="card-actions operational-actions">
+        ${admin
+          ? `<button class="primary" data-action="openQuestionnaireLinkClient" data-id="${escapeAttr(response.id)}">Adjudication admin</button>`
+          : `<button class="secondary" type="button" disabled>Action bloquée</button>`}
+      </div>
+    </article>
+  `;
+}
+
 function renderQuestionnaireGroupCard(group) {
   const response = questionnaireRepresentativeResponse(group);
+  if ((group.responses || []).some(questionnaireResponseCoachActionsBlocked)) {
+    return renderQuestionnaireQuarantineCard(response);
+  }
   const statusClass = triageClass(response.triageStatus);
   const highlights = questionnaireHighlights(response);
   const priority = questionnairePrioritySummary(response, highlights);
@@ -6369,6 +6450,9 @@ function renderQuestionnaireGroupCard(group) {
 }
 
 function renderQuestionnaireCard(response) {
+  if (questionnaireResponseCoachActionsBlocked(response)) {
+    return renderQuestionnaireQuarantineCard(response);
+  }
   const statusClass = triageClass(response.triageStatus);
   const highlights = questionnaireHighlights(response);
   const hasClient = Boolean(selectableClientForCoach(response.clientId));
@@ -6424,13 +6508,19 @@ function shortText(value, maxLength = 160) {
 
 function renderQuestionnaireValidationNotice(unmatched) {
   if (!unmatched.length) return "";
-  const withPhone = unmatched.filter(questionnaireResponsePhone).length;
+  const identityReviews = unmatched.filter(questionnaireRequiresIdentityReview);
+  const unlinked = unmatched.filter((response) => !questionnaireRequiresIdentityReview(response));
+  const withPhone = unlinked.filter(questionnaireResponsePhone).length;
   return `
     <div class="notice compact questionnaire-validation-notice">
-      <strong>Reponses a rattacher</strong>
+      <strong>Reponses a valider</strong>
       <span>
-        ${unmatched.length} reponse(s) ne sont pas reliees a une fiche client.
-        ${withPhone ? `${withPhone} ont un telephone a comparer.` : "Aucune n'a un telephone deja reconnu dans le portefeuille actif."}
+        ${identityReviews.length
+          ? `${identityReviews.length} reponse(s) ont un conflit d'identite a verifier, meme si leur lien client actuel reste conserve.`
+          : ""}
+        ${unlinked.length
+          ? `${unlinked.length} reponse(s) ne sont pas reliees a une fiche client. ${withPhone ? `${withPhone} ont un telephone a comparer.` : "Aucune n'a un telephone deja reconnu dans le portefeuille actif."}`
+          : ""}
         Une mission coach se cree seulement apres lien client fiable.
       </span>
     </div>
@@ -6442,6 +6532,9 @@ function renderUnmatchedQuestionnaireCard(response) {
   const phone = questionnaireResponsePhone(response);
   const highlights = questionnaireHighlights(response);
   const priority = questionnairePrioritySummary(response, highlights);
+  const identityReview = questionnaireRequiresIdentityReview(response);
+  const sourceContentConflict = questionnaireHasUnresolvedSourceResponseConflict(response);
+  const reviewReason = questionnaireIdentityReviewReason(response);
   return `
     <article class="card operational-card questionnaire-card questionnaire-card-compact ${statusClass} source-review">
       <div class="operational-card-main">
@@ -6449,17 +6542,19 @@ function renderUnmatchedQuestionnaireCard(response) {
         <div class="operational-meta-line">
           <span class="operational-meta-primary">${escapeHtml(phone ? `Telephone: ${phone}` : "Telephone absent")} · ${formatDate(response.submittedAt || response.createdAt) || "date inconnue"}</span>
           <span class="pill ${statusClass}">${escapeHtml(priority.label)}</span>
-          <span class="pill amber">Non reliee</span>
+          <span class="pill ${identityReview ? "red" : "amber"}">${identityReview ? "Identite a verifier" : "Non reliee"}</span>
+          ${sourceContentConflict ? `<span class="pill red">Contenu source en conflit</span>` : ""}
           ${highlights.length ? `<span class="pill amber">${highlights.length} signal(aux)</span>` : ""}
         </div>
+        ${identityReview ? `<p class="meta">${escapeHtml(reviewReason)}</p>` : ""}
       </div>
       <div class="card-actions operational-actions">
-        <button class="primary" data-action="openQuestionnaireLinkClient" data-id="${escapeHtml(response.id)}">Relier client</button>
+        <button class="primary" data-action="openQuestionnaireLinkClient" data-id="${escapeHtml(response.id)}">${identityReview ? "Verifier le lien" : "Relier client"}</button>
         <details class="card-action-menu">
           <summary>Plus</summary>
           <div>
             <button class="secondary" data-action="openQuestionnaireDetail" data-id="${escapeHtml(response.id)}">Details</button>
-            <button class="secondary" data-action="markResponseRead" data-id="${escapeHtml(response.id)}">Archiver</button>
+            ${identityReview ? "" : `<button class="secondary" data-action="markResponseRead" data-id="${escapeHtml(response.id)}">Archiver</button>`}
           </div>
         </details>
       </div>
@@ -6522,6 +6617,14 @@ function renderQuestionnaireScheduleCard(schedule) {
   const nextSend = schedule.nextSendAt || "";
   const overdue = active && dateValue(nextSend) && dateValue(nextSend) <= dateValue(todayIso());
   const questionnaireLabel = questionnaireRecordLabel(schedule);
+  const deliveryStateLabels = {
+    queued: "En file",
+    sent: "Livré à GHL",
+    blocked_delivery: "Workflow GHL en attente",
+    error: "Erreur d'envoi",
+    uncertain: "Livraison à vérifier"
+  };
+  const deliveryStateLabel = deliveryStateLabels[String(schedule.deliveryState || "").trim()] || "";
   return `
     <article class="card operational-card questionnaire-schedule-card ${active ? "" : "muted-card"}">
       <div>
@@ -6538,7 +6641,7 @@ function renderQuestionnaireScheduleCard(schedule) {
           </div>
           <div>
             <span>Statut</span>
-            <strong>${escapeHtml(active ? "Actif" : "Pause")}</strong>
+            <strong>${escapeHtml(`${active ? "Actif" : "Pause"}${deliveryStateLabel ? ` · ${deliveryStateLabel}` : ""}`)}</strong>
           </div>
         </div>
         ${schedule.note ? `<p class="meta">${escapeHtml(shortText(schedule.note, 110))}</p>` : ""}
@@ -6546,7 +6649,7 @@ function renderQuestionnaireScheduleCard(schedule) {
           <span class="pill">${escapeHtml(phone ? "telephone OK" : "telephone requis")}</span>
           ${hasClient ? "" : `<span class="pill amber">Appartenance a valider</span>`}
           ${schedule.lastSentAt ? `<span class="pill">dernier ${escapeHtml(formatDate(schedule.lastSentAt))}</span>` : ""}
-          ${schedule.lastError ? `<span class="pill red">Erreur</span>` : ""}
+          ${schedule.lastError ? `<span class="pill ${schedule.deliveryState === "blocked_delivery" ? "amber" : "red"}">${escapeHtml(shortText(schedule.lastError, 90))}</span>` : ""}
         </div>
       </div>
       <div class="card-actions operational-actions">
@@ -7323,6 +7426,7 @@ function clientWorkSummary(client) {
   const phone = clientPhone(client);
   const openTasks = state.data.tasks
     .filter(isOpenTask)
+    .filter((task) => !questionnaireTaskRequiresIdentityReview(task))
     .filter((task) => task.clientId === clientId || (phone && normalizePhone(task.clientPhoneNormalized || task.phoneNormalized) === phone))
     .slice()
     .sort(sortTasks);
@@ -7330,7 +7434,10 @@ function clientWorkSummary(client) {
     .filter((response) => response.clientId === clientId || (phone && normalizePhone(response.phoneNormalized || response.clientPhoneNormalized) === phone))
     .slice()
     .sort((a, b) => dateValue(b.submittedAt || b.createdAt) - dateValue(a.submittedAt || a.createdAt));
-  const openResponses = responses.filter((response) => (response.processingStatus || "to_read") === "to_read");
+  const openResponses = responses.filter((response) =>
+    (response.processingStatus || "to_read") === "to_read"
+    && !questionnaireResponseCoachActionsBlocked(response)
+  );
   const openRebookings = portfolioRebookings()
     .filter((item) => rebookingStatus(item) === "open")
     .filter((item) => item.clientId === clientId || (phone && normalizePhone(item.clientPhoneNormalized || item.phoneNormalized) === phone));
@@ -7878,6 +7985,17 @@ function renderPilotageNoteModal() {
 function renderTaskEditModal() {
   const task = operationalTaskById(state.modal.id);
   if (!task) return "";
+  if (questionnaireTaskRequiresIdentityReview(task)) {
+    return modal("Mission en quarantaine", `
+      <div class="notice compact">
+        <strong>Revue admin requise</strong>
+        <span>Cette mission est liée à une réponse dont l'identité ou le contenu source est en conflit. Aucune action coach n'est permise avant l'adjudication admin.</span>
+      </div>
+      <div class="modal-actions">
+        <button class="secondary" type="button" data-action="closeModal">Fermer</button>
+      </div>
+    `);
+  }
   const starred = isStarredTask(task);
   const description = taskDisplayDescription(task, taskActionGuidance(task)) || "";
   const hasVoice = Boolean(taskVoiceNote(task));
@@ -8257,6 +8375,18 @@ function renderQuestionnaireDetailModal() {
   const priority = questionnairePrioritySummary(response, highlights);
   const digest = questionnaireDigest(response, highlights, priority);
   const hasClient = Boolean(selectableClientForCoach(response.clientId));
+  const identityReview = questionnaireRequiresIdentityReview(response);
+  if (identityReview && !isInfoAdmin()) {
+    return modal("Réponse en quarantaine", `
+      <div class="notice compact">
+        <strong>Revue admin requise</strong>
+        <span>L'identité ou le contenu source de cette réponse est en conflit. Son contenu et toutes les actions coach restent bloqués jusqu'à l'adjudication admin.</span>
+      </div>
+      <div class="modal-actions quiet-actions">
+        <button class="secondary" type="button" data-action="closeModal">Fermer</button>
+      </div>
+    `);
+  }
   return modal("Lire la reponse questionnaire", `
     <div class="questionnaire-detail-modal">
       <div class="client-modal-intro">
@@ -8271,6 +8401,12 @@ function renderQuestionnaireDetailModal() {
         <span>Recu ${escapeHtml(formatDate(response.submittedAt || response.createdAt) || "date inconnue")}</span>
         <span>${escapeHtml(hasClient ? "Client reconnu" : "Client a confirmer")}</span>
       </div>
+      ${identityReview ? `
+        <div class="notice compact">
+          <strong>Identite a verifier</strong>
+          <span>${escapeHtml(questionnaireIdentityReviewReason(response))}</span>
+        </div>
+      ` : ""}
       ${renderQuestionnaireReadingBrief(response, digest, priority)}
       ${renderQuestionnaireCoachActionBar(response, hasClient, priority)}
       ${renderQuestionnaireStructuredAnswers(response, highlights)}
@@ -8282,6 +8418,35 @@ function renderQuestionnaireDetailModal() {
 }
 
 function renderQuestionnaireCoachActionBar(response, hasClient, priority) {
+  if (questionnaireRequiresIdentityReview(response)) {
+    if (!isInfoAdmin()) {
+      return `
+        <section class="questionnaire-coach-action">
+          <div>
+            <span>Réponse en quarantaine</span>
+            <strong>Revue admin requise</strong>
+            <p>Aucune mission, lecture ou archivage coach n'est permis tant que le conflit n'est pas résolu.</p>
+          </div>
+        </section>
+      `;
+    }
+    const sourceContentConflict = questionnaireHasUnresolvedSourceResponseConflict(response);
+    return `
+      <section class="questionnaire-coach-action">
+        <div>
+          <span>Revue admin</span>
+          <strong>${escapeHtml(sourceContentConflict ? "Arbitrer le contenu et verifier le client" : "Confirmer le bon client")}</strong>
+          <p>${escapeHtml(sourceContentConflict
+            ? "Confirmer un client ne fermera pas le conflit: deux contenus differents partagent le meme identifiant source."
+            : "Le lien actuel reste conserve tant qu'un admin n'a pas confirme explicitement la bonne fiche.")}</p>
+        </div>
+        <div class="questionnaire-coach-action-buttons">
+          <button class="primary" data-action="openQuestionnaireLinkClient" data-id="${escapeAttr(response.id)}">Verifier le lien</button>
+          ${hasClient ? `<button class="secondary" data-action="openClient" data-id="${escapeAttr(response.clientId)}">Ouvrir client</button>` : ""}
+        </div>
+      </section>
+    `;
+  }
   const needsMission = hasClient && priority.level !== "green";
   const actionText = !hasClient
     ? "Relie d'abord la reponse au bon client avant de creer une mission."
@@ -8349,6 +8514,8 @@ function renderQuestionnaireLinkClientModal() {
   const response = questionnaireResponseForAdminLinking(state.modal.id);
   if (!response) return "";
   const phone = questionnaireResponsePhone(response);
+  const identityReview = questionnaireRequiresIdentityReview(response);
+  const sourceContentConflict = questionnaireHasUnresolvedSourceResponseConflict(response);
   const suggestedName = normalizeComparable(response.clientName || response.name);
   const sortedClients = [...selectableClientsForCoach()].sort((a, b) => {
     const aPhoneScore = phone && clientPhone(a) === phone ? -2 : 0;
@@ -8358,7 +8525,7 @@ function renderQuestionnaireLinkClientModal() {
     return (aPhoneScore + aNameScore) - (bPhoneScore + bNameScore)
       || String(a.lastNameSort || a.name || "").localeCompare(String(b.lastNameSort || b.name || ""));
   });
-  return modal("Relier la reponse a un client", `
+  return modal(identityReview ? "Verifier le lien client" : "Relier la reponse a un client", `
     <form class="modal-form" data-form="questionnaireLinkClient" data-id="${escapeAttr(response.id)}">
       <p class="meta">
         Reponse a relier: <strong>${escapeHtml(response.clientName || response.name || "Client a confirmer")}</strong>.
@@ -8378,12 +8545,30 @@ function renderQuestionnaireLinkClientModal() {
           }).join("")}
         </select>
       </label>
-      <label>Note optionnelle<textarea class="input" name="note" placeholder="Ex.: telephone confirme avec le coach, meme client mal matche dans la source."></textarea></label>
+      <label>${sourceContentConflict ? "Note d'adjudication obligatoire" : "Note optionnelle"}
+        <textarea class="input" name="note" ${sourceContentConflict ? "required" : ""} placeholder="${sourceContentConflict
+          ? "Ex.: vérification faite dans la source; je conserve cette réponse et cette fiche client."
+          : "Ex.: telephone confirme avec le coach, meme client mal matche dans la source."}"></textarea>
+      </label>
+      ${sourceContentConflict ? `
+        <label class="checkbox-line">
+          <input type="checkbox" name="confirmKeptContent" value="yes" required>
+          Je confirme avoir vérifié et conserver le contenu actuellement enregistré pour cette réponse.
+        </label>
+        <label class="checkbox-line">
+          <input type="checkbox" name="confirmKeptClient" value="yes" required>
+          Je confirme que la fiche client sélectionnée est celle à conserver.
+        </label>
+      ` : ""}
       <div class="notice compact">
-        La reponse retournera dans Reponses a lire apres liaison. La mission coach sera creee seulement si le coach choisit Creer mission + lu.
+        ${sourceContentConflict
+          ? `Cette adjudication fermera la quarantaine seulement pour les ${questionnaireSourceConflictFingerprints(response).length} empreintes source observées. Une empreinte nouvelle ou modifiée rouvrira automatiquement la revue.`
+          : identityReview
+            ? "Cette confirmation fermera le conflit d'identite et conservera une trace de la resolution admin."
+            : "La reponse retournera dans Reponses a lire apres liaison. La mission coach sera creee seulement si le coach choisit Creer mission + lu."}
       </div>
       <div class="modal-actions">
-        <button class="primary" type="submit">Relier la reponse</button>
+        <button class="primary" type="submit">${sourceContentConflict ? "Adjuger contenu et client" : identityReview ? "Confirmer ce client" : "Relier la reponse"}</button>
         <button class="secondary" type="button" data-action="closeModal">Annuler</button>
       </div>
     </form>
@@ -10273,6 +10458,7 @@ async function deleteVoiceQueueChunks(chunkRefs) {
 
 async function playTaskVoice(taskId) {
   const task = operationalTaskById(taskId);
+  assertQuestionnaireTaskActionable(task, "La lecture de cette mission");
   const voiceNote = taskVoiceNote(task);
   if (!voiceNote) {
     showToast("Aucun vocal trouve pour cette mission.");
@@ -10317,6 +10503,7 @@ async function playTaskVoice(taskId) {
 
 async function deleteTaskVoice(taskId) {
   const task = operationalTaskById(taskId);
+  assertQuestionnaireTaskActionable(task, "La modification de cette mission");
   const voiceNote = taskVoiceNote(task);
   if (!voiceNote) return;
   const confirmed = window.confirm("Supprimer le vocal de cette mission?\n\nLa mission texte restera en place.");
@@ -10442,6 +10629,7 @@ async function saveTask(id, data) {
   const modalInstanceId = state.modal?.instanceId || "";
   const task = operationalTaskById(id);
   if (!task) throw new Error("Mission introuvable.");
+  assertQuestionnaireTaskActionable(task, "La modification de cette mission");
   const priority = data.priority || task.priority || "P2";
   const title = String(data.title || "").trim();
   if (!title) throw new Error("Le titre de la mission est requis.");
@@ -10499,6 +10687,7 @@ async function saveTask(id, data) {
 async function toggleTaskStar(id) {
   const task = operationalTaskById(id);
   if (!task) throw new Error("Mission introuvable.");
+  assertQuestionnaireTaskActionable(task, "La modification de cette mission");
   const starred = !isStarredTask(task);
   await patchEntity("tasks", id, {
     starred,
@@ -11367,6 +11556,164 @@ async function reactivateAlumniAsClient(alumniId) {
   closeModal();
 }
 
+function questionnaireSendAttemptStorage() {
+  for (const name of ["localStorage", "sessionStorage"]) {
+    try {
+      const storage = window[name];
+      const probe = `${QUESTIONNAIRE_SEND_ATTEMPT_STORAGE_PREFIX}.probe`;
+      storage.setItem(probe, "1");
+      storage.removeItem(probe);
+      return storage;
+    } catch (_error) {
+      // Continue with the next browser storage, then the in-memory fallback.
+    }
+  }
+  return null;
+}
+
+function questionnaireSendAttemptKey({
+  requestedByUid,
+  coachId,
+  clientId,
+  questionnaire
+}) {
+  return [
+    QUESTIONNAIRE_SEND_ATTEMPT_STORAGE_PREFIX,
+    requestedByUid,
+    coachId,
+    clientId,
+    questionnaire.formId || questionnaire.type
+  ].map((value) => encodeURIComponent(String(value || "").trim())).join(":");
+}
+
+function loadQuestionnaireSendAttempt(key) {
+  let value = questionnaireSendAttemptMemory.get(key) || null;
+  const storage = questionnaireSendAttemptStorage();
+  if (storage) {
+    try {
+      value = JSON.parse(storage.getItem(key) || "null") || value;
+    } catch (_error) {
+      value = null;
+    }
+  }
+  const createdAt = Number(value?.createdAt || 0);
+  if (
+    !/^[A-Za-z0-9_-]{8,80}$/.test(String(value?.sendId || ""))
+    || !Number.isFinite(createdAt)
+    || createdAt <= 0
+  ) {
+    clearQuestionnaireSendAttempt(key);
+    return "";
+  }
+  return String(value.sendId);
+}
+
+function saveQuestionnaireSendAttempt(key, sendId) {
+  const value = { sendId, createdAt: Date.now() };
+  questionnaireSendAttemptMemory.set(key, value);
+  const storage = questionnaireSendAttemptStorage();
+  if (storage) {
+    try {
+      storage.setItem(key, JSON.stringify(value));
+    } catch (_error) {
+      // The in-memory copy still protects retries in the current page.
+    }
+  }
+}
+
+function clearQuestionnaireSendAttempt(key) {
+  questionnaireSendAttemptMemory.delete(key);
+  for (const name of ["localStorage", "sessionStorage"]) {
+    try {
+      const storage = window[name];
+      storage.removeItem(key);
+    } catch (_error) {
+      // Storage may be unavailable in hardened browser contexts.
+    }
+  }
+}
+
+function questionnaireSendAttemptMatches(existing, expected) {
+  return [
+    "coachId",
+    "clientId",
+    "questionnaireType",
+    "formId",
+    "requestedByUid"
+  ].every((field) =>
+    String(existing?.[field] || "") === String(expected?.[field] || "")
+  );
+}
+
+function questionnaireSendAttemptOutcome(send = {}) {
+  const status = String(send?.status || "").trim().toLowerCase();
+  const deliveryStatus = String(send?.deliveryStatus || "").trim().toLowerCase();
+  const externalEffectState = String(
+    send?.externalEffectState || "not_started"
+  ).trim().toLowerCase();
+
+  if (
+    ["started", "uncertain"].includes(externalEffectState)
+    || deliveryStatus.includes("uncertain")
+  ) {
+    return { kind: "uncertain", reason: "external_effect_uncertain" };
+  }
+  if (!["not_started", "completed"].includes(externalEffectState)) {
+    return { kind: "uncertain", reason: "external_effect_state_unknown" };
+  }
+  if (
+    externalEffectState === "completed"
+    || status === "sent"
+    || deliveryStatus === "tag_added"
+  ) {
+    return { kind: "success", reason: "delivery_confirmed" };
+  }
+
+  const hasExternalEffectEvidence = [
+    send?.externalEffectStartedAt,
+    send?.externalEffectCompletedAt,
+    send?.externalEffectProof,
+    send?.externalEffectEventId,
+    send?.externalEffectExpectedGhlContactId
+  ].some((value) => String(value || "").trim());
+  if (externalEffectState !== "not_started" || hasExternalEffectEvidence) {
+    return { kind: "uncertain", reason: "external_effect_evidence_conflict" };
+  }
+  if (["error", "cancelled"].includes(status)) {
+    return { kind: "terminal_pre_effect", reason: "terminal_before_external_effect" };
+  }
+  if (
+    ["", "pending", "queued"].includes(status)
+    && [
+      "",
+      "firestore_queue_pending",
+      "firebase_function_pending",
+      "backend_processing",
+      "ghl_pending"
+    ].includes(deliveryStatus)
+  ) {
+    return { kind: "active", reason: "delivery_active" };
+  }
+  return { kind: "uncertain", reason: "state_not_safely_categorized" };
+}
+
+function runQuestionnaireSendBestEffort(operation, onError = (error) => {
+  console.warn("Questionnaire send audit skipped", error);
+}) {
+  const reportError = (error) => {
+    try {
+      onError(error);
+    } catch (reportingError) {
+      console.warn("Questionnaire send audit error reporting skipped", reportingError);
+    }
+  };
+  try {
+    Promise.resolve(operation()).catch(reportError);
+  } catch (error) {
+    reportError(error);
+  }
+}
+
 async function journalQuestionnaireSend(clientId, questionnaireType = DEFAULT_QUESTIONNAIRE_TYPE) {
   const client = requireSelectableClientForCoach(clientId);
   const phone = questionnaireClientPhone(client);
@@ -11385,14 +11732,30 @@ async function journalQuestionnaireSend(clientId, questionnaireType = DEFAULT_QU
     });
     return;
   }
-  const attemptRef = await addDoc(collection(db, "questionnaireSends"), {
-    coachId: client.coachId || state.selectedCoachId,
+  const requestedByUid = String(state.user?.uid || "").trim();
+  if (!requestedByUid) throw new Error("Session utilisateur invalide. Reconnecte-toi avant l'envoi.");
+  const coachId = client.coachId || state.selectedCoachId;
+  const attemptKey = questionnaireSendAttemptKey({
+    requestedByUid,
+    coachId,
+    clientId,
+    questionnaire
+  });
+  let sendId = loadQuestionnaireSendAttempt(attemptKey);
+  if (!sendId) {
+    sendId = doc(collection(db, "questionnaireSends")).id;
+    saveQuestionnaireSendAttempt(attemptKey, sendId);
+  }
+  const attemptRef = doc(db, "questionnaireSends", sendId);
+  const attempt = {
+    coachId,
     clientId,
     clientName: client.name || "",
     clientPhoneNormalized: phone,
-    coachName: client.coachName || coachRecordById(client.coachId || state.selectedCoachId)?.name || activeCoachRecord()?.name || "",
+    coachName: client.coachName || coachRecordById(coachId)?.name || activeCoachRecord()?.name || "",
     status: "pending",
     deliveryStatus: "firestore_queue_pending",
+    externalEffectState: "not_started",
     errorMessage: "",
     questionnaireType: questionnaire.type,
     questionnaireLabel: questionnaire.label,
@@ -11400,22 +11763,191 @@ async function journalQuestionnaireSend(clientId, questionnaireType = DEFAULT_QU
     formVersionId: questionnaire.activeVersionId || "",
     ghlTag: questionnaire.ghlTag,
     questionnaireUrl: questionnaireConfigPublicUrl(questionnaire),
-    requestedByUid: state.user?.uid || "",
+    requestedByUid,
     requestedByEmail: state.user?.email || "",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     source: "dashboard_questionnaire_send_click"
+  };
+  const firstResult = await runTransaction(db, async (transaction) => {
+    const existingSnap = await transaction.get(attemptRef);
+    if (!existingSnap.exists()) {
+      transaction.set(attemptRef, attempt);
+      return { created: true, existing: null };
+    }
+    if (!questionnaireSendAttemptMatches(existingSnap.data(), attempt)) {
+      throw new Error("La tentative d'envoi enregistrée ne correspond plus à ce client.");
+    }
+    return { created: false, existing: existingSnap.data() || {} };
   });
+  const logQueuedBestEffort = ({
+    queuedSendId,
+    resumedExistingAttempt,
+    outcome,
+    previousSendId = ""
+  }) => runQuestionnaireSendBestEffort(() => logAction("questionnaire.send_queued", "clients", clientId, {
+      sendId: queuedSendId,
+      clientName: client.name || "",
+      phone,
+      provider: "ghl",
+      questionnaireType: questionnaire.type,
+      formId: questionnaire.formId || "",
+      ghlTag: questionnaire.ghlTag,
+      resumedExistingAttempt,
+      outcome,
+      previousSendId
+  }));
+
+  if (firstResult.created) {
+    closeModal();
+    logQueuedBestEffort({
+      queuedSendId: attemptRef.id,
+      resumedExistingAttempt: false,
+      outcome: "created"
+    });
+    showToast(`Envoi ${questionnaire.label} lancé. Le statut se mettra à jour automatiquement.`);
+    return;
+  }
+
+  const existingOutcome = questionnaireSendAttemptOutcome(firstResult.existing);
+  if (existingOutcome.kind === "success") {
+    closeModal();
+    logQueuedBestEffort({
+      queuedSendId: attemptRef.id,
+      resumedExistingAttempt: true,
+      outcome: "success"
+    });
+    showToast(`${questionnaire.label} a déjà été transmis pour cette tentative.`);
+    clearQuestionnaireSendAttempt(attemptKey);
+    return;
+  }
+  if (existingOutcome.kind === "active") {
+    closeModal();
+    logQueuedBestEffort({
+      queuedSendId: attemptRef.id,
+      resumedExistingAttempt: true,
+      outcome: "active"
+    });
+    showToast(`Envoi ${questionnaire.label} déjà enregistré. Le statut se mettra à jour automatiquement.`);
+    return;
+  }
+  if (existingOutcome.kind === "uncertain") {
+    closeModal();
+    throw new Error(
+      "L'état de livraison GHL de cette tentative est incertain. "
+      + "Vérifie son statut et le contact GHL avant toute nouvelle tentative."
+    );
+  }
+
+  const retryConfirmed = window.confirm(
+    "La tentative précédente s'est terminée avant tout effet externe. "
+    + "Créer explicitement une nouvelle tentative d'envoi?"
+  );
+  if (!retryConfirmed) {
+    closeModal();
+    showToast("Aucune nouvelle tentative créée.");
+    return;
+  }
+
+  const previousSendId = attemptRef.id;
+  const retrySendId = doc(collection(db, "questionnaireSends")).id;
+  const retryRef = doc(db, "questionnaireSends", retrySendId);
+  saveQuestionnaireSendAttempt(attemptKey, retrySendId);
+  const retryResult = await runTransaction(db, async (transaction) => {
+    const previousSnap = await transaction.get(attemptRef);
+    const retrySnap = await transaction.get(retryRef);
+    if (!previousSnap.exists()) {
+      return {
+        created: false,
+        previousOutcome: { kind: "uncertain", reason: "previous_attempt_missing" }
+      };
+    }
+    if (!questionnaireSendAttemptMatches(previousSnap.data(), attempt)) {
+      return {
+        created: false,
+        previousOutcome: { kind: "uncertain", reason: "previous_attempt_mismatch" }
+      };
+    }
+    const previousOutcome = questionnaireSendAttemptOutcome(previousSnap.data());
+    if (previousOutcome.kind !== "terminal_pre_effect") {
+      return { created: false, previousOutcome };
+    }
+    if (retrySnap.exists()) {
+      if (!questionnaireSendAttemptMatches(retrySnap.data(), attempt)) {
+        return {
+          created: false,
+          retryExistingMismatch: true,
+          previousOutcome
+        };
+      }
+      return {
+        created: false,
+        retryExisting: retrySnap.data() || {},
+        previousOutcome
+      };
+    }
+    transaction.set(retryRef, attempt);
+    return { created: true, previousOutcome };
+  });
+
+  if (!retryResult.created) {
+    if (retryResult.retryExisting) {
+      const retryOutcome = questionnaireSendAttemptOutcome(retryResult.retryExisting);
+      if (["active", "success"].includes(retryOutcome.kind)) {
+        closeModal();
+        logQueuedBestEffort({
+          queuedSendId: retryRef.id,
+          resumedExistingAttempt: true,
+          outcome: retryOutcome.kind,
+          previousSendId
+        });
+        showToast(
+          retryOutcome.kind === "success"
+            ? `${questionnaire.label} a déjà été transmis pour cette tentative.`
+            : `Envoi ${questionnaire.label} déjà enregistré. Le statut se mettra à jour automatiquement.`
+        );
+        if (retryOutcome.kind === "success") {
+          clearQuestionnaireSendAttempt(attemptKey);
+        }
+        return;
+      }
+      throw new Error(
+        "L'état de livraison GHL de la nouvelle tentative est incertain. "
+        + "Vérifie son statut et le contact GHL avant toute autre tentative."
+      );
+    }
+    saveQuestionnaireSendAttempt(attemptKey, previousSendId);
+    if (["active", "success"].includes(retryResult.previousOutcome?.kind)) {
+      closeModal();
+      logQueuedBestEffort({
+        queuedSendId: previousSendId,
+        resumedExistingAttempt: true,
+        outcome: retryResult.previousOutcome.kind
+      });
+      showToast(
+        retryResult.previousOutcome.kind === "success"
+          ? `${questionnaire.label} a déjà été transmis pour cette tentative.`
+          : `Envoi ${questionnaire.label} déjà enregistré. Le statut se mettra à jour automatiquement.`
+      );
+      if (retryResult.previousOutcome.kind === "success") {
+        clearQuestionnaireSendAttempt(attemptKey);
+      }
+      return;
+    }
+    throw new Error(
+      "L'état de la tentative précédente a changé. "
+      + "Vérifie son statut et le contact GHL avant toute nouvelle tentative."
+    );
+  }
+
   closeModal();
-  await logAction("questionnaire.send_queued", "clients", clientId, {
-    clientName: client.name || "",
-    phone,
-    provider: "ghl",
-    questionnaireType: questionnaire.type,
-    formId: questionnaire.formId || "",
-    ghlTag: questionnaire.ghlTag
+  logQueuedBestEffort({
+    queuedSendId: retryRef.id,
+    resumedExistingAttempt: false,
+    outcome: "explicit_retry_before_external_effect",
+    previousSendId
   });
-  showToast(`Envoi ${questionnaire.label} lance. Le statut se mettra a jour automatiquement.`);
+  showToast(`Nouvelle tentative ${questionnaire.label} lancée. Le statut se mettra à jour automatiquement.`);
 }
 
 async function saveQuestionnaireSchedule(
@@ -11501,6 +12033,14 @@ async function toggleQuestionnaireSchedule(scheduleId) {
   const nextStatus = (schedule.status || "active") === "active" ? "paused" : "active";
   if (
     nextStatus === "active"
+    && !/^\d{4}-\d{2}-\d{2}$/.test(String(schedule.nextSendAt || ""))
+  ) {
+    throw new Error(
+      "Choisis une nouvelle date dans Modifier avant de reprendre cette automatisation."
+    );
+  }
+  if (
+    nextStatus === "active"
     && !questionnaireDeliveryConfigExact(
       schedule.questionnaireType || DEFAULT_QUESTIONNAIRE_TYPE,
       schedule.formId || ""
@@ -11577,8 +12117,9 @@ async function createQuestionnaireFollowupTask(sendId) {
 }
 
 async function createMissionFromQuestionnaireResponse(responseId) {
-  const response = portfolioQuestionnaireResponses().find((item) => item.id === responseId);
+  const response = questionnaireResponseForAction(responseId);
   if (!response) return;
+  assertQuestionnaireResponseCoachActionable(response, "La création d'une mission");
   if (!response.clientId) {
     showToast("Mission non creee: rattache d'abord la reponse a une fiche client.");
     return;
@@ -11626,6 +12167,47 @@ async function linkQuestionnaireResponseToClient(responseId, data) {
   // ownership requirement until the CoachRx repair has a fresh reference.
   const client = requireSelectableClientForCoach(data.clientId);
   const note = String(data.note || "").trim();
+  const sourceContentConflict = questionnaireHasUnresolvedSourceResponseConflict(response);
+  const identityReviewPending = questionnaireRequiresIdentityReview(response);
+  if (sourceContentConflict) {
+    await adjudicateQuestionnaireSourceConflict({
+      responseId,
+      observedResponse: response,
+      selectedClient: client,
+      note,
+      confirmKeptContent: data.confirmKeptContent,
+      confirmKeptClient: data.confirmKeptClient
+    });
+    closeModal();
+    return;
+  }
+  const reviewedAt = serverTimestamp();
+  const identityResolutionPatch = identityReviewPending
+    ? {
+        identityMatchConflict: false,
+        identityMatchReviewRequired: false,
+        identityMatchConflictReason: "",
+        identityMatchConflictRoutingStatus: "",
+        identityMatchConflictCandidateClientIds: [],
+        identityMatchConflictSourcePhone: "",
+        identityMatchConflictSourcePhones: [],
+        manualMatchConflict: false,
+        manualMatchReviewRequired: false,
+        manualMatchConflictReason: "",
+        manualMatchConflictRoutingStatus: "",
+        manualMatchConflictCandidateClientIds: [],
+        manualMatchConflictSourcePhone: "",
+        manualMatchConflictSourcePhones: [],
+        identityMatchResolutionStatus: "resolved",
+        identityMatchResolvedAt: reviewedAt,
+        identityMatchResolvedByUid: state.user?.uid || "",
+        identityMatchResolvedByEmail: state.user?.email || "",
+        identityMatchResolutionNote: note,
+        manualMatchConflictResolvedAt: reviewedAt,
+        manualMatchConflictResolvedByUid: state.user?.uid || "",
+        manualMatchConflictResolvedByEmail: state.user?.email || ""
+      }
+    : {};
   await patchEntity("questionnaireResponses", responseId, {
     coachId: client.coachId || state.selectedCoachId,
     coachRxId: client.coachRxId || coachRecordById(client.coachId || state.selectedCoachId)?.coachRxId || "",
@@ -11641,23 +12223,155 @@ async function linkQuestionnaireResponseToClient(responseId, data) {
     matchedManuallyByUid: state.user?.uid || "",
     matchedManuallyByEmail: state.user?.email || "",
     manualMatchNote: note,
+    ...identityResolutionPatch,
     updatedAt: serverTimestamp()
   }, "Reponse reliee au client.");
   await logAction("questionnaire_response.client_linked", "questionnaireResponses", responseId, {
     clientId: client.id,
     clientName: client.name || "",
     previousClientName: response.clientName || "",
-    hadResponsePhone: Boolean(questionnaireResponsePhone(response))
+    hadResponsePhone: Boolean(questionnaireResponsePhone(response)),
+    identityConflictResolved: identityReviewPending,
+    sourceResponseConflictPending: false
   });
   closeModal();
 }
 
+async function adjudicateQuestionnaireSourceConflict({
+  responseId,
+  observedResponse,
+  selectedClient,
+  note,
+  confirmKeptContent,
+  confirmKeptClient
+}) {
+  requireAdmin();
+  if (!String(note || "").trim()) {
+    throw new Error("Une note d'adjudication est obligatoire.");
+  }
+  if (confirmKeptContent !== "yes" || confirmKeptClient !== "yes") {
+    throw new Error("Confirme explicitement le contenu et la fiche client à conserver.");
+  }
+  const observedFingerprintKey = questionnaireSourceConflictFingerprintKey(observedResponse);
+  const observedFingerprints = questionnaireSourceConflictFingerprints(observedResponse);
+  if (observedFingerprints.length < 2) {
+    throw new Error("Les empreintes du conflit source sont incomplètes. Relance la synchronisation avant l'adjudication.");
+  }
+
+  const responseRef = doc(db, "questionnaireResponses", responseId);
+  const clientRef = doc(db, "clients", selectedClient.id);
+  const auditRef = doc(collection(db, "actionLogs"));
+  const resolvedAtIso = new Date().toISOString();
+  await runTransaction(db, async (transaction) => {
+    const responseSnapshot = await transaction.get(responseRef);
+    const clientSnapshot = await transaction.get(clientRef);
+    if (!responseSnapshot.exists()) throw new Error("Réponse questionnaire introuvable.");
+    if (!clientSnapshot.exists()) throw new Error("La fiche client sélectionnée n'existe plus.");
+
+    const currentResponse = { id: responseSnapshot.id, ...responseSnapshot.data() };
+    const currentClient = { id: clientSnapshot.id, ...clientSnapshot.data() };
+    if (!questionnaireHasUnresolvedSourceResponseConflict(currentResponse)) {
+      throw new Error("Ce conflit a déjà été résolu ou remplacé. Recharge la file de revue.");
+    }
+    if (questionnaireSourceConflictFingerprintKey(currentResponse) !== observedFingerprintKey) {
+      throw new Error("Les empreintes source ont changé depuis l'ouverture. Recharge et vérifie le nouveau conflit.");
+    }
+    if (!clientIsSelectableForCoach(currentClient, state.selectedCoachId)) {
+      throw new Error("La fiche choisie n'est plus un membre confirmé du portefeuille actuel.");
+    }
+
+    const reviewedAt = serverTimestamp();
+    const actorUid = state.user?.uid || "";
+    const actorEmail = state.user?.email || "";
+    const coachId = currentClient.coachId || state.selectedCoachId;
+    const coach = coachRecordById(coachId);
+    const internalClientId = String(currentClient.internalClientId || currentClient.id);
+    const resolutionEvent = {
+      action: "source_content_and_client_adjudicated",
+      resolvedAtIso,
+      resolvedByUid: actorUid,
+      resolvedByEmail: actorEmail,
+      note: String(note).trim(),
+      clientId: currentClient.id,
+      internalClientId,
+      fingerprints: observedFingerprints
+    };
+
+    transaction.update(responseRef, {
+      coachId,
+      coachRxId: currentClient.coachRxId || coach?.coachRxId || coachId,
+      coachName: currentClient.coachName || coach?.name || "",
+      clientId: currentClient.id,
+      internalClientId,
+      clientName: currentClient.name || currentResponse.clientName || "",
+      clientPhoneNormalized: clientPhone(currentClient) || questionnaireResponsePhone(currentResponse) || "",
+      processingStatus: "to_read",
+      routingStatus: "matched_manual",
+      routingSource: "admin_confirmed_internal_client",
+      matchedManuallyAt: reviewedAt,
+      matchedManuallyByUid: actorUid,
+      matchedManuallyByEmail: actorEmail,
+      manualMatchNote: String(note).trim(),
+      identityMatchConflict: false,
+      identityMatchReviewRequired: false,
+      identityMatchConflictReason: "",
+      identityMatchConflictRoutingStatus: "",
+      identityMatchConflictCandidateClientIds: [],
+      identityMatchConflictSourcePhone: "",
+      identityMatchConflictSourcePhones: [],
+      manualMatchConflict: false,
+      manualMatchReviewRequired: false,
+      manualMatchConflictReason: "",
+      manualMatchConflictRoutingStatus: "",
+      manualMatchConflictCandidateClientIds: [],
+      manualMatchConflictSourcePhone: "",
+      manualMatchConflictSourcePhones: [],
+      identityMatchResolutionStatus: "resolved_source_content_adjudication",
+      identityMatchResolvedAt: reviewedAt,
+      identityMatchResolvedByUid: actorUid,
+      identityMatchResolvedByEmail: actorEmail,
+      identityMatchResolutionNote: String(note).trim(),
+      manualMatchConflictResolvedAt: reviewedAt,
+      manualMatchConflictResolvedByUid: actorUid,
+      manualMatchConflictResolvedByEmail: actorEmail,
+      sourceResponseConflictResolvedAt: reviewedAt,
+      sourceResponseConflictResolvedByUid: actorUid,
+      sourceResponseConflictResolvedByEmail: actorEmail,
+      sourceResponseConflictResolutionStatus: "resolved_admin_content_and_client_confirmed",
+      sourceResponseConflictResolutionNote: String(note).trim(),
+      sourceResponseConflictResolutionFingerprints: observedFingerprints,
+      sourceResponseConflictContentConfirmed: true,
+      sourceResponseConflictClientConfirmed: true,
+      sourceResponseConflictKeptClientId: currentClient.id,
+      sourceResponseConflictKeptInternalClientId: internalClientId,
+      sourceResponseConflictResolutionHistory: arrayUnion(resolutionEvent),
+      updatedAt: reviewedAt
+    });
+    transaction.set(auditRef, {
+      action: "questionnaire_response.source_content_adjudicated",
+      entityType: "questionnaireResponses",
+      entityId: String(responseId),
+      coachId,
+      userId: actorUid,
+      userEmail: actorEmail,
+      userRole: state.profile?.role || "",
+      details: compactActionDetails({
+        clientId: currentClient.id,
+        internalClientId,
+        fingerprintCount: observedFingerprints.length,
+        contentConfirmed: true,
+        clientConfirmed: true,
+        note: String(note).trim()
+      }),
+      createdAt: reviewedAt
+    });
+  });
+  showToast("Conflit de contenu et lien client adjugés.");
+}
+
 async function markQuestionnaireResponseRead(responseId, options = {}) {
-  const response = uniqueById([
-    ...portfolioQuestionnaireResponses(),
-    ...questionnaireResponsesForAdminReview()
-  ]).find((item) => item.id === responseId);
-  if (!response) throw new Error("Reponse questionnaire introuvable.");
+  const response = questionnaireResponseForAction(responseId);
+  assertQuestionnaireResponseCoachActionable(response, "La lecture ou l'archivage");
   const responseCoachId = response?.coachId || state.selectedCoachId;
   await patchEntity("questionnaireResponses", responseId, {
     processingStatus: "read",
@@ -11693,6 +12407,7 @@ async function completeQuestionnaireTask(taskId, responseId = "") {
   if (!taskId) return;
   const task = operationalTaskById(taskId);
   if (!task) throw new Error("Mission introuvable dans le portefeuille confirme.");
+  assertQuestionnaireTaskActionable(task, "La fermeture de cette mission");
   const linkedResponseId = responseId || taskQuestionnaireResponseId(task);
   if (linkedResponseId) {
     await markQuestionnaireResponseRead(linkedResponseId, { silent: true });
@@ -11746,6 +12461,7 @@ async function completeTask(id, options = {}) {
   if (!id) return;
   const task = operationalTaskById(id);
   if (!task) throw new Error("Mission introuvable dans le portefeuille confirme.");
+  assertQuestionnaireTaskActionable(task, "La fermeture de cette mission");
   if (task?.source === "performance_rendement_reminder" && task.recurring === "weekly") {
     const nextDueAt = nextWeekdayIso(task.reminderWeekday || "monday");
     await patchEntity("tasks", id, {
@@ -11789,6 +12505,7 @@ async function completeTask(id, options = {}) {
 async function ignoreOperationalTask(id) {
   const task = operationalTaskById(id);
   if (!task) throw new Error("Mission introuvable dans le portefeuille confirme.");
+  assertQuestionnaireTaskActionable(task, "L'archivage de cette mission");
   await patchEntity("tasks", task.id, { status: "ignored", ignoredAt: serverTimestamp() }, "Tache masquee");
 }
 
@@ -12784,13 +13501,97 @@ function portfolioQuestionnaireResponses() {
   return portfolioOperationalRecords(state.data.questionnaireResponses || [], state.selectedCoachId, { allowUnlinked: false });
 }
 
+function questionnaireHasUnresolvedSourceResponseConflict(response = {}) {
+  return response.sourceResponseConflict === true
+    && !response.sourceResponseConflictResolvedAt;
+}
+
+function questionnaireRequiresIdentityReview(response = {}) {
+  return response.identityMatchReviewRequired === true
+    || response.manualMatchReviewRequired === true
+    || questionnaireHasUnresolvedSourceResponseConflict(response);
+}
+
+function questionnaireResponseCoachActionsBlocked(response = {}) {
+  return questionnaireRequiresIdentityReview(response);
+}
+
+function questionnaireResponseForAction(responseId) {
+  const cleanResponseId = String(responseId || "").trim();
+  if (!cleanResponseId) return null;
+  return uniqueById([
+    ...(state.data.questionnaireResponses || []),
+    ...(state.data.questionnaireIdentityReviewResponses || []),
+    ...(state.data.questionnaireReviewResponses || [])
+  ]).find((item) => String(item.id || "") === cleanResponseId) || null;
+}
+
+function assertQuestionnaireResponseCoachActionable(response, actionLabel = "Cette action") {
+  if (!response) throw new Error("Réponse questionnaire introuvable.");
+  if (questionnaireResponseCoachActionsBlocked(response)) {
+    throw new Error(`${actionLabel} est bloquée: une revue admin de l'identité ou du contenu source est requise.`);
+  }
+  return response;
+}
+
+function questionnaireTaskRequiresIdentityReview(task = {}) {
+  if (!isQuestionnaireResponseTask(task)) return false;
+  const response = questionnaireResponseForAction(taskQuestionnaireResponseId(task));
+  return !response || questionnaireResponseCoachActionsBlocked(response);
+}
+
+function assertQuestionnaireTaskActionable(task, actionLabel = "Cette action") {
+  if (!task) throw new Error("Mission introuvable.");
+  if (questionnaireTaskRequiresIdentityReview(task)) {
+    throw new Error(`${actionLabel} est bloquée: la réponse liée exige une revue admin.`);
+  }
+  return task;
+}
+
+function questionnaireSourceConflictFingerprints(response = {}) {
+  return [...new Set(
+    (Array.isArray(response.sourceResponseConflictFingerprints)
+      ? response.sourceResponseConflictFingerprints
+      : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+  )].sort();
+}
+
+function questionnaireSourceConflictFingerprintKey(response = {}) {
+  return JSON.stringify(questionnaireSourceConflictFingerprints(response));
+}
+
+function questionnaireIdentityReviewReason(response = {}) {
+  const reason = String(
+    response.identityMatchConflictReason
+    || response.manualMatchConflictReason
+    || response.sourceResponseConflictReason
+    || ""
+  ).trim();
+  const labels = {
+    duplicate_source_response_id: "Deux contenus differents partagent le meme identifiant source. Le contenu doit etre arbitre avant de fermer la revue.",
+    phone_routes_to_different_client: "Le telephone pointe maintenant vers une autre fiche que le lien client deja confirme.",
+    phone_matches_multiple_clients: "Le telephone correspond a plusieurs fiches clients; le bon lien doit etre confirme.",
+    historical_identity_conflict: "Une contradiction identitaire historique reste a confirmer par un admin."
+  };
+  return labels[reason] || "Le lien client contient une contradiction identitaire qui exige une confirmation admin.";
+}
+
 function questionnaireResponsesForAdminReview() {
   if (!isInfoAdmin()) return [];
   return uniqueById([
+    ...(state.data.questionnaireIdentityReviewResponses || []),
     ...(state.data.questionnaireReviewResponses || []),
     ...(state.data.questionnaireResponses || [])
-      .filter((item) => operationalRecordClientLinkStatus(item) === "unlinked")
-  ]).filter((item) => !["read", "archived", "validated"].includes(item.processingStatus || ""));
+      .filter((item) =>
+        questionnaireRequiresIdentityReview(item)
+        || operationalRecordClientLinkStatus(item) === "unlinked"
+      )
+  ]).filter((item) =>
+    questionnaireRequiresIdentityReview(item)
+    || !["read", "archived", "validated"].includes(item.processingStatus || "")
+  );
 }
 
 function questionnaireResponseForAdminLinking(responseId) {
@@ -13827,7 +14628,10 @@ function questionnaireSendActionHint(send) {
   const status = String(send?.status || "").toLowerCase();
   const delivery = String(send?.deliveryStatus || "").toLowerCase();
   if (status === "sent" || delivery === "tag_added") {
-    return "SMS declenche par le workflow GHL; attendre la reponse du client.";
+    return "Workflow GHL déclenché; le courriel ou le SMS configuré sera envoyé, puis le tag retiré.";
+  }
+  if (delivery === "ghl_effect_uncertain") {
+    return "Livraison GHL incertaine: vérifier le contact et le workflow avant toute nouvelle tentative.";
   }
   if (delivery === "missing_phone") {
     return "Ajouter un telephone normalise dans la fiche client, puis reessayer.";
@@ -13845,7 +14649,7 @@ function questionnaireSendActionHint(send) {
     return "Ancienne tentative bloquee par l'appel direct; recreer l'envoi avec la file Firestore.";
   }
   if (delivery === "ghl_error" || delivery === "ghl_rejected") {
-    return "Verifier le token GHL, les permissions et le workflow dashboardcoach.";
+    return "Vérifier le token GHL, les permissions et le workflow associé à ce questionnaire.";
   }
   if (status === "pending") {
     return "Tentative en cours; verifier le statut dans quelques secondes.";

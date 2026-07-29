@@ -29,6 +29,7 @@ const {
   createQuestionnaireService
 } = require("./questionnaire-service");
 const questionnaireSchedulerSafety = require("./questionnaire-scheduler-safety");
+const questionnaireSendSafety = require("./questionnaire-send-safety");
 
 admin.initializeApp();
 
@@ -101,6 +102,7 @@ const QUESTIONNAIRE_SCHEDULER_CANARY_CONTROL_PATH = "questionnaireSchedulerCanar
 const QUESTIONNAIRE_SCHEDULER_JOB_NAME =
   "projects/cfsb-dashboard-coach-aa9a4/locations/us-central1/jobs/"
   + "firebase-schedule-scheduledQuestionnaireSendPlans-us-central1";
+const QUESTIONNAIRE_SEND_RECOVERY_LIMIT = EXPIRED_EXECUTION_REAP_LIMIT;
 const DASHBOARD_SHEET_ID = "18-S_a5L6fXYZXtcgHBlCKpcygmnr5Ekj_WM5358KZ7E";
 const QUESTIONNAIRE_RESPONSES_SHEET_ID = "11QO5GOQGHCpT8_nLEgKHqjFFsZ4emPwZEt2Vlu3WRJo";
 const FIREBASE_SYNC_SERVICE_ACCOUNT = "129233025317-compute@developer.gserviceaccount.com";
@@ -1118,8 +1120,7 @@ exports.sendQuestionnaire = onCall(
   {
     region: "us-central1",
     invoker: "public",
-    secrets: [ghlPrivateToken],
-    timeoutSeconds: 60
+    timeoutSeconds: 30
   },
   async (request) => {
     if (!request.auth) {
@@ -1181,40 +1182,13 @@ exports.sendQuestionnaire = onCall(
       );
     }
     const requestedSendId = cleanString(request.data?.sendId);
-    const sendRef = requestedSendId && /^[A-Za-z0-9_-]{8,80}$/.test(requestedSendId)
-      ? db.collection("questionnaireSends").doc(requestedSendId)
-      : db.collection("questionnaireSends").doc();
-    const existingSendSnap = await sendRef.get();
-    if (existingSendSnap.exists) {
-      const existingSend = existingSendSnap.data() || {};
-      if (cleanString(existingSend.coachId) !== coachId || cleanString(existingSend.clientId) !== clientId) {
-        throw new HttpsError("permission-denied", "Cette tentative questionnaire ne correspond pas au client.");
-      }
-      if (
-        cleanString(existingSend.status) === "sent" ||
-        cleanString(existingSend.deliveryStatus) === "tag_added"
-      ) {
-        return {
-          ok: true,
-          duplicate: true,
-          sendId: sendRef.id,
-          status: "sent",
-          message: `${questionnaire.label} avait deja ete transmis pour cette tentative.`
-        };
-      }
-      if (
-        cleanString(existingSend.status) === "pending" &&
-        ["backend_processing", "ghl_pending"].includes(cleanString(existingSend.deliveryStatus))
-      ) {
-        return {
-          ok: true,
-          duplicate: true,
-          sendId: sendRef.id,
-          status: "pending",
-          message: "Cette tentative d'envoi est deja en traitement."
-        };
-      }
+    if (!/^[A-Za-z0-9_-]{8,80}$/.test(requestedSendId)) {
+      throw new HttpsError(
+        "invalid-argument",
+        "sendId stable manquant ou invalide."
+      );
     }
+    const sendRef = db.collection("questionnaireSends").doc(requestedSendId);
     const baseAttempt = {
       coachId,
       clientId,
@@ -1222,7 +1196,9 @@ exports.sendQuestionnaire = onCall(
       clientPhoneNormalized: phoneNormalized,
       coachName,
       status: "pending",
-      deliveryStatus: "ghl_pending",
+      deliveryStatus: "firestore_queue_pending",
+      externalEffectState: "not_started",
+      errorMessage: "",
       questionnaireType: questionnaire.type,
       questionnaireLabel: questionnaire.label,
       formId: questionnaire.formId || "",
@@ -1233,67 +1209,118 @@ exports.sendQuestionnaire = onCall(
       requestedByEmail: request.auth.token.email || "",
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      source: "firebase_function_send_questionnaire"
+      source: "dashboard_questionnaire_send_click"
     };
-    await sendRef.set(baseAttempt, { merge: true });
-
-    if (!phoneNormalized) {
-      const message = "Telephone invalide. Un numero a 10 chiffres est requis pour l'envoi.";
-      await markSend(sendRef, {
-        status: "error",
-        deliveryStatus: "missing_phone",
-        errorMessage: message
-      });
-      return { ok: false, sendId: sendRef.id, status: "error", message };
-    }
-
-    const token = cleanString(safeSecretValue(ghlPrivateToken));
-    if (!token) {
-      const message = "GHL non configure: ajoute GHL_PRIVATE_TOKEN dans Firebase Functions.";
-      await markSend(sendRef, {
-        status: "error",
-        deliveryStatus: "missing_ghl_config",
-        errorMessage: message
-      });
-      return { ok: false, sendId: sendRef.id, status: "error", message };
-    }
-
-    try {
-      const contact = await findGhlContactByPhone({ token, locationId: GHL_LOCATION_ID, phoneNormalized });
-      if (!contact?.id) {
-        const message = "Contact GHL introuvable pour le numero confirme dans la fiche client.";
-        await markSend(sendRef, {
-          status: "error",
-          deliveryStatus: "contact_not_found",
-          errorMessage: message
-        });
-        return { ok: false, sendId: sendRef.id, status: "error", message };
+    let duplicate = false;
+    let existingSend = null;
+    await db.runTransaction(async (transaction) => {
+      const existingSendSnap = await transaction.get(sendRef);
+      if (!existingSendSnap.exists) {
+        transaction.create(sendRef, baseAttempt);
+        return;
       }
+      existingSend = existingSendSnap.data() || {};
+      if (
+        cleanString(existingSend.coachId) !== coachId
+        || cleanString(existingSend.clientId) !== clientId
+      ) {
+        throw new HttpsError(
+          "permission-denied",
+          "Cette tentative questionnaire ne correspond pas au client."
+        );
+      }
+      if (
+        cleanString(existingSend.formId) !== cleanString(baseAttempt.formId)
+        || cleanString(existingSend.questionnaireType)
+          !== cleanString(baseAttempt.questionnaireType)
+      ) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Cette tentative correspond a un autre questionnaire."
+        );
+      }
+      duplicate = true;
+    });
 
-      await addGhlTag({ token, contactId: contact.id, tag: questionnaire.ghlTag });
-      await markSend(sendRef, {
-        status: "sent",
-        deliveryStatus: "tag_added",
-        sentAt: admin.firestore.FieldValue.serverTimestamp(),
-        ghlContactId: contact.id,
-        ghlContactName: cleanString(contact.contactName || contact.fullName || contact.name)
-      });
-
+    if (duplicate) {
+      const status = cleanString(existingSend.status) || "pending";
+      const disposition =
+        questionnaireSendSafety.duplicateSendDisposition(existingSend);
+      if (disposition === "effect_uncertain") {
+        return {
+          ok: false,
+          duplicate: true,
+          queued: false,
+          retryWithNewSendId: false,
+          requiresManualReview: true,
+          sendId: sendRef.id,
+          status: "uncertain",
+          message:
+            "Le resultat GHL de cette tentative est incertain. "
+            + "Une verification manuelle est requise avant toute autre action."
+        };
+      }
+      if (disposition === "completed") {
+        return {
+          ok: true,
+          duplicate: true,
+          queued: false,
+          retryWithNewSendId: false,
+          requiresManualReview: false,
+          sendId: sendRef.id,
+          status: "sent",
+          message: `${questionnaire.label} avait deja ete transmis pour cette tentative.`
+        };
+      }
+      if (disposition === "terminal_pre_effect") {
+        const errorMessage = cleanString(existingSend.errorMessage);
+        return {
+          ok: false,
+          duplicate: true,
+          queued: false,
+          retryWithNewSendId: true,
+          requiresManualReview: false,
+          sendId: sendRef.id,
+          status,
+          message: `${
+            errorMessage || "Cette tentative a echoue avant tout effet GHL."
+          } Cree une nouvelle tentative avec un nouveau sendId pour reessayer.`
+        };
+      }
+      if (disposition === "active") {
+        return {
+          ok: true,
+          duplicate: true,
+          queued: true,
+          retryWithNewSendId: false,
+          requiresManualReview: false,
+          sendId: sendRef.id,
+          status: "pending",
+          message: "Cette tentative d'envoi est deja en traitement."
+        };
+      }
       return {
-        ok: true,
+        ok: false,
+        duplicate: true,
+        queued: false,
+        retryWithNewSendId: false,
+        requiresManualReview: true,
         sendId: sendRef.id,
-        status: "sent",
-        message: `Tag ${questionnaire.ghlTag} ajoute dans GHL. Le workflow devrait envoyer ${questionnaire.label}.`
+        status,
+        message:
+          "L'etat de cette tentative ne permet pas un rejeu automatique. "
+          + "Une verification manuelle est requise."
       };
-    } catch (error) {
-      const message = humanizeGhlError(error);
-      await markSend(sendRef, {
-        status: "error",
-        deliveryStatus: "ghl_error",
-        errorMessage: message
-      });
-      return { ok: false, sendId: sendRef.id, status: "error", message };
     }
+
+    return {
+      ok: true,
+      duplicate: false,
+      queued: true,
+      sendId: sendRef.id,
+      status: "pending",
+      message: `${questionnaire.label} a ete mis en file d'envoi securisee.`
+    };
   }
 );
 
@@ -1302,7 +1329,8 @@ exports.processQuestionnaireSendRequest = onDocumentCreated(
     region: "us-central1",
     document: "questionnaireSends/{sendId}",
     secrets: [ghlPrivateToken],
-    timeoutSeconds: 30
+    timeoutSeconds: 30,
+    retry: true
   },
   async (event) => {
     const snap = event.data;
@@ -1334,6 +1362,7 @@ async function processQuestionnaireSendFromQueue({ sendRef, send, sendId = "", e
   send = claimedSend;
   const clientId = cleanString(send.clientId);
   const requestedByUid = cleanString(send.requestedByUid);
+  const scheduledSend = cleanString(send.source) === "dashboard_questionnaire_scheduled";
   if (!clientId) {
     await markSend(sendRef, {
       status: "error",
@@ -1390,7 +1419,8 @@ async function processQuestionnaireSendFromQueue({ sendRef, send, sendId = "", e
     return;
   }
 
-  if (!profileSnap?.exists || profileSnap.get("active") !== true) {
+  const requesterMustRemainActive = !scheduledSend || canaryEnvelope;
+  if (requesterMustRemainActive && (!profileSnap?.exists || profileSnap.get("active") !== true)) {
     await markSend(sendRef, {
       status: "error",
       deliveryStatus: "requester_not_active",
@@ -1399,7 +1429,7 @@ async function processQuestionnaireSendFromQueue({ sendRef, send, sendId = "", e
     return;
   }
 
-  const profile = profileSnap.data() || {};
+  const profile = profileSnap?.exists ? profileSnap.data() || {} : {};
   if (schedulerCanary && profile.role !== "admin") {
     await markSend(sendRef, {
       status: "error",
@@ -1408,7 +1438,7 @@ async function processQuestionnaireSendFromQueue({ sendRef, send, sendId = "", e
     });
     return;
   }
-  if (!canPilotProfileActOnCoach(profile, coachId)) {
+  if ((!scheduledSend || schedulerCanary) && !canPilotProfileActOnCoach(profile, coachId)) {
     await recordAccessIssue({
       source: "processQuestionnaireSendRequest",
       uid: cleanString(send.requestedByUid),
@@ -1493,7 +1523,7 @@ async function processQuestionnaireSendFromQueue({ sendRef, send, sendId = "", e
     return;
   }
 
-  let canaryExternalEffectClaimed = false;
+  let externalEffectClaimed = false;
   try {
     const contact = await findGhlContactByPhone({ token, locationId: GHL_LOCATION_ID, phoneNormalized });
     if (!contact?.id) {
@@ -1516,7 +1546,7 @@ async function processQuestionnaireSendFromQueue({ sendRef, send, sendId = "", e
         });
         return;
       }
-      canaryExternalEffectClaimed = await claimQuestionnaireCanaryExternalEffect(sendRef, {
+      externalEffectClaimed = await claimQuestionnaireCanaryExternalEffect(sendRef, {
         eventId,
         expectedContactId,
         targetRef: clientSnap.ref,
@@ -1524,35 +1554,49 @@ async function processQuestionnaireSendFromQueue({ sendRef, send, sendId = "", e
         releaseCommit: send.canaryReleaseCommit,
         armedUntil: send.armedUntil
       });
-      if (!canaryExternalEffectClaimed) {
-        const afterClaimSnap = await sendRef.get();
-        const afterClaim = afterClaimSnap.exists ? afterClaimSnap.data() || {} : {};
-        if (cleanString(afterClaim.externalEffectState)) {
-          return;
-        }
-        await markSend(sendRef, {
-          status: "error",
-          deliveryStatus: "canary_external_effect_already_claimed",
-          errorMessage: "Canari Scheduler bloque: effet externe deja reclame ou incertain."
-        });
+    } else {
+      externalEffectClaimed = await claimQuestionnaireExternalEffect(sendRef, {
+        eventId,
+        expectedContactId: contact.id
+      });
+    }
+    if (!externalEffectClaimed) {
+      const afterClaimSnap = await sendRef.get();
+      const afterClaim = afterClaimSnap.exists ? afterClaimSnap.data() || {} : {};
+      if (["started", "completed", "uncertain"].includes(
+        questionnaireSendSafety.externalEffectState(afterClaim)
+      )) {
         return;
       }
+      await markSend(sendRef, {
+        status: "error",
+        deliveryStatus: schedulerCanary
+          ? "canary_external_effect_already_claimed"
+          : "external_effect_claim_rejected",
+        errorMessage: schedulerCanary
+          ? "Canari Scheduler bloque: effet externe deja reclame ou incertain."
+          : "Envoi GHL bloque: la reservation de l'effet externe a ete refusee."
+      });
+      return;
     }
 
     const addTagsReceipt = await addGhlTag({
       token,
       contactId: contact.id,
       tag: questionnaire.ghlTag,
-      includeResponseMeta: schedulerCanary
+      includeResponseMeta: true
     });
     if (
-      schedulerCanary
-      && !questionnaireSchedulerSafety.validGhlAddTagsReceipt(
+      !questionnaireSchedulerSafety.validGhlAddTagsReceipt(
         addTagsReceipt,
         questionnaire.ghlTag
       )
     ) {
-      throw new Error("Canari GHL: le reçu Add Tags ne confirme pas le tag exact.");
+      throw new Error(
+        schedulerCanary
+          ? "Canari GHL: le reçu Add Tags ne confirme pas le tag exact."
+          : "Le reçu GHL Add Tags ne confirme pas le tag exact."
+      );
     }
     await markSend(sendRef, {
       status: "sent",
@@ -1560,24 +1604,68 @@ async function processQuestionnaireSendFromQueue({ sendRef, send, sendId = "", e
       sentAt: admin.firestore.FieldValue.serverTimestamp(),
       ghlContactId: contact.id,
       ghlContactName: cleanString(contact.contactName || contact.fullName || contact.name),
-      ...(schedulerCanary ? {
-        externalEffectState: "completed",
-        externalEffectProof:
-          questionnaireSchedulerSafety.GHL_ADD_TAGS_RESPONSE_PROOF,
-        externalEffectCompletedAt: admin.firestore.FieldValue.serverTimestamp()
-      } : {})
+      externalEffectState: "completed",
+      externalEffectProof:
+        questionnaireSchedulerSafety.GHL_ADD_TAGS_RESPONSE_PROOF,
+      externalEffectCompletedAt: admin.firestore.FieldValue.serverTimestamp()
     });
   } catch (error) {
     await markSend(sendRef, {
       status: "error",
-      deliveryStatus: "ghl_error",
+      deliveryStatus: externalEffectClaimed ? "ghl_effect_uncertain" : "ghl_error",
       errorMessage: humanizeGhlError(error),
-      ...(schedulerCanary && canaryExternalEffectClaimed ? {
+      ...(externalEffectClaimed ? {
         externalEffectState: "uncertain",
         externalEffectUncertainAt: admin.firestore.FieldValue.serverTimestamp()
       } : {})
     });
   }
+}
+
+async function recoverExpiredQuestionnaireSendClaims({
+  now = admin.firestore.Timestamp.now(),
+  limit = EXPIRED_EXECUTION_REAP_LIMIT,
+  eventId = "questionnaire_send_recovery"
+} = {}) {
+  const nowMs = timestampMillis(now);
+  return scanExpiredExecutionDocuments({
+    collectionName: "questionnaireSends",
+    expiresField: "claimExpiresAt",
+    now,
+    limit: Math.min(QUESTIONNAIRE_SEND_RECOVERY_LIMIT, Number(limit) || EXPIRED_EXECUTION_REAP_LIMIT),
+    visit: async (docSnap) => {
+      const send = docSnap.data() || {};
+      const resolution = questionnaireSendSafety.expiredClaimResolution({ send, nowMs });
+      if (!resolution.eligible) {
+        if (resolution.action === "terminal_cleanup") {
+          await docSnap.ref.update({
+            claimExpiresAt: admin.firestore.FieldValue.delete(),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+          return { eligible: false, cleaned: true };
+        }
+        return { eligible: false, cleaned: false };
+      }
+      if (resolution.action === "mark_uncertain") {
+        await markSend(docSnap.ref, {
+          status: "error",
+          deliveryStatus: "ghl_effect_uncertain",
+          externalEffectState: "uncertain",
+          externalEffectUncertainAt: admin.firestore.FieldValue.serverTimestamp(),
+          errorMessage:
+            "La reservation GHL a expire apres le debut de l'effet externe; verification manuelle requise."
+        });
+        return { eligible: true, action: "marked_uncertain" };
+      }
+      await processQuestionnaireSendFromQueue({
+        sendRef: docSnap.ref,
+        sendId: docSnap.id,
+        send,
+        eventId: `${cleanString(eventId)}_${docSnap.id}`.slice(0, 240)
+      });
+      return { eligible: true, action: "retried_before_external_effect" };
+    }
+  });
 }
 
 exports.syncDashboardFromSheets = onCall(
@@ -1639,6 +1727,68 @@ exports.scheduledQuestionnaireResponseSync = onSchedule(
   }
 );
 
+exports.scheduledQuestionnaireSendRecovery = onSchedule(
+  {
+    region: "us-central1",
+    schedule: "every 10 minutes",
+    timeZone: "America/Toronto",
+    secrets: [ghlPrivateToken],
+    timeoutSeconds: 120,
+    memory: "512MiB"
+  },
+  async (event) => {
+    const summary = await recoverExpiredQuestionnaireSendClaims({
+      eventId: cleanString(event?.id || event?.scheduleTime || "scheduled_recovery")
+    });
+    await db.collection("syncRuns").doc(
+      `questionnaire_send_recovery_${Date.now()}`
+    ).set({
+      source: "firebase_function_questionnaire_send_recovery",
+      status: "success",
+      scanned: Number(summary.scanned || 0),
+      eligible: Number(summary.eligible || 0),
+      skipped: Number(summary.skipped || 0),
+      actions: summary.actions || {},
+      triggeredByEventId: cleanString(event?.id),
+      triggeredByJobName: cleanString(event?.jobName),
+      triggeredByScheduleTime: cleanString(event?.scheduleTime),
+      syncedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+  }
+);
+
+async function loadDueQuestionnaireSchedules({
+  today,
+  pageSize = 100,
+  maxSchedules = 400
+} = {}) {
+  const docs = [];
+  let cursor = null;
+  let pages = 0;
+  let lastPageWasFull = false;
+  while (docs.length < maxSchedules) {
+    const limit = Math.min(pageSize, maxSchedules - docs.length);
+    let query = db.collection("questionnaireSchedules")
+      .where("status", "==", "active")
+      .where("nextSendAt", "<=", today)
+      .orderBy("nextSendAt", "asc")
+      .orderBy(admin.firestore.FieldPath.documentId(), "asc")
+      .limit(limit);
+    if (cursor) query = query.startAfter(cursor);
+    const snapshot = await query.get();
+    pages += 1;
+    docs.push(...snapshot.docs);
+    lastPageWasFull = snapshot.docs.length === limit;
+    if (!lastPageWasFull) break;
+    cursor = snapshot.docs[snapshot.docs.length - 1];
+  }
+  return {
+    docs,
+    pages,
+    truncated: docs.length >= maxSchedules && lastPageWasFull
+  };
+}
+
 exports.scheduledQuestionnaireSendPlans = onSchedule(
   {
     region: "us-central1",
@@ -1649,14 +1799,12 @@ exports.scheduledQuestionnaireSendPlans = onSchedule(
   },
   async (event) => {
     const today = todayTorontoIsoDate();
-    const [controlSnap, snap] = await Promise.all([
-      db.doc(QUESTIONNAIRE_SCHEDULER_CANARY_CONTROL_PATH).get(),
-      db.collection("questionnaireSchedules")
-        .where("status", "==", "active")
-        .where("nextSendAt", "<=", today)
-        .limit(100)
-        .get()
-    ]);
+    const controlSnap = await db.doc(QUESTIONNAIRE_SCHEDULER_CANARY_CONTROL_PATH).get();
+    const due = await loadDueQuestionnaireSchedules({
+      today,
+      maxSchedules: controlSnap.exists ? 100 : 400
+    });
+    const snap = { docs: due.docs, size: due.docs.length };
     const canaryDecision = questionnaireSchedulerCanaryControlDecision({
       exists: controlSnap.exists,
       control: controlSnap.exists ? controlSnap.data() || {} : {},
@@ -1672,6 +1820,8 @@ exports.scheduledQuestionnaireSendPlans = onSchedule(
         dueSchedules: snap.size,
         queued: 0,
         skipped: snap.size,
+        pages: due.pages,
+        truncated: due.truncated,
         canaryControl,
         canaryBlocked: true
       });
@@ -1748,8 +1898,8 @@ exports.scheduledQuestionnaireSendPlans = onSchedule(
       if (!questionnaireDeliveryIsReady(questionnaire)) {
         skipped += 1;
         batch.update(docSnap.ref, {
-          status: "paused",
-          lastError: "Planification suspendue: workflow GHL non verifie pour ce questionnaire.",
+          deliveryState: "blocked_delivery",
+          lastError: "Planification en attente: workflow GHL non verifie pour ce questionnaire.",
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
         batchWrites += 1;
@@ -1787,8 +1937,6 @@ exports.scheduledQuestionnaireSendPlans = onSchedule(
       }
 
       const sendRef = db.collection("questionnaireSends").doc(`scheduled_${docSnap.id}_${today}`);
-      const nextSendAt = nextQuestionnaireScheduleDate(schedule.frequency, today);
-      const nextStatus = schedule.frequency === "once" ? "paused" : "active";
       const sendData = {
         coachId,
         coachRxId: cleanString(schedule.coachRxId),
@@ -1798,6 +1946,7 @@ exports.scheduledQuestionnaireSendPlans = onSchedule(
         clientPhoneNormalized: scheduledClientPhone,
         status: "pending",
         deliveryStatus: "firestore_queue_pending",
+        externalEffectState: "not_started",
         errorMessage: "",
         questionnaireType: questionnaire.type,
         questionnaireLabel: questionnaire.label,
@@ -1808,6 +1957,7 @@ exports.scheduledQuestionnaireSendPlans = onSchedule(
         requestedByUid: cleanString(schedule.requestedByUid),
         requestedByEmail: cleanString(schedule.requestedByEmail),
         questionnaireScheduleId: docSnap.id,
+        scheduleFrequency: cleanString(schedule.frequency),
         scheduledFor: today,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -1824,8 +1974,9 @@ exports.scheduledQuestionnaireSendPlans = onSchedule(
         lastQueuedAt: admin.firestore.FieldValue.serverTimestamp(),
         lastQueuedSendId: sendRef.id,
         lastError: "",
-        nextSendAt,
-        status: nextStatus,
+        deliveryState: "queued",
+        pendingSendId: sendRef.id,
+        pendingScheduledFor: today,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         triggeredByEventId: event?.id || "",
         triggeredByJobName: cleanString(event?.jobName),
@@ -1840,6 +1991,27 @@ exports.scheduledQuestionnaireSendPlans = onSchedule(
         schedulePatch
       });
       if (!queueResult.queued) {
+        if (queueResult.reason === "send_exists") {
+          const existingSendSnap = await sendRef.get();
+          const existingSend = existingSendSnap.exists ? existingSendSnap.data() || {} : {};
+          if (
+            cleanString(existingSend.status) === "sent"
+            || cleanString(existingSend.deliveryStatus) === "tag_added"
+          ) {
+            await markSend(sendRef, {
+              status: "sent",
+              deliveryStatus: "tag_added",
+              externalEffectState: cleanString(existingSend.externalEffectState) || "completed"
+            });
+          } else if (cleanString(existingSend.status) === "error") {
+            await markSend(sendRef, {
+              status: "error",
+              deliveryStatus: cleanString(existingSend.deliveryStatus) || "ghl_error",
+              externalEffectState: cleanString(existingSend.externalEffectState) || "not_started",
+              errorMessage: cleanString(existingSend.errorMessage)
+            });
+          }
+        }
         skipped += 1;
         continue;
       }
@@ -1854,6 +2026,8 @@ exports.scheduledQuestionnaireSendPlans = onSchedule(
       dueSchedules: snap.size,
       queued,
       skipped,
+      pages: due.pages,
+      truncated: due.truncated,
       canaryControl
     });
   }
@@ -5413,6 +5587,8 @@ async function recordQuestionnaireScheduleSyncRun({
   dueSchedules = 0,
   queued = 0,
   skipped = 0,
+  pages = 0,
+  truncated = false,
   canaryControl = null,
   canaryBlocked = false
 } = {}) {
@@ -5422,6 +5598,8 @@ async function recordQuestionnaireScheduleSyncRun({
     dueSchedules: Number(dueSchedules || 0),
     queued: Number(queued || 0),
     skipped: Number(skipped || 0),
+    pages: Number(pages || 0),
+    backlogDetected: truncated === true,
     syncedAt: admin.firestore.FieldValue.serverTimestamp(),
     triggeredByEventId: event?.id || "",
     triggeredByJobName: cleanString(event?.jobName),
@@ -8787,28 +8965,171 @@ function buildQuestionnairePhoneRoutingIndex(clientRecords = [], coachDirectory 
   return candidatesByPhone;
 }
 
-function annotateQuestionnaireRowsByPhone(rows = [], routingIndex = new Map()) {
-  return rows.map((row) => {
+const QUESTIONNAIRE_SOURCE_RESPONSE_ID_ALIASES = [
+  "response_id",
+  "response id",
+  "submission_id",
+  "submission id",
+  "ghl submission id",
+  "id"
+];
+
+const QUESTIONNAIRE_SUBMITTED_AT_ALIASES = [
+  "submitted_at",
+  "submitted at",
+  "submission date",
+  "date soumission",
+  "date_submission",
+  "received_at",
+  "received at"
+];
+
+function questionnaireSourceResponseId(row = {}) {
+  return pick(row, QUESTIONNAIRE_SOURCE_RESPONSE_ID_ALIASES);
+}
+
+function questionnaireSubmittedAt(row = {}) {
+  return pick(row, QUESTIONNAIRE_SUBMITTED_AT_ALIASES);
+}
+
+function questionnaireSourceCollisionValue(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map(questionnaireSourceCollisionValue)
+      .filter((item) => item !== "")
+      .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+  }
+  if (typeof value === "boolean" || typeof value === "number") return value;
+  return cleanString(value);
+}
+
+function questionnaireSourceRowFingerprint(row = {}) {
+  const expanded = expandQuestionnaireRow(row);
+  const phoneAliases = new Set(PHONE_ALIASES.map(keyOf));
+  const ignored = new Set([
+    ...QUESTIONNAIRE_SOURCE_RESPONSE_ID_ALIASES,
+    "source_questionnaire_tab",
+    "raw_payload_json",
+    "raw payload json",
+    "payload_json",
+    "payload json",
+    "created_at",
+    "updated_at",
+    "processed_at",
+    "synced_at",
+    "dashboard_sync_status",
+    "chat_notification_status",
+    "coach_action_done",
+    "coach_action_note"
+  ].map(keyOf));
+  const canonicalEntries = Object.entries(expanded)
+    .map(([key, value]) => [keyOf(key), value])
+    .filter(([key, value]) =>
+      !ignored.has(key)
+      && !phoneAliases.has(key)
+      && !key.startsWith("questionnairerouting")
+      && !key.startsWith("questionnairerouted")
+      && !key.startsWith("questionnairesourceresponseconflict")
+      && value !== undefined
+      && value !== null
+      && !(typeof value === "string" && cleanString(value) === "")
+      && !(Array.isArray(value) && value.length === 0)
+    )
+    .map(([key, value]) => [
+      key,
+      questionnaireSourceCollisionValue(value)
+    ])
+    .sort(([left], [right]) => left.localeCompare(right));
+  canonicalEntries.push(["clientphonenormalized", questionnairePhone(expanded)]);
+  return crypto
+    .createHash("sha256")
+    .update(JSON.stringify(canonicalEntries))
+    .digest("hex");
+}
+
+function questionnaireSourceResponseCollisionIndex(rows = []) {
+  const buckets = new Map();
+  rows.forEach((row) => {
     const expanded = expandQuestionnaireRow(row);
+    const sourceResponseId = questionnaireSourceResponseId(expanded);
+    if (!sourceResponseId) return;
+    const bucket = buckets.get(sourceResponseId) || {
+      count: 0,
+      fingerprints: new Set(),
+      phones: new Set(),
+      submittedAts: new Set(),
+      sourceTabs: new Set(),
+      candidateClientIds: new Set()
+    };
+    bucket.count += 1;
+    bucket.fingerprints.add(questionnaireSourceRowFingerprint(expanded));
+    const phone = questionnairePhone(expanded);
+    const submittedAt = questionnaireSubmittedAt(expanded);
+    const sourceTab = pick(expanded, ["source_questionnaire_tab"]);
+    const candidateIds = pick(expanded, ["questionnaire_routing_candidate_client_ids"])
+      .split(",")
+      .map(cleanString)
+      .filter(Boolean);
+    if (phone) bucket.phones.add(phone);
+    if (submittedAt) bucket.submittedAts.add(submittedAt);
+    if (sourceTab) bucket.sourceTabs.add(sourceTab);
+    candidateIds.forEach((candidateId) => bucket.candidateClientIds.add(candidateId));
+    buckets.set(sourceResponseId, bucket);
+  });
+
+  const collisions = new Map();
+  buckets.forEach((bucket, sourceResponseId) => {
+    if (bucket.fingerprints.size <= 1) return;
+    collisions.set(sourceResponseId, {
+      conflict: true,
+      reason: "duplicate_source_response_id",
+      count: bucket.count,
+      fingerprints: [...bucket.fingerprints].sort(),
+      phones: [...bucket.phones].sort(),
+      submittedAts: [...bucket.submittedAts].sort(),
+      sourceTabs: [...bucket.sourceTabs].sort(),
+      candidateClientIds: [...bucket.candidateClientIds].sort()
+    });
+  });
+  return collisions;
+}
+
+function annotateQuestionnaireRowsByPhone(rows = [], routingIndex = new Map()) {
+  const expandedRows = rows.map(expandQuestionnaireRow);
+  const sourceResponseCollisions = questionnaireSourceResponseCollisionIndex(expandedRows);
+  return expandedRows.map((expanded) => {
     const phone = questionnairePhone(expanded);
     const candidates = phone ? (routingIndex.get(phone) || []) : [];
-    const status = !phone
-      ? "missing_phone"
-      : candidates.length === 1
-        ? "matched"
-        : candidates.length > 1
-          ? "conflict"
-          : "unmatched";
+    const sourceResponseId = questionnaireSourceResponseId(expanded);
+    const sourceCollision = sourceResponseCollisions.get(sourceResponseId);
+    const status = sourceCollision
+      ? "conflict"
+      : !phone
+        ? "missing_phone"
+        : candidates.length === 1
+          ? "matched"
+          : candidates.length > 1
+            ? "conflict"
+            : "unmatched";
     const route = status === "matched" ? candidates[0] : null;
     return {
       ...expanded,
       [keyOf("questionnaire_routing_status")]: status,
-      [keyOf("questionnaire_routing_source")]: "client_phone_normalized",
+      [keyOf("questionnaire_routing_source")]: sourceCollision
+        ? sourceCollision.reason
+        : "client_phone_normalized",
       [keyOf("questionnaire_routed_coach_id")]: route?.coachId || "",
       [keyOf("questionnaire_routed_coach_name")]: route?.coachName || "",
       [keyOf("questionnaire_routed_client_id")]: route?.clientId || "",
       [keyOf("questionnaire_routed_client_name")]: route?.clientName || "",
-      [keyOf("questionnaire_routing_candidate_client_ids")]: candidates.map((candidate) => candidate.clientId).join(",")
+      [keyOf("questionnaire_routing_candidate_client_ids")]: candidates.map((candidate) => candidate.clientId).join(","),
+      [keyOf("questionnaire_source_response_conflict")]: sourceCollision ? "true" : "",
+      [keyOf("questionnaire_source_response_conflict_reason")]: sourceCollision?.reason || "",
+      [keyOf("questionnaire_source_response_conflict_count")]: sourceCollision?.count || "",
+      [keyOf("questionnaire_source_response_conflict_fingerprints")]: sourceCollision?.fingerprints.join(",") || "",
+      [keyOf("questionnaire_source_response_conflict_phones")]: sourceCollision?.phones.join(",") || "",
+      [keyOf("questionnaire_source_response_conflict_submitted_ats")]: sourceCollision?.submittedAts.join(",") || "",
+      [keyOf("questionnaire_source_response_conflict_source_tabs")]: sourceCollision?.sourceTabs.join(",") || ""
     };
   });
 }
@@ -8837,6 +9158,196 @@ function existingQuestionnaireRecord(existingById, candidateIds, sourceResponseI
   return null;
 }
 
+function protectedManualQuestionnaireMatch(existing = {}) {
+  if (!cleanString(existing.clientId)) return false;
+  return cleanString(existing.routingStatus) === "matched_manual"
+    || cleanString(existing.routingSource) === "admin_confirmed_internal_client"
+    || Boolean(existing.matchedManuallyAt);
+}
+
+function protectedHistoricalQuestionnaireMatch(existing = {}) {
+  if (protectedManualQuestionnaireMatch(existing)) return true;
+  if (
+    cleanString(existing.processingStatus) === "archived"
+    && cleanString(existing.sourceInvalidReason) === "coach_as_unmatched_client"
+  ) {
+    return false;
+  }
+  return Boolean(
+    cleanString(existing.clientId)
+    && cleanString(existing.internalClientId)
+    && ["matched", "matched_manual"].includes(cleanString(existing.routingStatus))
+  );
+}
+
+function questionnaireClientInternalId(client = null) {
+  return cleanString(client?.data?.internalClientId || client?.id);
+}
+
+function historicalQuestionnaireMatchConflict({
+  existing = {},
+  routingStatus = "",
+  routedClientId = "",
+  routedClient = null,
+  routingCandidateClientIds = [],
+  clientById = new Map(),
+  sourceConflictReason = ""
+} = {}) {
+  if (!protectedHistoricalQuestionnaireMatch(existing)) {
+    return {
+      conflict: false,
+      reason: "",
+      candidateClientIds: []
+    };
+  }
+
+  const linkedClientId = cleanString(existing.clientId);
+  const linkedInternalClientId = cleanString(existing.internalClientId || linkedClientId);
+  const candidateClientIds = [...new Set([
+    ...routingCandidateClientIds,
+    routedClientId,
+    routedClient?.id
+  ].map(cleanString).filter(Boolean))];
+  const candidateMatchesHistoricalIdentity = candidateClientIds.some((candidateClientId) => {
+    if (candidateClientId === linkedClientId || candidateClientId === linkedInternalClientId) return true;
+    const candidate = clientById.get(candidateClientId);
+    return questionnaireClientInternalId(candidate) === linkedInternalClientId;
+  });
+  const routedInternalClientId = questionnaireClientInternalId(routedClient);
+  const routedClientMatchesHistoricalIdentity = Boolean(routedClient) && (
+    cleanString(routedClient.id) === linkedClientId
+    || routedInternalClientId === linkedInternalClientId
+  );
+
+  if (sourceConflictReason) {
+    return {
+      conflict: true,
+      reason: sourceConflictReason,
+      candidateClientIds
+    };
+  }
+  if (routingStatus === "conflict") {
+    return {
+      conflict: true,
+      reason: "phone_matches_multiple_clients",
+      candidateClientIds
+    };
+  }
+  if (routingStatus === "matched"
+      && (routedClient || candidateClientIds.length)
+      && !routedClientMatchesHistoricalIdentity
+      && !candidateMatchesHistoricalIdentity) {
+    return {
+      conflict: true,
+      reason: "phone_routes_to_different_client",
+      candidateClientIds
+    };
+  }
+  return {
+    conflict: false,
+    reason: "",
+    candidateClientIds
+  };
+}
+
+function unresolvedHistoricalSourceResponseConflict(existing = {}) {
+  if (existing.sourceResponseConflict !== true || existing.sourceResponseConflictResolvedAt) {
+    return null;
+  }
+  return {
+    conflict: true,
+    reason: cleanString(existing.sourceResponseConflictReason)
+      || "duplicate_source_response_id",
+    count: Math.max(2, Number(existing.sourceResponseConflictCount || 0)),
+    fingerprints: Array.isArray(existing.sourceResponseConflictFingerprints)
+      ? [...existing.sourceResponseConflictFingerprints].map(cleanString).filter(Boolean).sort()
+      : [],
+    phones: Array.isArray(existing.sourceResponseConflictPhones)
+      ? [...existing.sourceResponseConflictPhones].map(cleanString).filter(Boolean).sort()
+      : [],
+    submittedAts: Array.isArray(existing.sourceResponseConflictSubmittedAts)
+      ? [...existing.sourceResponseConflictSubmittedAts].map(cleanString).filter(Boolean).sort()
+      : [],
+    sourceTabs: Array.isArray(existing.sourceResponseConflictSourceTabs)
+      ? [...existing.sourceResponseConflictSourceTabs].map(cleanString).filter(Boolean).sort()
+      : [],
+    candidateClientIds: [...new Set([
+      ...(Array.isArray(existing.routingCandidateClientIds)
+        ? existing.routingCandidateClientIds
+        : []),
+      ...(Array.isArray(existing.identityMatchConflictCandidateClientIds)
+        ? existing.identityMatchConflictCandidateClientIds
+        : [])
+    ].map(cleanString).filter(Boolean))].sort()
+  };
+}
+
+function normalizedQuestionnaireSourceConflictFingerprints(value = []) {
+  return [...new Set(
+    (Array.isArray(value) ? value : [])
+      .map(cleanString)
+      .filter(Boolean)
+  )].sort();
+}
+
+function questionnaireSourceConflictResolutionMatches(existing = {}, collision = null) {
+  if (!collision || !existing.sourceResponseConflictResolvedAt) return false;
+  if (
+    existing.sourceResponseConflictContentConfirmed !== true
+    || existing.sourceResponseConflictClientConfirmed !== true
+  ) {
+    return false;
+  }
+  const resolved = normalizedQuestionnaireSourceConflictFingerprints(
+    existing.sourceResponseConflictResolutionFingerprints
+  );
+  const observed = normalizedQuestionnaireSourceConflictFingerprints(
+    collision.fingerprints
+  );
+  return resolved.length >= 2
+    && resolved.length === observed.length
+    && resolved.every((fingerprint, index) => fingerprint === observed[index]);
+}
+
+function questionnaireResponseRequiresIdentityReviewData(response = {}) {
+  return response.identityMatchReviewRequired === true
+    || response.manualMatchReviewRequired === true
+    || (
+      response.sourceResponseConflict === true
+      && !response.sourceResponseConflictResolvedAt
+    );
+}
+
+function unresolvedHistoricalQuestionnaireIdentityConflict(existing = {}) {
+  const pending = existing.identityMatchReviewRequired === true
+    || existing.manualMatchReviewRequired === true
+    || existing.identityMatchConflict === true
+    || existing.manualMatchConflict === true;
+  if (!pending) {
+    return {
+      conflict: false,
+      reason: "",
+      candidateClientIds: []
+    };
+  }
+  return {
+    conflict: true,
+    reason: cleanString(
+      existing.identityMatchConflictReason
+      || existing.manualMatchConflictReason
+      || existing.sourceResponseConflictReason
+    ) || "historical_identity_conflict",
+    candidateClientIds: [...new Set([
+      ...(Array.isArray(existing.identityMatchConflictCandidateClientIds)
+        ? existing.identityMatchConflictCandidateClientIds
+        : []),
+      ...(Array.isArray(existing.manualMatchConflictCandidateClientIds)
+        ? existing.manualMatchConflictCandidateClientIds
+        : [])
+    ].map(cleanString).filter(Boolean))].sort()
+  };
+}
+
 function buildQuestionnaireResponseRecords({ coach, rows, clients, existingById }) {
   const clientByPhone = new Map();
   const clientById = new Map();
@@ -8847,33 +9358,53 @@ function buildQuestionnaireResponseRecords({ coach, rows, clients, existingById 
   });
 
   const responses = new Map();
-  rows.forEach((row, index) => {
-    row = expandQuestionnaireRow(row);
+  const expandedRows = rows.map(expandQuestionnaireRow);
+  const sourceResponseCollisions = questionnaireSourceResponseCollisionIndex(expandedRows);
+  expandedRows.forEach((row, index) => {
+    const sourceResponseId = questionnaireSourceResponseId(row);
+    const sourceCollisionMarked = pick(row, ["questionnaire_source_response_conflict"]) === "true";
+    const detectedSourceCollision = sourceResponseCollisions.get(sourceResponseId) || (sourceCollisionMarked ? {
+      conflict: true,
+      reason: pick(row, ["questionnaire_source_response_conflict_reason"])
+        || "duplicate_source_response_id",
+      count: Number(pick(row, ["questionnaire_source_response_conflict_count"]) || 2),
+      fingerprints: pick(row, ["questionnaire_source_response_conflict_fingerprints"])
+        .split(",")
+        .map(cleanString)
+        .filter(Boolean)
+        .sort(),
+      phones: pick(row, ["questionnaire_source_response_conflict_phones"])
+        .split(",")
+        .map(cleanString)
+        .filter(Boolean)
+        .sort(),
+      submittedAts: pick(row, ["questionnaire_source_response_conflict_submitted_ats"])
+        .split(",")
+        .map(cleanString)
+        .filter(Boolean)
+        .sort(),
+      sourceTabs: pick(row, ["questionnaire_source_response_conflict_source_tabs"])
+        .split(",")
+        .map(cleanString)
+        .filter(Boolean)
+        .sort(),
+      candidateClientIds: pick(row, ["questionnaire_routing_candidate_client_ids"])
+        .split(",")
+        .map(cleanString)
+      .filter(Boolean)
+      .sort()
+    } : null);
     const phone = questionnairePhone(row);
-    const routingStatus = pick(row, ["questionnaire_routing_status"])
-      || (phone && clientByPhone.has(phone) ? "matched" : phone ? "unmatched" : "missing_phone");
+    let routingStatus = detectedSourceCollision
+      ? "conflict"
+      : pick(row, ["questionnaire_routing_status"])
+        || (phone && clientByPhone.has(phone) ? "matched" : phone ? "unmatched" : "missing_phone");
     const routedClientId = pick(row, ["questionnaire_routed_client_id"]);
-    const client = routingStatus === "matched"
+    let client = routingStatus === "matched"
       ? (clientById.get(routedClientId) || (phone ? clientByPhone.get(phone) : null))
       : null;
-    const submittedAt = pick(row, [
-      "submitted_at",
-      "submitted at",
-      "submission date",
-      "date soumission",
-      "date_submission",
-      "received_at",
-      "received at"
-    ]);
-    const sourceResponseId = pick(row, [
-      "response_id",
-      "response id",
-      "submission_id",
-      "submission id",
-      "ghl submission id",
-      "id"
-    ]);
-    const clientName = client?.data?.name
+    const submittedAt = questionnaireSubmittedAt(row);
+    let clientName = client?.data?.name
       || pick(row, ["questionnaire_routed_client_name"])
       || clientNameFromRow(row)
       || "Reponse sans client";
@@ -8888,53 +9419,308 @@ function buildQuestionnaireResponseRecords({ coach, rows, clients, existingById 
     );
     const id = existingRecord?.id || canonicalId;
     const existing = existingRecord?.data || {};
-    const triageStatus = normalizeTriageStatus(pick(row, [
+    const sourceCollisionResolutionMatches = questionnaireSourceConflictResolutionMatches(
+      existing,
+      detectedSourceCollision
+    );
+    const historicalSourceCollision = unresolvedHistoricalSourceResponseConflict(existing);
+    const sourceCollision = detectedSourceCollision || historicalSourceCollision;
+    const unresolvedSourceCollision = sourceCollisionResolutionMatches
+      ? null
+      : sourceCollision;
+    const sourceCollisionResolutionReopened = Boolean(
+      detectedSourceCollision
+      && existing.sourceResponseConflictResolvedAt
+      && !sourceCollisionResolutionMatches
+    );
+    if (unresolvedSourceCollision && !detectedSourceCollision) {
+      routingStatus = "conflict";
+      client = null;
+      clientName = existing.clientName || "Reponse source en conflit";
+    }
+    const manualMatchProtected = protectedManualQuestionnaireMatch(existing);
+    const historicalMatchProtected = protectedHistoricalQuestionnaireMatch(existing);
+    const routingCandidateClientIds = [...new Set([
+      ...pick(row, ["questionnaire_routing_candidate_client_ids"])
+      .split(",")
+      .map(cleanString)
+      .filter(Boolean),
+      ...(sourceCollision?.candidateClientIds || [])
+    ])].sort();
+    const routingStatusForIdentity = sourceCollisionResolutionMatches
+      ? existing.routingStatus || "matched_manual"
+      : routingStatus;
+    const historicalMatchConflict = historicalQuestionnaireMatchConflict({
+      existing,
+      routingStatus: routingStatusForIdentity,
+      routedClientId,
+      routedClient: client,
+      routingCandidateClientIds,
+      clientById,
+      sourceConflictReason: unresolvedSourceCollision?.reason || ""
+    });
+    const stickyIdentityConflict = unresolvedHistoricalQuestionnaireIdentityConflict(existing);
+    const effectiveIdentityConflict = historicalMatchConflict.conflict
+      ? historicalMatchConflict
+      : stickyIdentityConflict;
+    const importedTriageStatus = normalizeTriageStatus(pick(row, [
       "triage_status",
       "triage status",
       "statut triage",
       "statut",
       "status"
     ]));
-    const invalidReason = invalidQuestionnaireResponseReason({ clientName, client });
-    const sourceStatus = invalidReason ? "archived" : client ? "to_read" : "unmatched";
+    const invalidReason = unresolvedSourceCollision
+      ? ""
+      : invalidQuestionnaireResponseReason({ clientName, client });
+    const sourceStatus = unresolvedSourceCollision
+      ? "unmatched"
+      : invalidReason
+        ? "archived"
+        : client
+          ? "to_read"
+          : "unmatched";
     const wasArchivedAsCoachNoise = existing.processingStatus === "archived"
       && cleanString(existing.sourceInvalidReason) === "coach_as_unmatched_client"
       && client;
     const terminal = ["read", "validated"].includes(existing.processingStatus)
       || (existing.processingStatus === "archived" && !wasArchivedAsCoachNoise);
-    const processingStatus = terminal ? existing.processingStatus : sourceStatus;
-    const answers = questionnaireAnswers(row);
+    const processingStatus = historicalMatchProtected
+      ? (existing.processingStatus || sourceStatus)
+      : terminal
+        ? existing.processingStatus
+        : sourceStatus;
+    const answers = sourceCollision
+      ? (historicalMatchProtected && existing.answers && typeof existing.answers === "object"
+          ? existing.answers
+          : {})
+      : questionnaireAnswers(row);
+    const triageStatus = sourceCollision
+      ? (historicalMatchProtected ? existing.triageStatus || "orange" : "orange")
+      : importedTriageStatus;
+    const resolvedClientId = historicalMatchProtected ? existing.clientId : client?.id || "";
+    const resolvedInternalClientId = historicalMatchProtected
+      ? cleanString(existing.internalClientId || (manualMatchProtected ? existing.clientId : ""))
+      : questionnaireClientInternalId(client);
+    const resolvedCoachId = historicalMatchProtected
+      ? existing.coachId
+      : unresolvedSourceCollision
+        ? "questionnaire_review"
+        : coach.id;
+    const resolvedCoachName = historicalMatchProtected
+      ? existing.coachName
+      : unresolvedSourceCollision
+        ? "Questionnaires a valider"
+        : coach.name;
+    const resolvedRoutingStatus = historicalMatchProtected
+      ? existing.routingStatus || (manualMatchProtected ? "matched_manual" : "matched")
+      : routingStatus;
+    const resolvedRoutingSource = historicalMatchProtected
+      ? existing.routingSource || (manualMatchProtected
+          ? "admin_confirmed_internal_client"
+          : "client_phone_normalized")
+      : sourceCollision?.reason || "client_phone_normalized";
+    const sourceConflictClientName = sourceCollision
+      ? existing.clientName || "Reponse source en conflit"
+      : "";
+    const sourceConflictSubmittedAt = sourceCollision
+      ? existing.submittedAt || ""
+      : submittedAt || "";
+    const sourceConflictReceivedAt = sourceCollision
+      ? existing.receivedAt || ""
+      : pick(row, ["received_at", "received at", "date reception"]) || submittedAt || "";
+    const sourceConflictResolutionPatch = sourceCollisionResolutionMatches
+      ? {
+          sourceResponseConflictResolvedAt: existing.sourceResponseConflictResolvedAt,
+          sourceResponseConflictResolvedByUid: existing.sourceResponseConflictResolvedByUid || "",
+          sourceResponseConflictResolvedByEmail: existing.sourceResponseConflictResolvedByEmail || "",
+          sourceResponseConflictResolutionStatus:
+            existing.sourceResponseConflictResolutionStatus
+            || "resolved_admin_content_and_client_confirmed",
+          sourceResponseConflictResolutionNote: existing.sourceResponseConflictResolutionNote || "",
+          sourceResponseConflictResolutionFingerprints:
+            normalizedQuestionnaireSourceConflictFingerprints(
+              existing.sourceResponseConflictResolutionFingerprints
+            ),
+          sourceResponseConflictContentConfirmed: true,
+          sourceResponseConflictClientConfirmed: true,
+          sourceResponseConflictKeptClientId: existing.sourceResponseConflictKeptClientId || existing.clientId || "",
+          sourceResponseConflictKeptInternalClientId:
+            existing.sourceResponseConflictKeptInternalClientId
+            || existing.internalClientId
+            || "",
+          sourceResponseConflictResolutionHistory: Array.isArray(
+            existing.sourceResponseConflictResolutionHistory
+          )
+            ? existing.sourceResponseConflictResolutionHistory
+            : []
+        }
+      : sourceCollisionResolutionReopened
+        ? {
+            sourceResponseConflictResolvedAt: "",
+            sourceResponseConflictResolvedByUid: "",
+            sourceResponseConflictResolvedByEmail: "",
+            sourceResponseConflictResolutionStatus: "reopened_source_fingerprints_changed",
+            sourceResponseConflictResolutionNote: "",
+            sourceResponseConflictResolutionFingerprints: [],
+            sourceResponseConflictContentConfirmed: false,
+            sourceResponseConflictClientConfirmed: false,
+            sourceResponseConflictKeptClientId: "",
+            sourceResponseConflictKeptInternalClientId: "",
+            sourceResponseConflictResolutionHistory: Array.isArray(
+              existing.sourceResponseConflictResolutionHistory
+            )
+              ? existing.sourceResponseConflictResolutionHistory
+              : [],
+            sourceResponseConflictPreviousResolutionFingerprints:
+              normalizedQuestionnaireSourceConflictFingerprints(
+                existing.sourceResponseConflictResolutionFingerprints
+              ),
+            sourceResponseConflictReopenedFingerprints:
+              normalizedQuestionnaireSourceConflictFingerprints(
+                detectedSourceCollision?.fingerprints
+              ),
+            sourceResponseConflictReopenedAt: admin.firestore.FieldValue.serverTimestamp()
+          }
+        : {};
 
     responses.set(id, {
       id,
       data: {
-        coachId: coach.id,
-        coachName: coach.name,
-        clientId: client?.id || "",
-        clientName: client?.data?.name || clientName,
-        clientEmail: pick(row, EMAIL_ALIASES) || client?.data?.email || "",
-        clientPhoneNormalized: phone,
-        routingStatus,
-        routingSource: "client_phone_normalized",
-        routingCandidateClientIds: pick(row, ["questionnaire_routing_candidate_client_ids"])
-          .split(",")
-          .map(cleanString)
-          .filter(Boolean),
-        submittedCoachName: pick(row, ["coach_name", "coach name", "coach_name_entered"]),
-        submittedCoachId: pick(row, ["coach_id", "coach id", "coach_id_entered"]),
+        coachId: resolvedCoachId,
+        coachRxId: historicalMatchProtected
+          ? existing.coachRxId || ""
+          : sourceCollision
+            ? ""
+            : coach.coachRxId || coach.id,
+        coachName: resolvedCoachName,
+        dashboardOwnerCoachId: historicalMatchProtected
+          ? existing.dashboardOwnerCoachId || existing.coachId
+          : sourceCollision
+            ? ""
+            : client?.data?.dashboardOwnerCoachId || client?.data?.coachId || coach.id,
+        clientId: resolvedClientId,
+        internalClientId: resolvedInternalClientId,
+        clientName: historicalMatchProtected
+          ? existing.clientName || clientName
+          : sourceCollision
+            ? sourceConflictClientName
+            : client?.data?.name || clientName,
+        clientEmail: historicalMatchProtected
+          ? existing.clientEmail || pick(row, EMAIL_ALIASES) || ""
+          : sourceCollision
+            ? ""
+            : pick(row, EMAIL_ALIASES) || client?.data?.email || "",
+        clientPhoneNormalized: historicalMatchProtected
+          ? existing.clientPhoneNormalized || phone
+          : sourceCollision
+            ? ""
+            : phone,
+        routingStatus: resolvedRoutingStatus,
+        routingSource: resolvedRoutingSource,
+        routingCandidateClientIds,
+        sourceRoutingStatus: routingStatus,
+        sourceRoutedClientId: sourceCollision ? "" : routedClientId || client?.id || "",
+        submittedCoachName: sourceCollision
+          ? existing.submittedCoachName || ""
+          : pick(row, ["coach_name", "coach name", "coach_name_entered"]),
+        submittedCoachId: sourceCollision
+          ? existing.submittedCoachId || ""
+          : pick(row, ["coach_id", "coach id", "coach_id_entered"]),
         sourceResponseId: sourceResponseId || "",
-        submittedAt: submittedAt || "",
-        receivedAt: pick(row, ["received_at", "received at", "date reception"]) || submittedAt || "",
-        followupType: pick(row, ["followup_type", "followup type", "type suivi"]) || "",
+        submittedAt: sourceConflictSubmittedAt,
+        receivedAt: sourceConflictReceivedAt,
+        followupType: sourceCollision
+          ? existing.followupType || ""
+          : pick(row, ["followup_type", "followup type", "type suivi"]) || "",
         triageStatus,
-        coachActionType: pick(row, ["coach_action_type", "coach action type", "action coach"]) || questionnaireActionType(triageStatus),
-        contactRequest: pick(row, ["contact_request", "contact request", "demande contact"]) || "",
+        coachActionType: sourceCollision
+          ? existing.coachActionType || "validation_identite"
+          : pick(row, ["coach_action_type", "coach action type", "action coach"])
+            || questionnaireActionType(triageStatus),
+        contactRequest: sourceCollision
+          ? existing.contactRequest || ""
+          : pick(row, ["contact_request", "contact request", "demande contact"]) || "",
         answers,
-        sourceTab: pick(row, ["source_questionnaire_tab"]) || "",
+        sourceTab: sourceCollision
+          ? existing.sourceTab || ""
+          : pick(row, ["source_questionnaire_tab"]) || "",
         source: "google_sheets_questionnaire_responses",
-        sourceInvalidReason: invalidReason || "",
+        sourceInvalidReason: historicalMatchProtected ? "" : invalidReason || "",
+        sourceImportInvalidReason: invalidReason || "",
+        sourceProcessingStatus: sourceStatus,
         processingStatus,
-        createdAt: existing.createdAt || admin.firestore.FieldValue.serverTimestamp()
+        createdAt: existing.createdAt || admin.firestore.FieldValue.serverTimestamp(),
+        sourceResponseConflict: Boolean(sourceCollision),
+        sourceResponseConflictReason: sourceCollision?.reason || "",
+        sourceResponseConflictCount: sourceCollision?.count || 0,
+        sourceResponseConflictFingerprints: sourceCollision?.fingerprints || [],
+        sourceResponseConflictPhones: sourceCollision?.phones || [],
+        sourceResponseConflictSubmittedAts: sourceCollision?.submittedAts || [],
+        sourceResponseConflictSourceTabs: sourceCollision?.sourceTabs || [],
+        ...sourceConflictResolutionPatch,
+        identityMatchConflict: effectiveIdentityConflict.conflict,
+        identityMatchReviewRequired: effectiveIdentityConflict.conflict,
+        identityMatchConflictReason: effectiveIdentityConflict.reason,
+        identityMatchConflictRoutingStatus: effectiveIdentityConflict.conflict
+          ? (historicalMatchConflict.conflict
+              ? routingStatus
+              : existing.identityMatchConflictRoutingStatus || existing.manualMatchConflictRoutingStatus || "")
+          : "",
+        identityMatchConflictCandidateClientIds: effectiveIdentityConflict.conflict
+          ? effectiveIdentityConflict.candidateClientIds
+          : [],
+        identityMatchConflictSourcePhone: effectiveIdentityConflict.conflict && !sourceCollision
+          ? (historicalMatchConflict.conflict
+              ? phone
+              : existing.identityMatchConflictSourcePhone || existing.manualMatchConflictSourcePhone || "")
+          : "",
+        identityMatchConflictSourcePhones: effectiveIdentityConflict.conflict
+          ? sourceCollision?.phones
+            || existing.identityMatchConflictSourcePhones
+            || existing.manualMatchConflictSourcePhones
+            || [phone].filter(Boolean)
+          : [],
+        identityMatchConflictDetectedAt: effectiveIdentityConflict.conflict
+          ? existing.identityMatchConflictDetectedAt || admin.firestore.FieldValue.serverTimestamp()
+          : existing.identityMatchConflictDetectedAt || "",
+        ...(historicalMatchProtected ? {
+          history: Array.isArray(existing.history) ? existing.history : []
+        } : {}),
+        ...(manualMatchProtected ? {
+          matchedManuallyAt: existing.matchedManuallyAt || "",
+          matchedManuallyByUid: existing.matchedManuallyByUid || "",
+          matchedManuallyByEmail: existing.matchedManuallyByEmail || "",
+          manualMatchNote: existing.manualMatchNote || "",
+          manualMatchHistory: Array.isArray(existing.manualMatchHistory)
+            ? existing.manualMatchHistory
+            : [],
+          manualMatchConflict: effectiveIdentityConflict.conflict,
+          manualMatchReviewRequired: effectiveIdentityConflict.conflict,
+          manualMatchConflictReason: effectiveIdentityConflict.reason,
+          manualMatchConflictRoutingStatus: effectiveIdentityConflict.conflict
+            ? (historicalMatchConflict.conflict
+                ? routingStatus
+                : existing.manualMatchConflictRoutingStatus || existing.identityMatchConflictRoutingStatus || "")
+            : "",
+          manualMatchConflictCandidateClientIds: effectiveIdentityConflict.conflict
+            ? effectiveIdentityConflict.candidateClientIds
+            : [],
+          manualMatchConflictSourcePhone: effectiveIdentityConflict.conflict && !sourceCollision
+            ? (historicalMatchConflict.conflict
+                ? phone
+                : existing.manualMatchConflictSourcePhone || existing.identityMatchConflictSourcePhone || "")
+            : "",
+          manualMatchConflictSourcePhones: effectiveIdentityConflict.conflict
+            ? sourceCollision?.phones
+              || existing.manualMatchConflictSourcePhones
+              || existing.identityMatchConflictSourcePhones
+              || [phone].filter(Boolean)
+            : [],
+          manualMatchConflictDetectedAt: effectiveIdentityConflict.conflict
+            ? existing.manualMatchConflictDetectedAt || admin.firestore.FieldValue.serverTimestamp()
+            : existing.manualMatchConflictDetectedAt || ""
+        } : {})
       }
     });
   });
@@ -8958,6 +9744,8 @@ function isPilotCoachName(value) {
 function buildQuestionnaireTaskRecords({ coach, responses }) {
   return responses
     .filter((response) => response.data.clientId)
+    .filter((response) => valuesMatchCoachId(response.data.coachId, coach))
+    .filter((response) => !questionnaireResponseRequiresIdentityReviewData(response.data))
     .filter((response) => ["rouge", "orange", "jaune"].includes(response.data.triageStatus))
     .filter((response) => !["read", "archived", "validated"].includes(response.data.processingStatus))
     .map((response) => {
@@ -9330,9 +10118,89 @@ async function ghlFetch(token, url, options = {}) {
 }
 
 async function markSend(ref, patch) {
-  await ref.update({
-    ...patch,
-    updatedAt: admin.firestore.FieldValue.serverTimestamp()
+  return db.runTransaction(async (transaction) => {
+    const sendSnap = await transaction.get(ref);
+    if (!sendSnap.exists) return false;
+    const current = sendSnap.data() || {};
+    const currentSucceeded = cleanString(current.status) === "sent"
+      || cleanString(current.deliveryStatus) === "tag_added"
+      || questionnaireSendSafety.externalEffectState(current) === "completed";
+    const patchSucceeded = cleanString(patch.status) === "sent"
+      || cleanString(patch.deliveryStatus) === "tag_added"
+      || cleanString(patch.externalEffectState) === "completed";
+    if (currentSucceeded && !patchSucceeded) return false;
+
+    const scheduleId = cleanString(current.questionnaireScheduleId);
+    const terminal = ["sent", "error", "cancelled"].includes(cleanString(patch.status))
+      || ["tag_added", "ghl_effect_uncertain", "cancelled"].includes(
+        cleanString(patch.deliveryStatus)
+      );
+    const scheduleRef = terminal && scheduleId
+      ? db.collection("questionnaireSchedules").doc(scheduleId)
+      : null;
+    const scheduleSnap = scheduleRef ? await transaction.get(scheduleRef) : null;
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    transaction.update(ref, {
+      ...patch,
+      ...(terminal ? {
+        claimExpiresAt: admin.firestore.FieldValue.delete(),
+        processingFinishedAt: now
+      } : {}),
+      updatedAt: now
+    });
+
+    if (!scheduleSnap?.exists) return true;
+    const schedule = scheduleSnap.data() || {};
+    const scheduleStillOwnsSend = cleanString(schedule.lastQueuedSendId) === ref.id
+      && cleanString(schedule.clientId) === cleanString(current.clientId)
+      && cleanString(schedule.questionnaireType) === cleanString(current.questionnaireType)
+      && cleanString(schedule.formId) === cleanString(current.formId)
+      && cleanString(schedule.frequency) === cleanString(current.scheduleFrequency);
+    if (!scheduleStillOwnsSend) return true;
+
+    if (patchSucceeded) {
+      const nextSendAt = nextQuestionnaireScheduleDate(
+        cleanString(current.scheduleFrequency),
+        cleanString(current.scheduledFor)
+      );
+      const status = cleanString(current.scheduleFrequency) === "once"
+        ? "paused"
+        : cleanString(schedule.status) === "paused"
+          ? "paused"
+          : "active";
+      transaction.set(scheduleRef, {
+        status,
+        nextSendAt,
+        lastSentAt: now,
+        lastSuccessfulSendId: ref.id,
+        lastError: "",
+        deliveryState: "sent",
+        pendingSendId: "",
+        pendingScheduledFor: "",
+        updatedAt: now
+      }, { merge: true });
+      return true;
+    }
+
+    if (cleanString(patch.status) === "error") {
+      const uncertain = cleanString(patch.externalEffectState) === "uncertain"
+        || cleanString(patch.deliveryStatus) === "ghl_effect_uncertain";
+      transaction.set(scheduleRef, {
+        status: "paused",
+        lastError: cleanString(
+          patch.errorMessage
+          || (uncertain
+            ? "Livraison GHL incertaine; verification manuelle requise avant toute reprise."
+            : "Envoi questionnaire en erreur.")
+        ).slice(0, 500),
+        deliveryState: uncertain ? "uncertain" : "error",
+        lastFailedSendId: ref.id,
+        pendingSendId: "",
+        pendingScheduledFor: "",
+        updatedAt: now
+      }, { merge: true });
+    }
+    return true;
   });
 }
 
@@ -9340,47 +10208,55 @@ async function claimQueuedQuestionnaireSend(ref, {
   eventId = "",
   allowedSources = []
 } = {}) {
-  const normalizedEventId = cleanString(eventId);
+  const normalizedEventId = cleanString(eventId).slice(0, 240);
   return db.runTransaction(async (transaction) => {
     const snap = await transaction.get(ref);
     if (!snap.exists) return null;
     const current = snap.data() || {};
-    const status = cleanString(current.status);
-    const deliveryStatus = cleanString(current.deliveryStatus);
     const source = cleanString(current.source);
     if (allowedSources.length && !allowedSources.includes(source)) return null;
-    if (
-      ["sent", "cancelled"].includes(status) ||
-      ["tag_added", "cancelled"].includes(deliveryStatus)
-    ) {
-      return null;
-    }
-    if (
-      deliveryStatus === "backend_processing" &&
-      cleanString(current.processingEventId) &&
-      cleanString(current.processingEventId) !== normalizedEventId
-    ) {
-      return null;
-    }
-    if (
-      deliveryStatus &&
-      ![
-        "firestore_queue_pending",
-        "firebase_function_pending",
-        "backend_processing"
-      ].includes(deliveryStatus)
-    ) {
-      return null;
+    const decision = questionnaireSendSafety.claimDecision({
+      send: current,
+      eventId: normalizedEventId
+    });
+    if (!decision.claimable) return null;
+    const serverTimestamp = admin.firestore.FieldValue.serverTimestamp();
+    transaction.update(ref, questionnaireSendSafety.buildClaimPatch({
+      send: current,
+      eventId: normalizedEventId,
+      timestampFromMillis: (value) => admin.firestore.Timestamp.fromMillis(value),
+      serverTimestamp
+    }));
+    return current;
+  });
+}
+
+async function claimQuestionnaireExternalEffect(ref, {
+  eventId = "",
+  expectedContactId = ""
+} = {}) {
+  const normalizedEventId = cleanString(eventId).slice(0, 240);
+  const normalizedContactId = cleanString(expectedContactId);
+  if (!normalizedEventId || !normalizedContactId) return false;
+  return db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(ref);
+    if (!snap.exists) return false;
+    const current = snap.data() || {};
+    if (!questionnaireSendSafety.externalEffectClaimAllowed({
+      send: current,
+      eventId: normalizedEventId,
+      contactId: normalizedContactId
+    })) {
+      return false;
     }
     transaction.update(ref, {
-      status: "pending",
-      deliveryStatus: "backend_processing",
-      processedBy: "processQuestionnaireSendRequest",
-      processingEventId: normalizedEventId,
-      processingStartedAt: admin.firestore.FieldValue.serverTimestamp(),
+      externalEffectState: "started",
+      externalEffectEventId: normalizedEventId,
+      externalEffectExpectedGhlContactId: normalizedContactId,
+      externalEffectStartedAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
-    return current;
+    return true;
   });
 }
 
@@ -9404,7 +10280,7 @@ async function claimQuestionnaireCanaryExternalEffect(ref, {
     if (
       current.questionnaireCanaryOnly !== true
       || cleanString(current.questionnaireCanarySource) !== QUESTIONNAIRE_SCHEDULER_CANARY_SOURCE
-      || cleanString(current.externalEffectState)
+      || !["", "not_started"].includes(cleanString(current.externalEffectState))
       || questionnaireSchedulerCanaryExpectedGhlContactId(target.expectedGhlContactId)
         !== normalizedContactId
       || !questionnaireSchedulerCanarySendAvailable({

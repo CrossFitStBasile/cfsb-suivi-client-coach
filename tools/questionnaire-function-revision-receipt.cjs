@@ -7,32 +7,52 @@ const { spawnSync } = require("node:child_process");
 
 const PROJECT_ID = "cfsb-dashboard-coach-aa9a4";
 const REGION = "us-central1";
+const RECEIPT_VERSION = 2;
+const FIREBASE_FUNCTIONS_HASH_LABEL = "firebase-functions-hash";
 const FUNCTION_IDS = Object.freeze([
   "sendQuestionnaire",
   "processQuestionnaireSendRequest",
-  "scheduledQuestionnaireSendPlans"
+  "scheduledQuestionnaireSendRecovery",
+  "scheduledQuestionnaireSendPlans",
+  "syncDashboardFromSheets",
+  "scheduledDashboardSync",
+  "scheduledQuestionnaireResponseSync",
+  "processSyncRequest"
 ]);
+const EXPECTED_SECRET_KEYS = Object.freeze({
+  sendQuestionnaire: Object.freeze([]),
+  processQuestionnaireSendRequest: Object.freeze(["GHL_PRIVATE_TOKEN"]),
+  scheduledQuestionnaireSendRecovery: Object.freeze(["GHL_PRIVATE_TOKEN"]),
+  scheduledQuestionnaireSendPlans: Object.freeze([]),
+  syncDashboardFromSheets: Object.freeze(["GHL_PRIVATE_TOKEN"]),
+  scheduledDashboardSync: Object.freeze(["GHL_PRIVATE_TOKEN"]),
+  scheduledQuestionnaireResponseSync: Object.freeze(["GHL_PRIVATE_TOKEN"]),
+  processSyncRequest: Object.freeze(["GHL_PRIVATE_TOKEN"])
+});
 const REQUEST_TIMEOUT_MS = 15_000;
 const MAX_BODY_BYTES = 1_000_000;
 
-main().catch((error) => {
-  process.stdout.write(`${JSON.stringify({
-    ok: false,
-    check: "questionnaire_function_revision_receipt",
-    error: safeError(error)
-  }, null, 2)}\n`);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((error) => {
+    process.stdout.write(`${JSON.stringify({
+      ok: false,
+      check: "questionnaire_function_revision_receipt",
+      error: safeError(error)
+    }, null, 2)}\n`);
+    process.exitCode = 1;
+  });
+}
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   verifySealedCandidate(options.releaseCommit);
+  const candidate = await buildCandidateContext(options.releaseCommit);
   const accessToken = await firebaseAccessToken();
-  const live = await readLiveFunctionRevisions(accessToken);
+  const live = await readLiveFunctionRevisions(accessToken, candidate);
   if (options.mode === "record") {
-    writeReceipt(options.releaseCommit, live);
+    writeReceipt(options.releaseCommit, candidate, live);
   } else if (options.mode === "verify") {
-    verifyReceipt(options.releaseCommit, live);
+    verifyReceipt(options.releaseCommit, candidate, live);
   }
   process.stdout.write(`${JSON.stringify({
     ok: true,
@@ -43,6 +63,8 @@ async function main() {
     functionsVerified: FUNCTION_IDS.length,
     allTrafficOnLatestRevision: true,
     sourceProvenanceVerified: true,
+    firebaseCandidateHashesVerified: FUNCTION_IDS.length,
+    candidateSourceCommitHash: candidate.sourceCommitHash,
     localReceipt: options.mode === "preview" ? false : true,
     externalWrites: 0
   }, null, 2)}\n`);
@@ -164,7 +186,196 @@ function stableHash(value) {
     .digest("hex");
 }
 
-async function readLiveFunctionRevisions(accessToken) {
+function sha1(value) {
+  return crypto.createHash("sha1").update(String(value), "utf8").digest("hex");
+}
+
+function firebaseEnvironmentHash(environmentVariables = {}) {
+  return sha1(JSON.stringify(environmentVariables || {}));
+}
+
+function firebaseSecretsHash(secretVersions = {}) {
+  return sha1(JSON.stringify(secretVersions || {}));
+}
+
+function expectedFirebaseFunctionsHash({
+  sourceHash,
+  environmentVariables = {},
+  secretVersions = {}
+}) {
+  if (!/^[a-f0-9]{40}(?:\.[a-f0-9]{40})?$/.test(String(sourceHash || ""))) {
+    throw new Error("candidate_source_hash_invalid");
+  }
+  return sha1(
+    `${sourceHash}`
+    + firebaseEnvironmentHash(environmentVariables)
+    + firebaseSecretsHash(secretVersions)
+  );
+}
+
+function expectedSecretVersions(functionId, value) {
+  const expectedKeys = EXPECTED_SECRET_KEYS[functionId];
+  if (!expectedKeys) throw new Error("candidate_function_unknown");
+  const liveSecrets = Array.isArray(value.serviceConfig?.secretEnvironmentVariables)
+    ? value.serviceConfig.secretEnvironmentVariables
+    : [];
+  const byKey = new Map();
+  for (const secret of liveSecrets) {
+    const key = String(secret?.key || "");
+    const name = String(secret?.secret || "");
+    const version = String(secret?.version || "");
+    if (
+      !key
+      || key !== name
+      || !/^[1-9][0-9]*$/.test(version)
+      || byKey.has(key)
+    ) {
+      throw new Error("live_function_secret_contract_invalid");
+    }
+    byKey.set(key, version);
+  }
+  if (
+    byKey.size !== expectedKeys.length
+    || expectedKeys.some((key) => !byKey.has(key))
+  ) {
+    throw new Error("live_function_secret_contract_invalid");
+  }
+  return Object.fromEntries(expectedKeys.map((key) => [key, byKey.get(key)]));
+}
+
+function buildLiveRevisionEntry(functionId, value, candidate) {
+  const expectedName = `projects/${PROJECT_ID}/locations/${REGION}/functions/${functionId}`;
+  const revision = String(value.serviceConfig?.revision || "");
+  const updateTime = String(value.updateTime || "");
+  const build = String(value.buildConfig?.build || "");
+  const service = String(value.serviceConfig?.service || "");
+  const firebaseFunctionsHash = String(
+    value.labels?.[FIREBASE_FUNCTIONS_HASH_LABEL] || ""
+  ).toLowerCase();
+  const secretVersions = expectedSecretVersions(functionId, value);
+  const expectedHash = expectedFirebaseFunctionsHash({
+    sourceHash: candidate.sourceHash,
+    environmentVariables: candidate.environmentVariables,
+    secretVersions
+  });
+  if (
+    value.name !== expectedName
+    || value.state !== "ACTIVE"
+    || value.environment !== "GEN_2"
+    || value.serviceConfig?.allTrafficOnLatestRevision !== true
+    || !revision
+    || !revision.toLowerCase().startsWith(functionId.toLowerCase())
+    || !Number.isFinite(new Date(updateTime).getTime())
+    || !new RegExp(
+      `^projects/(?:${PROJECT_ID}|129233025317)/locations/${REGION}/builds/`
+    ).test(build)
+    || !new RegExp(
+      `^projects/(?:${PROJECT_ID}|129233025317)/locations/${REGION}/services/`
+    ).test(service)
+    || !value.buildConfig?.sourceProvenance
+    || Object.keys(value.buildConfig.sourceProvenance).length === 0
+  ) {
+    throw new Error("live_function_revision_invalid");
+  }
+  if (!/^[a-f0-9]{40}$/.test(firebaseFunctionsHash)) {
+    throw new Error("live_function_firebase_hash_invalid");
+  }
+  if (firebaseFunctionsHash !== expectedHash) {
+    throw new Error("live_function_candidate_hash_mismatch");
+  }
+  return {
+    functionId,
+    name: value.name,
+    revision,
+    updateTime,
+    build,
+    service,
+    firebaseFunctionsHash,
+    sourceProvenanceHash: stableHash(value.buildConfig.sourceProvenance),
+    releaseCommitBindingHash: stableHash({
+      releaseCommit: candidate.releaseCommit,
+      sourceCommitHash: candidate.sourceCommitHash,
+      functionId,
+      revision,
+      updateTime,
+      firebaseFunctionsHash
+    })
+  };
+}
+
+async function buildCandidateContext(releaseCommit) {
+  const root = firebaseToolsRoot();
+  const prepareFunctionsUpload = require(path.join(
+    root,
+    "lib",
+    "deploy",
+    "functions",
+    "prepareFunctionsUpload.js"
+  )).prepareFunctionsUpload;
+  const loadUserEnvs = require(path.join(root, "lib", "functions", "env.js"))
+    .loadUserEnvs;
+  const firebaseConfig = JSON.parse(
+    fs.readFileSync(path.join(process.cwd(), "firebase.json"), "utf8")
+  );
+  const functionsConfig = firebaseConfig.functions;
+  if (
+    !functionsConfig
+    || Array.isArray(functionsConfig)
+    || functionsConfig.source !== "functions"
+  ) {
+    throw new Error("candidate_functions_config_invalid");
+  }
+  const sourceDir = path.join(process.cwd(), functionsConfig.source);
+  let packaged;
+  try {
+    packaged = await prepareFunctionsUpload(
+      process.cwd(),
+      sourceDir,
+      {
+        ...functionsConfig,
+        ...(Array.isArray(functionsConfig.ignore)
+          ? { ignore: [...functionsConfig.ignore] }
+          : {})
+      },
+      [],
+      undefined,
+      { exportType: "zip", executablePaths: [] }
+    );
+    const sourceHash = String(packaged?.hash || "").toLowerCase();
+    if (!/^[a-f0-9]{40}(?:\.[a-f0-9]{40})?$/.test(sourceHash)) {
+      throw new Error("candidate_source_hash_invalid");
+    }
+    const environmentVariables = loadUserEnvs({
+      functionsSource: sourceDir,
+      configDir: sourceDir,
+      projectId: PROJECT_ID,
+      isEmulator: false
+    });
+    const environmentHash = firebaseEnvironmentHash(environmentVariables);
+    return Object.freeze({
+      releaseCommit,
+      sourceHash,
+      environmentVariables: Object.freeze({ ...environmentVariables }),
+      environmentHash,
+      sourceCommitHash: stableHash({
+        releaseCommit,
+        sourceHash,
+        environmentHash
+      })
+    });
+  } finally {
+    if (packaged?.pathToSource) {
+      try {
+        fs.unlinkSync(packaged.pathToSource);
+      } catch (_) {
+        // The candidate hash is still valid; failure to clean a temp archive
+        // must not alter or weaken the live verification result.
+      }
+    }
+  }
+}
+
+async function readLiveFunctionRevisions(accessToken, candidate) {
   const entries = [];
   for (const functionId of FUNCTION_IDS) {
     const expectedName = `projects/${PROJECT_ID}/locations/${REGION}/functions/${functionId}`;
@@ -172,38 +383,7 @@ async function readLiveFunctionRevisions(accessToken) {
       `https://cloudfunctions.googleapis.com/v2/${expectedName}`,
       accessToken
     );
-    const revision = String(value.serviceConfig?.revision || "");
-    const updateTime = String(value.updateTime || "");
-    const build = String(value.buildConfig?.build || "");
-    const service = String(value.serviceConfig?.service || "");
-    if (
-      value.name !== expectedName
-      || value.state !== "ACTIVE"
-      || value.environment !== "GEN_2"
-      || value.serviceConfig?.allTrafficOnLatestRevision !== true
-      || !revision
-      || !revision.toLowerCase().startsWith(functionId.toLowerCase())
-      || !Number.isFinite(new Date(updateTime).getTime())
-      || !new RegExp(
-        `^projects/(?:${PROJECT_ID}|129233025317)/locations/${REGION}/builds/`
-      ).test(build)
-      || !new RegExp(
-        `^projects/(?:${PROJECT_ID}|129233025317)/locations/${REGION}/services/`
-      ).test(service)
-      || !value.buildConfig?.sourceProvenance
-      || Object.keys(value.buildConfig.sourceProvenance).length === 0
-    ) {
-      throw new Error("live_function_revision_invalid");
-    }
-    entries.push({
-      functionId,
-      name: value.name,
-      revision,
-      updateTime,
-      build,
-      service,
-      sourceProvenanceHash: stableHash(value.buildConfig.sourceProvenance)
-    });
+    entries.push(buildLiveRevisionEntry(functionId, value, candidate));
   }
   return entries;
 }
@@ -219,13 +399,16 @@ function receiptPath(releaseCommit) {
   );
 }
 
-function writeReceipt(releaseCommit, functions) {
+function writeReceipt(releaseCommit, candidate, functions) {
   const target = receiptPath(releaseCommit);
   const receipt = {
-    version: 1,
+    version: RECEIPT_VERSION,
     projectId: PROJECT_ID,
     region: REGION,
     releaseCommit,
+    candidateSourceHash: candidate.sourceHash,
+    candidateEnvironmentHash: candidate.environmentHash,
+    candidateSourceCommitHash: candidate.sourceCommitHash,
     recordedAt: new Date().toISOString(),
     functions
   };
@@ -236,7 +419,7 @@ function writeReceipt(releaseCommit, functions) {
   });
 }
 
-function verifyReceipt(releaseCommit, liveFunctions) {
+function verifyReceipt(releaseCommit, candidate, liveFunctions) {
   let receipt;
   try {
     receipt = JSON.parse(fs.readFileSync(receiptPath(releaseCommit), "utf8"));
@@ -245,10 +428,13 @@ function verifyReceipt(releaseCommit, liveFunctions) {
   }
   const recordedAtMs = new Date(String(receipt.recordedAt || "")).getTime();
   if (
-    receipt.version !== 1
+    receipt.version !== RECEIPT_VERSION
     || receipt.projectId !== PROJECT_ID
     || receipt.region !== REGION
     || receipt.releaseCommit !== releaseCommit
+    || receipt.candidateSourceHash !== candidate.sourceHash
+    || receipt.candidateEnvironmentHash !== candidate.environmentHash
+    || receipt.candidateSourceCommitHash !== candidate.sourceCommitHash
     || !Number.isFinite(recordedAtMs)
     || recordedAtMs > Date.now() + (5 * 60 * 1000)
     || !Array.isArray(receipt.functions)
@@ -262,3 +448,16 @@ function safeError(error) {
   const code = String(error?.message || "");
   return /^[a-z0-9_]+$/.test(code) ? code : "unexpected_error";
 }
+
+module.exports = {
+  EXPECTED_SECRET_KEYS,
+  FUNCTION_IDS,
+  RECEIPT_VERSION,
+  buildCandidateContext,
+  buildLiveRevisionEntry,
+  expectedFirebaseFunctionsHash,
+  firebaseEnvironmentHash,
+  firebaseSecretsHash,
+  safeError,
+  stableHash
+};

@@ -30,7 +30,8 @@ const EXPECTED_INITIAL_FORMS = Object.freeze([
     slug: "bilan-90-jours",
     version: "1",
     versionHash: "24SVsZovDAoQnaxSRwL_r2P44-osMwM1RaRowxS0P9U",
-    canonicalPath: "/questionnaire/f/bilan-90-jours"
+    canonicalPath: "/questionnaire/f/bilan-90-jours",
+    deliveryReady: true
   }),
   Object.freeze({
     formId: "check_in_express",
@@ -38,6 +39,7 @@ const EXPECTED_INITIAL_FORMS = Object.freeze([
     version: "1",
     versionHash: "8Qy5V1W0kwVj4VTgFLjtD5CUzpCLgtbblCxm9zgLUS0",
     canonicalPath: "/questionnaire/f/check-in-express",
+    deliveryReady: true,
     fields: Object.freeze([
       Object.freeze({ id: "plan_still_good", type: "yes_no" }),
       Object.freeze({ id: "execution_good", type: "yes_no" }),
@@ -50,14 +52,16 @@ const EXPECTED_INITIAL_FORMS = Object.freeze([
     slug: "evaluation-habitudes-vie",
     version: "1",
     versionHash: "8N-zAfhNXBWAjRZKb0zG2RLi5RKUun5-qyTrZ3iyGoM",
-    canonicalPath: "/questionnaire/f/evaluation-habitudes-vie"
+    canonicalPath: "/questionnaire/f/evaluation-habitudes-vie",
+    deliveryReady: true
   }),
   Object.freeze({
     formId: "reperes_cfsb",
     slug: "reperes-cfsb",
-    version: "1",
-    versionHash: "Cir10OcaFefqzXpmR83Xf598Y1EdWIiTzRClop59KGM",
-    canonicalPath: "/questionnaire/f/reperes-cfsb"
+    version: "2",
+    versionHash: "NB4xhuqLECIvs2-gZmQZ54ObrnkuRMm4xeaQkX52XPM",
+    canonicalPath: "/questionnaire/f/reperes-cfsb",
+    deliveryReady: false
   })
 ]);
 
@@ -295,7 +299,7 @@ function validateInitialCatalogState(entries) {
       || form.formId !== expected.formId
       || form.slug !== expected.slug
       || form.status !== "published"
-      || form.deliveryReady !== false
+      || form.deliveryReady !== expected.deliveryReady
       || form.activeVersion !== expected.version
       || form.activeVersionId !== activeVersionId
       || form.activeVersionHash !== expected.versionHash
@@ -311,7 +315,7 @@ function validateInitialCatalogState(entries) {
       || catalog.formId !== expected.formId
       || catalog.slug !== expected.slug
       || catalog.status !== "published"
-      || catalog.deliveryReady !== false
+      || catalog.deliveryReady !== expected.deliveryReady
       || catalog.activeVersion !== expected.version
       || catalog.activeVersionId !== activeVersionId
       || catalog.activeVersionHash !== expected.versionHash
@@ -324,7 +328,7 @@ function validateInitialCatalogState(entries) {
       slug: expected.slug,
       version: expected.version,
       versionHash: expected.versionHash,
-      deliveryReady: false
+      deliveryReady: expected.deliveryReady
     }));
   }
   return byFormId;

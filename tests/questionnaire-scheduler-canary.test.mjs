@@ -294,7 +294,7 @@ test("GHL canary proof distinguishes an observed tag from a consumed tag", () =>
   assert.match(functionsSource, /externalEffectProof:/);
   assert.match(
     functionsSource,
-    /const addTagsReceipt = await addGhlTag[\s\S]*schedulerCanary[\s\S]*validGhlAddTagsReceipt\([\s\S]*throw new Error\("Canari GHL:[\s\S]*await markSend\(sendRef,[\s\S]*externalEffectState: "completed",[\s\S]*externalEffectProof:/
+    /const addTagsReceipt = await addGhlTag[\s\S]*validGhlAddTagsReceipt\([\s\S]*schedulerCanary[\s\S]*"Canari GHL:[\s\S]*await markSend\(sendRef,[\s\S]*externalEffectState: "completed",[\s\S]*externalEffectProof:/
   );
   assert.match(
     functionsSource,
@@ -946,7 +946,7 @@ test("backend never loosens ordinary member matching for the canary", () => {
   );
   assert.match(
     functionsSource,
-    /afterClaim\.externalEffectState[\s\S]*return;/
+    /questionnaireSendSafety\.externalEffectState\(afterClaim\)[\s\S]*return;/
   );
   assert.match(functionsSource, /questionnaireSchedulerCanaryPhone/);
   assert.match(functionsSource, /externalEffectState: "uncertain"/);

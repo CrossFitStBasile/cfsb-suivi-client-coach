@@ -238,6 +238,11 @@ test("des propriétaires internes divergents restent en conflit fail-closed", as
   assert.equal(response.coachId, "questionnaire_review");
   assert.equal(response.processingStatus, "unmatched");
   assert.equal(response.triageStatus, "orange");
+  assert.equal(response.retentionClass, "member_coaching_questionnaire");
+  assert.equal(
+    response.retentionPolicyStatus,
+    "pending_privacy_owner_approval"
+  );
   assert.equal(db.records("tasks").length, 0);
 });
 
@@ -301,11 +306,98 @@ test("la livraison GHL reste fermée jusqu'au canari exact et la preuve reste ad
   });
   assert.equal(enabled.deliveryReady, true);
   assert.equal(enabled.deliveryVerificationNote, "Canari interne reçu le 28 juillet.");
+  assert.equal(enabled.deliveryVerifiedVersionId, form.activeVersionId);
+  assert.equal(enabled.deliveryVerifiedVersionHash, form.activeVersionHash);
+  assert.equal(enabled.deliveryVerifiedGhlTag, form.ghlTag);
+  assert.equal(enabled.deliveryVerifiedPublicUrl, form.publicUrl);
   const catalogAfter = db.records("questionnaireCatalog")
     .find((item) => item.id === "check_in_express");
   assert.equal(catalogAfter.deliveryReady, true);
   assert.equal(Object.hasOwn(catalogAfter, "deliveryVerificationNote"), false);
   assert.equal(Object.hasOwn(catalogAfter, "deliveryVerifiedByEmail"), false);
+});
+
+test("l'arrêt GHL reste toujours possible malgré un brouillon non publié", async () => {
+  const { db, service } = serviceWith({});
+  const actor = { uid: "admin_uid", email: "info@crossfitstbasilelegrand.com" };
+  await service.ensureInitialForms(actor);
+  const form = db.records("questionnaireForms")
+    .find((item) => item.id === "check_in_express");
+  await service.setDeliveryReady(actor, {
+    formId: form.id,
+    ready: true,
+    confirmedGhlTag: form.ghlTag,
+    confirmedPublicUrl: form.publicUrl,
+    verificationNote: "Canari interne reçu avant la modification."
+  });
+
+  const changedDraft = structuredClone(form.draft);
+  changedDraft.title = "Check-in express modifié";
+  const changed = await service.saveDraft(actor, {
+    formId: form.id,
+    draft: changedDraft,
+    expectedDraftRevision: form.draftRevision
+  });
+  assert.equal(changed.hasUnpublishedChanges, true);
+  assert.equal(changed.deliveryReady, true);
+
+  await assert.rejects(
+    service.setDeliveryReady(actor, {
+      formId: form.id,
+      ready: true,
+      confirmedGhlTag: form.ghlTag,
+      confirmedPublicUrl: form.publicUrl,
+      verificationNote: "Une nouvelle preuve ne suffit pas avant publication."
+    }),
+    (error) => error?.code === "FORM_NOT_READY_FOR_DELIVERY"
+  );
+
+  const disabled = await service.setDeliveryReady(actor, {
+    formId: form.id,
+    ready: false
+  });
+  assert.equal(disabled.deliveryReady, false);
+  assert.equal(disabled.hasUnpublishedChanges, true);
+  assert.equal(disabled.deliveryVerifiedAt, null);
+  assert.equal(disabled.deliveryVerifiedByUid, "");
+  assert.equal(disabled.deliveryVerificationNote, "");
+  assert.equal(disabled.deliveryVerifiedVersionId, "");
+  assert.equal(disabled.deliveryVerifiedVersionHash, "");
+  assert.equal(disabled.deliveryVerifiedGhlTag, "");
+  assert.equal(disabled.deliveryVerifiedPublicUrl, "");
+
+  const catalog = db.records("questionnaireCatalog")
+    .find((item) => item.id === "check_in_express");
+  assert.equal(catalog.deliveryReady, false);
+  const audits = db.records("questionnaireStudioAudit");
+  assert.equal(
+    audits.some((item) =>
+      item.formId === form.id
+      && item.action === "questionnaire.delivery_disabled"
+    ),
+    true
+  );
+});
+
+test("l'activation GHL refuse une référence de version publiée incohérente", async () => {
+  const { db, service } = serviceWith({});
+  const actor = { uid: "admin_uid", email: "info@crossfitstbasilelegrand.com" };
+  await service.ensureInitialForms(actor);
+  const forms = db.store.get("questionnaireForms");
+  const form = forms.get("check_in_express");
+  form.activeVersionHash = "A".repeat(43);
+
+  await assert.rejects(
+    service.setDeliveryReady(actor, {
+      formId: "check_in_express",
+      ready: true,
+      confirmedGhlTag: form.ghlTag,
+      confirmedPublicUrl: form.publicUrl,
+      verificationNote: "Canari valide mais version locale incohérente."
+    }),
+    (error) => error?.code === "DELIVERY_PUBLISHED_VERSION_MISMATCH"
+  );
+  assert.equal(form.deliveryReady, false);
 });
 
 test("un téléphone unique sans propriétaire reste en conflit à valider", async () => {
@@ -539,4 +631,90 @@ test("deux formulaires publiés ne peuvent pas partager le même tag GHL", async
     }),
     (error) => error?.code === "GHL_TAG_ALREADY_USED"
   );
+});
+
+test("le honeypot est refusé côté serveur sans créer de réponse", async () => {
+  const { db, service } = serviceWith({});
+  await assert.rejects(
+    service.submitPublicForm(
+      "check-in-express",
+      {
+        ...checkInBody({ key: "honeypot-test-0001" }),
+        companyWebsite: "https://robot.example"
+      },
+      { ip: "127.0.0.51", userAgent: "robot" }
+    ),
+    (error) => error?.code === "INVALID_SUBMISSION"
+      && error?.status === 400
+  );
+  assert.equal(db.records("questionnaireResponses").length, 0);
+});
+
+test("changer le user-agent ne contourne pas le quota IP", async () => {
+  const { db, service } = serviceWith({});
+  await service.submitPublicForm(
+    "check-in-express",
+    {
+      ...checkInBody({
+        key: "rate-ip-test-0001",
+        phone: "450 555-0201"
+      }),
+      companyWebsite: ""
+    },
+    { ip: "127.0.0.52", userAgent: "browser-a" }
+  );
+  await service.submitPublicForm(
+    "check-in-express",
+    {
+      ...checkInBody({
+        key: "rate-ip-test-0002",
+        phone: "450 555-0202"
+      }),
+      companyWebsite: ""
+    },
+    { ip: "127.0.0.52", userAgent: "browser-b" }
+  );
+
+  const rateRecords = db.records("questionnaireRateLimits");
+  const ipRecords = rateRecords.filter((record) => record.scope === "ip");
+  assert.equal(ipRecords.length, 1);
+  assert.equal(ipRecords[0].count, 2);
+  assert.equal(rateRecords.some((record) =>
+    Object.values(record).includes("127.0.0.52")
+    || Object.values(record).includes("4505550201")
+  ), false, "aucune IP ni aucun téléphone brut ne doit être persisté");
+});
+
+test("un formulaire et un téléphone sont bornés indépendamment du quota IP", async () => {
+  const { db, service } = serviceWith({});
+  for (let index = 0; index < 8; index += 1) {
+    const result = await service.submitPublicForm(
+      "check-in-express",
+      {
+        ...checkInBody({
+          key: `rate-phone-${String(index).padStart(4, "0")}`,
+          phone: "450 555-0203"
+        }),
+        companyWebsite: ""
+      },
+      { ip: `127.0.1.${index + 1}`, userAgent: `browser-${index}` }
+    );
+    assert.equal(result.ok, true);
+  }
+  await assert.rejects(
+    service.submitPublicForm(
+      "check-in-express",
+      {
+        ...checkInBody({
+          key: "rate-phone-9999",
+          phone: "450 555-0203"
+        }),
+        companyWebsite: ""
+      },
+      { ip: "127.0.1.99", userAgent: "browser-final" }
+    ),
+    (error) => error?.code === "RATE_LIMITED"
+      && error?.status === 429
+  );
+  assert.equal(db.records("questionnaireResponses").length, 8);
 });

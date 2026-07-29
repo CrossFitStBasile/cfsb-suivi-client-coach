@@ -1,6 +1,15 @@
 @echo off
 setlocal
 cd /d "%~dp0"
+
+if exist "%~dp0firebase-dashboard\QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md" (
+  echo.
+  echo STOP: la publication Hosting par API est desactivee pour ce candidat.
+  echo Utilise uniquement deploy-questionnaire-stage-b.cmd apres toutes les
+  echo preuves Stage A liees au commit scelle.
+  exit /b 1
+)
+
 echo.
 echo Publication Hosting par API Firebase...
 echo Dossier: %cd%

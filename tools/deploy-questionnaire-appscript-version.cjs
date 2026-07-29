@@ -11,6 +11,11 @@ const bobGeneratedDir = path.join(bobRoot, "generated");
 const tokenPath = path.join(bobConfigDir, "token.json");
 const oauthClientPath = path.join(bobConfigDir, "oauth-client.json");
 const questionnaireScriptId = "1RzTyLvUdw6NdVI2vsDoi7a2bjWGAZDXml94QYG4TCs9wF5KJdKm3HFBa";
+const stagedReleaseGuardPath = path.join(
+  repoRoot,
+  "firebase-dashboard",
+  "QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md"
+);
 
 main().catch((error) => {
   console.error(error.stack || error.message);
@@ -18,6 +23,13 @@ main().catch((error) => {
 });
 
 async function main() {
+  if (fs.existsSync(stagedReleaseGuardPath)) {
+    throw new Error(
+      "STOP: le deploiement Apps Script questionnaire v23 reste immuable pendant la release staged. "
+      + "Suivre QUESTIONNAIRE_RELEASE_RUNBOOK_20260728.md."
+    );
+  }
+
   await fsp.mkdir(bobGeneratedDir, { recursive: true });
   const deploymentsBefore = await appsScriptApi(`projects/${questionnaireScriptId}/deployments`);
   const target = pickWebAppDeployment(deploymentsBefore.deployments || []);

@@ -1,14 +1,24 @@
-Etat Hosting confirme le 2026-07-19: le bundle live porte `20260717-client-ownership-integrity`. La publication initiale des trois formulaires sous `20260715-firebase-questionnaire-suite` demeure un jalon historique; les formulaires sont servis par Firebase Hosting et leurs reponses restent traitees par le pont Apps Script existant.
+Etat Hosting de départ confirmé le 2026-07-29: le bundle live porte
+`20260729-questionnaire-studio-canonical-url`. La publication initiale des
+trois formulaires sous `20260715-firebase-questionnaire-suite` demeure un jalon
+historique; les formulaires sont servis par Firebase Hosting et leurs réponses
+restent traitées par le pont Apps Script existant.
 
-Version live de reference: `app.js?v=20260717-client-ownership-integrity`.
+Version live pré-release de référence:
+`app.js?v=20260729-questionnaire-studio-canonical-url`.
 
-Candidat local Questionnaire Studio du 2026-07-28:
-`app.js?v=20260728-questionnaire-studio-library`. Cette version n'est pas live;
+Jalon historique conservé pour les anciens reçus:
+`Etat Hosting confirme le 2026-07-19`.
+
+Candidat local Questionnaire Studio stabilisé du 2026-07-29:
+`app.js?v=20260729-questionnaire-studio-stabilized`. Cette version n'est pas live;
 elle reste protegee par une publication Stage A/Stage B, des canaris et un GO
 production distincts. Le Dashboard live et ses trois formulaires historiques ne
 sont pas modifies par la preparation locale.
 
-Mise a jour de provenance du 2026-07-17: le bundle Hosting actuellement servi porte `app.js?v=20260717-client-ownership-integrity`. Le correctif Functions de synchronisation du 2026-07-20 reste un deploiement backend cible et ne modifie pas ce bundle Hosting.
+Mise a jour de provenance historique du 2026-07-17: le bundle Hosting alors
+servi portait `app.js?v=20260717-client-ownership-integrity`. Le correctif
+Functions de synchronisation du 2026-07-20 était un déploiement backend ciblé.
 
 La version Google-only deplace l'hebergement du questionnaire de GitHub Pages vers Firebase Hosting sans changer son traitement Apps Script. Les routes live `/questionnaire/` et `/questionnaire/coaches.json` ont ete validees. Le Hosting de production a ete publie depuis un instantane Cloud Storage prive par Cloud Build et le compte de service dedie `dashboard-deployer@...`; verification live stricte 9/9 et contrat Google-only 7/7. Un instantane de cloture contenant le pipeline reproductible a ensuite passe Cloud Build (`bbb56d5a-0a05-4777-8428-f07d8bca02f4`). GitHub reste uniquement un retour arriere pendant la migration du backend et du plan de reprise.
 
@@ -32,7 +42,12 @@ URL live principale: `https://cfsb-dashboard-coach-aa9a4.web.app`
 
 Version servie:
 
-- `app.js?v=20260717-client-ownership-integrity`
+- baseline historique du 2026-07-19:
+  `app.js?v=20260717-client-ownership-integrity`
+- baseline live pré-release du 2026-07-29:
+  `app.js?v=20260729-questionnaire-studio-canonical-url`
+- candidat stabilisé:
+  `app.js?v=20260729-questionnaire-studio-stabilized`
 - controle de fraicheur au demarrage, toutes les cinq minutes et au retour dans l'onglet; aucune actualisation automatique pendant le travail du coach
 - banniere `Nouvelle version disponible` avec actualisation volontaire seulement lorsque aucune action ou modale n'est en cours
 - publication Google-only confirmee le 2026-07-15; lecture des questionnaires structuree par sections, suivi d'acceptation terrain prive et cinq commandes compactes Actions, Rebooking, Impacts, Check-ups et A lire

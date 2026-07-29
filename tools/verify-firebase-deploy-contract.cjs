@@ -90,7 +90,7 @@ check(
 
 check(
   "backend exports expected functions",
-  ["sendQuestionnaire", "processQuestionnaireSendRequest", "syncDashboardFromSheets", "scheduledDashboardSync", "scheduledQuestionnaireResponseSync", "processSyncRequest"].every((name) => backendExports.includes(name)),
+  ["sendQuestionnaire", "processQuestionnaireSendRequest", "scheduledQuestionnaireSendRecovery", "syncDashboardFromSheets", "scheduledDashboardSync", "scheduledQuestionnaireResponseSync", "processSyncRequest"].every((name) => backendExports.includes(name)),
   "Le backend doit exporter l'envoi questionnaire, sa file Firestore, la sync manuelle, la sync planifiee et la file Firestore."
 );
 
@@ -112,7 +112,7 @@ check(
 check(
   "questionnaire secret contract",
   functionsIndex.includes('defineSecret("GHL_PRIVATE_TOKEN")')
-    && /exports\.sendQuestionnaire[\s\S]*secrets:\s*\[ghlPrivateToken\]/.test(functionsIndex)
+    && /exports\.sendQuestionnaire[\s\S]*source:\s*"dashboard_questionnaire_send_click"/.test(functionsIndex)
     && /exports\.processQuestionnaireSendRequest[\s\S]*document:\s*"questionnaireSends\/\{sendId\}"[\s\S]*secrets:\s*\[ghlPrivateToken\]/.test(functionsIndex),
   "L'envoi questionnaire doit utiliser le secret GHL_PRIVATE_TOKEN cote backend."
 );

@@ -26,6 +26,11 @@ steps:
     args:
       - -ceu
       - |
+        if [ -f firebase-dashboard/QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md ]; then
+          echo "STOP: le Hosting Google-only live est desactive pour ce candidat."
+          echo "Utiliser deploy-questionnaire-stage-a.cmd, les controles A4 read-only, puis deploy-questionnaire-stage-b.cmd."
+          exit 1
+        fi
         npx --yes firebase-tools@15.19.1 deploy \
           --only hosting \
           --project cfsb-dashboard-coach-aa9a4 \

@@ -54,6 +54,29 @@ test("les quatre expériences initiales ont un chemin statique sans PII", () => 
   }
 });
 
+test("les tags GHL des questionnaires historiques sont réservés au niveau du schéma", () => {
+  for (const ghlTag of [
+    "dashboardcoach",
+    " SUIVIREGULIER ",
+    "EvaluationNutrition"
+  ]) {
+    assert.throws(
+      () => normalizeDraft({
+        ...INITIAL_DRAFTS.checkIn,
+        ghlTag
+      }),
+      (error) => error?.code === "reserved_ghl_tag"
+        && error?.details?.tag === ghlTag.trim().toLowerCase()
+    );
+  }
+
+  const allowed = normalizeDraft({
+    ...INITIAL_DRAFTS.checkIn,
+    ghlTag: "dashboardcoach-v2"
+  });
+  assert.equal(allowed.ghlTag, "dashboardcoach-v2");
+});
+
 test("un brouillon trop volumineux échoue avant toute écriture Firestore", () => {
   const optionHelp = "x".repeat(500);
   const sections = Array.from({ length: 24 }, (_, sectionIndex) => ({
@@ -187,6 +210,15 @@ test("les repères éducatifs restent non diagnostiques et citent des sources of
         || source.hostname === "www.who.int",
       true,
       `source officielle attendue: ${source.hostname}`
+    );
+  }
+  const unsourcedBands = bands.filter((item) => !item.sourceUrl);
+  assert.equal(unsourcedBands.length, 12);
+  for (const band of unsourcedBands) {
+    assert.match(
+      band.message,
+      /^Repère interne CFSB:/,
+      `repère interne non identifié: ${band.id}`
     );
   }
 });

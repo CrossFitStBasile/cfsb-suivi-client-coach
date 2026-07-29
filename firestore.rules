@@ -84,6 +84,50 @@ service cloud.firestore {
         );
     }
 
+    function questionnaireResponseRequiresIdentityReview(documentData) {
+      return (
+          documentData.keys().hasAny(['identityMatchReviewRequired'])
+          && documentData.identityMatchReviewRequired == true
+        )
+        || (
+          documentData.keys().hasAny(['manualMatchReviewRequired'])
+          && documentData.manualMatchReviewRequired == true
+        )
+        || (
+          documentData.keys().hasAny(['sourceResponseConflict'])
+          && documentData.sourceResponseConflict == true
+          && (
+            !documentData.keys().hasAny(['sourceResponseConflictResolvedAt'])
+            || documentData.sourceResponseConflictResolvedAt == null
+            || documentData.sourceResponseConflictResolvedAt == ''
+          )
+        );
+    }
+
+    function questionnaireTaskResponseId(documentData) {
+      return documentData.keys().hasAny(['questionnaireResponseId'])
+        ? documentData.questionnaireResponseId
+        : documentData.keys().hasAny(['sourceResponseId'])
+          ? documentData.sourceResponseId
+          : '';
+    }
+
+    function questionnaireTaskSourceIsActionable(documentData) {
+      let responseId = questionnaireTaskResponseId(documentData);
+      return !(
+          documentData.keys().hasAny(['type'])
+          && documentData.type == 'questionnaire_followup'
+          && responseId is string
+          && responseId != ''
+        )
+        || (
+          exists(/databases/$(database)/documents/questionnaireResponses/$(responseId))
+          && !questionnaireResponseRequiresIdentityReview(
+            get(/databases/$(database)/documents/questionnaireResponses/$(responseId)).data
+          )
+        );
+    }
+
     function clientIdIsSelectableForCoach(clientId, coachField) {
       return clientId is string
         && clientId != ''
@@ -146,6 +190,10 @@ service cloud.firestore {
         && request.resource.data.source == 'dashboard_questionnaire_send_click'
         && request.resource.data.status == 'pending'
         && request.resource.data.deliveryStatus == 'firestore_queue_pending'
+        && (
+          !request.resource.data.keys().hasAny(['externalEffectState'])
+          || request.resource.data.externalEffectState == 'not_started'
+        )
         && request.resource.data.errorMessage == ''
         && request.resource.data.questionnaireType is string
         && questionnaireFormReferenceIsValid()
@@ -168,6 +216,7 @@ service cloud.firestore {
           'coachName',
           'status',
           'deliveryStatus',
+          'externalEffectState',
           'errorMessage',
           'questionnaireType',
           'questionnaireLabel',
@@ -259,6 +308,11 @@ service cloud.firestore {
     function questionnaireScheduleValuesAreValid() {
       return request.resource.data.status in ['active', 'paused']
         && request.resource.data.questionnaireType is string
+        && request.resource.data.nextSendAt is string
+        && (
+          request.resource.data.status == 'paused'
+          || request.resource.data.nextSendAt.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        )
         && questionnaireFormReferenceIsValid()
         && questionnaireScheduleFrequencyMatchesQuestionnaire();
     }
@@ -339,6 +393,13 @@ service cloud.firestore {
     function coachTogglesQuestionnaireSchedule() {
       return keepsPilotCoach()
         && request.resource.data.status in ['active', 'paused']
+        && (
+          request.resource.data.status == 'paused'
+          || (
+            request.resource.data.nextSendAt is string
+            && request.resource.data.nextSendAt.matches('^\\d{4}-\\d{2}-\\d{2}$')
+          )
+        )
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'status',
           'statusChangedAt',
@@ -401,6 +462,7 @@ service cloud.firestore {
       return isPilotTeamUser()
         && isPilotCoachId(resource.data.coachId)
         && request.resource.data.coachId == resource.data.coachId
+        && !questionnaireResponseRequiresIdentityReview(resource.data)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'processingStatus',
           'readAt',
@@ -415,6 +477,7 @@ service cloud.firestore {
       return isPilotTeamUser()
         && isPilotCoachId(resource.data.coachId)
         && request.resource.data.coachId == resource.data.coachId
+        && !questionnaireResponseRequiresIdentityReview(resource.data)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'clientId',
           'clientName',
@@ -559,12 +622,26 @@ service cloud.firestore {
       allow read: if canReadPilotCoachDoc(resource.data.coachId);
       allow create: if ownershipRepairUnlocked()
         && canCreatePilotCoachDoc(request.resource.data.coachId)
-        && relatedClientIsSelectable(request.resource.data);
+        && relatedClientIsSelectable(request.resource.data)
+        && (isAdmin() || questionnaireTaskSourceIsActionable(request.resource.data));
       allow update: if ownershipRepairUnlocked()
-        && (isAdmin() || keepsPilotCoach() || transfersRelatedDocumentToPilotCoach())
+        && (
+          isAdmin()
+          || (
+            (keepsPilotCoach() || transfersRelatedDocumentToPilotCoach())
+            && questionnaireTaskSourceIsActionable(resource.data)
+          )
+        )
         && relatedClientIsSelectable(request.resource.data);
       allow delete: if ownershipRepairUnlocked()
-        && (isAdmin() || (isPilotTeamUser() && isPilotCoachId(resource.data.coachId)));
+        && (
+          isAdmin()
+          || (
+            isPilotTeamUser()
+            && isPilotCoachId(resource.data.coachId)
+            && questionnaireTaskSourceIsActionable(resource.data)
+          )
+        );
     }
 
     match /questionnaireResponses/{responseId} {
@@ -572,7 +649,9 @@ service cloud.firestore {
       allow create, update, delete: if ownershipRepairUnlocked() && isAdmin();
       allow update: if ownershipRepairUnlocked() && coachReadsQuestionnaireResponse();
       allow update: if ownershipRepairUnlocked() && coachLinksQuestionnaireResponseToClient();
-      allow update: if ownershipRepairUnlocked() && transfersRelatedDocumentToPilotCoach();
+      allow update: if ownershipRepairUnlocked()
+        && !questionnaireResponseRequiresIdentityReview(resource.data)
+        && transfersRelatedDocumentToPilotCoach();
     }
 
     match /questionnaireSends/{sendId} {

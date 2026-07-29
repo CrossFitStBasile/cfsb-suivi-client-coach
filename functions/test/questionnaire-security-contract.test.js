@@ -170,8 +170,18 @@ test("un formulaire Studio explicite absent ne peut pas retomber sur le bilan gl
 });
 
 test("la file Firestore lie l'auteur à l'utilisateur et borne les mises à jour coach", () => {
+  const createSendRule = extractFunction(rulesSource, "createsQuestionnaireSendRequest");
   assert.match(rulesSource, /request\.resource\.data\.requestedByUid == request\.auth\.uid/);
   assert.match(rulesSource, /request\.resource\.data\.source == 'dashboard_questionnaire_send_click'/);
+  assert.match(
+    createSendRule,
+    /!request\.resource\.data\.keys\(\)\.hasAny\(\['externalEffectState'\]\)/
+  );
+  assert.match(
+    createSendRule,
+    /request\.resource\.data\.externalEffectState == 'not_started'/
+  );
+  assert.match(createSendRule, /'externalEffectState'/);
   assert.match(rulesSource, /function coachCancelsQuestionnaireSend\(\)/);
   assert.match(rulesSource, /function coachMarksQuestionnaireFollowupCreated\(\)/);
   assert.match(rulesSource, /coachMarksQuestionnaireFollowupCreated\(\)/);
@@ -185,6 +195,108 @@ test("la file Firestore lie l'auteur à l'utilisateur et borne les mises à jour
     extractFunction(appSource, "linkQuestionnaireResponseToClient"),
     /internalClientId:\s*String\(client\.internalClientId \|\| client\.id\)/
   );
+});
+
+test("le callable historique rejoint la file sécurisée sans effet GHL direct", () => {
+  const callableStart = functionsSource.indexOf(
+    "exports.sendQuestionnaire = onCall("
+  );
+  const processorStart = functionsSource.indexOf(
+    "exports.processQuestionnaireSendRequest = onDocumentCreated("
+  );
+  assert.ok(callableStart >= 0);
+  assert.ok(processorStart > callableStart);
+  const callable = functionsSource.slice(callableStart, processorStart);
+
+  assert.match(callable, /return db\.runTransaction|await db\.runTransaction/);
+  assert.match(callable, /transaction\.create\(sendRef, baseAttempt\)/);
+  assert.match(callable, /deliveryStatus:\s*"firestore_queue_pending"/);
+  assert.match(callable, /externalEffectState:\s*"not_started"/);
+  assert.match(callable, /source:\s*"dashboard_questionnaire_send_click"/);
+  assert.match(callable, /const requestedSendId = cleanString\(request\.data\?\.sendId\)/);
+  assert.match(callable, /sendId stable manquant ou invalide/);
+  assert.match(callable, /\.doc\(requestedSendId\)/);
+  assert.match(callable, /duplicateSendDisposition\(existingSend\)/);
+  const uncertainStart = callable.indexOf('if (disposition === "effect_uncertain")');
+  const completedStart = callable.indexOf('if (disposition === "completed")');
+  const preEffectStart = callable.indexOf('if (disposition === "terminal_pre_effect")');
+  const activeStart = callable.indexOf('if (disposition === "active")');
+  assert.ok(uncertainStart >= 0);
+  assert.ok(completedStart > uncertainStart);
+  assert.ok(preEffectStart > completedStart);
+  assert.ok(activeStart > preEffectStart);
+  const uncertainBranch = callable.slice(uncertainStart, completedStart);
+  const completedBranch = callable.slice(completedStart, preEffectStart);
+  const preEffectBranch = callable.slice(preEffectStart, activeStart);
+  const activeBranch = callable.slice(activeStart);
+  assert.match(uncertainBranch, /retryWithNewSendId:\s*false/);
+  assert.match(uncertainBranch, /requiresManualReview:\s*true/);
+  assert.doesNotMatch(uncertainBranch, /nouveau sendId|reessayer|nouvelle tentative/i);
+  assert.match(completedBranch, /retryWithNewSendId:\s*false/);
+  assert.match(preEffectBranch, /retryWithNewSendId:\s*true/);
+  assert.match(preEffectBranch, /nouveau sendId/);
+  assert.match(activeBranch, /retryWithNewSendId:\s*false/);
+  assert.doesNotMatch(activeBranch, /nouveau sendId|reessayer|nouvelle tentative/i);
+  assert.doesNotMatch(callable, /\.doc\(\)/);
+  assert.doesNotMatch(callable, /addGhlTag\(/);
+  assert.doesNotMatch(callable, /findGhlContactByPhone\(/);
+  assert.doesNotMatch(callable, /secrets:\s*\[ghlPrivateToken\]/);
+});
+
+test("le bouton coach reprend une tentative Firestore stable sans second envoi", () => {
+  const send = extractFunction(appSource, "journalQuestionnaireSend");
+  const load = extractFunction(appSource, "loadQuestionnaireSendAttempt");
+  const save = extractFunction(appSource, "saveQuestionnaireSendAttempt");
+  const matches = extractFunction(appSource, "questionnaireSendAttemptMatches");
+
+  assert.match(send, /loadQuestionnaireSendAttempt\(attemptKey\)/);
+  assert.match(send, /saveQuestionnaireSendAttempt\(attemptKey, sendId\)/);
+  assert.match(send, /await runTransaction\(db/);
+  assert.match(send, /transaction\.get\(attemptRef\)/);
+  assert.match(send, /transaction\.set\(attemptRef, attempt\)/);
+  assert.match(send, /questionnaireSendAttemptMatches\(existingSnap\.data\(\), attempt\)/);
+  assert.doesNotMatch(send, /addDoc\(collection\(db,\s*"questionnaireSends"\)/);
+  assert.doesNotMatch(
+    load,
+    /Date\.now\(\)[\s\S]*createdAt|QUESTIONNAIRE_SEND_ATTEMPT_TTL_MS/
+  );
+  assert.match(send, /questionnaireSendAttemptOutcome\(firstResult\.existing\)/);
+  assert.match(send, /existingOutcome\.kind === "uncertain"/);
+  assert.match(send, /Créer explicitement une nouvelle tentative d'envoi/);
+  assert.match(save, /questionnaireSendAttemptMemory\.set/);
+  assert.match(matches, /"requestedByUid"/);
+});
+
+test("l'effet GHL est réclamé une seule fois et les baux expirés sont récupérés sans rejeu incertain", () => {
+  const processorStart = functionsSource.indexOf(
+    "exports.processQuestionnaireSendRequest = onDocumentCreated("
+  );
+  const recoveryStart = functionsSource.indexOf(
+    "async function recoverExpiredQuestionnaireSendClaims("
+  );
+  assert.ok(processorStart >= 0);
+  assert.ok(recoveryStart > processorStart);
+  const processor = functionsSource.slice(processorStart, recoveryStart);
+  const claim = extractFunction(functionsSource, "claimQuestionnaireExternalEffect");
+  const mark = extractFunction(functionsSource, "markSend");
+
+  assert.match(processor, /retry:\s*true/);
+  assert.match(processor, /claimQuestionnaireExternalEffect\(sendRef/);
+  assert.match(processor, /includeResponseMeta:\s*true/);
+  assert.match(processor, /validGhlAddTagsReceipt\(/);
+  assert.match(processor, /externalEffectState:\s*"completed"/);
+  assert.match(processor, /externalEffectState:\s*"uncertain"/);
+  assert.match(claim, /externalEffectState:\s*"started"/);
+  assert.match(claim, /externalEffectExpectedGhlContactId/);
+  assert.match(functionsSource, /exports\.scheduledQuestionnaireSendRecovery = onSchedule\(/);
+  assert.match(functionsSource, /retried_before_external_effect/);
+  assert.match(functionsSource, /marked_uncertain/);
+
+  assert.match(mark, /return db\.runTransaction/);
+  assert.match(mark, /currentSucceeded && !patchSucceeded/);
+  assert.match(mark, /if \(patchSucceeded\)/);
+  assert.match(mark, /status:\s*"paused"/);
+  assert.match(mark, /nextQuestionnaireScheduleDate\(/);
 });
 
 test("les horaires coach lient leur auteur et bornent création, édition et pause", () => {
@@ -280,6 +392,10 @@ test("les règles gardent les anciennes planifications et imposent la cadence St
   assert.match(studioRule, /data\.settings\.kind == 'check_in'/);
   assert.match(studioRule, /data\.settings\.kind == 'quarterly'/);
   assert.match(valuesRule, /questionnaireScheduleFrequencyMatchesQuestionnaire\(\)/);
+  assert.match(
+    valuesRule,
+    /status == 'paused'[\s\S]*nextSendAt\.matches\('\^\\\\d\{4\}-\\\\d\{2\}-\\\\d\{2\}\$'\)/
+  );
 });
 
 test("le cron refuse aussi les cadences incompatibles", () => {
@@ -339,6 +455,194 @@ test("la première version publique est persistée avant d'être servie", () => 
   assert.match(loader, /await persistInitialEntry\(initial/);
   assert.doesNotMatch(loader, /fallback:\s*true/);
   assert.match(loader, /QUESTIONNAIRE_STATE_INCOMPLETE/);
+});
+
+test("la file admin charge et conserve toute revue identitaire explicite", () => {
+  const subscription = extractFunction(
+    appSource,
+    "subscribeQuestionnaireIdentityReviewQueue"
+  );
+  assert.match(
+    subscription,
+    /where\("identityMatchReviewRequired",\s*"==",\s*true\)/
+  );
+  assert.match(subscription, /questionnaireIdentityReviewResponses/);
+
+  const sandbox = {
+    state: {
+      data: {
+        questionnaireIdentityReviewResponses: [{
+          id: "matched-manual-review",
+          routingStatus: "matched_manual",
+          processingStatus: "read",
+          identityMatchReviewRequired: true
+        }],
+        questionnaireReviewResponses: [],
+        questionnaireResponses: [{
+          id: "ordinary-read",
+          routingStatus: "matched",
+          processingStatus: "read",
+          identityMatchReviewRequired: false
+        }]
+      }
+    },
+    isInfoAdmin: () => true,
+    uniqueById: (items) => {
+      const seen = new Set();
+      return items.filter((item) => item?.id && !seen.has(item.id) && seen.add(item.id));
+    },
+    operationalRecordClientLinkStatus: () => "confirmed"
+  };
+  vm.runInNewContext(`
+    ${extractFunction(appSource, "questionnaireHasUnresolvedSourceResponseConflict")}
+    ${extractFunction(appSource, "questionnaireRequiresIdentityReview")}
+    ${extractFunction(appSource, "questionnaireResponsesForAdminReview")}
+    globalThis.review = questionnaireResponsesForAdminReview();
+    globalThis.requiresReview = questionnaireRequiresIdentityReview;
+  `, sandbox, { filename: "questionnaire-admin-identity-review.js" });
+
+  assert.deepEqual(
+    Array.from(sandbox.review, (item) => item.id),
+    ["matched-manual-review"]
+  );
+  assert.equal(sandbox.requiresReview({
+    routingStatus: "matched",
+    identityMatchReviewRequired: true
+  }), true);
+  assert.equal(sandbox.requiresReview({
+    sourceResponseConflict: true,
+    sourceResponseConflictResolvedAt: "2026-07-29T12:00:00Z"
+  }), false);
+
+  const card = extractFunction(appSource, "renderUnmatchedQuestionnaireCard");
+  assert.match(card, /Identite a verifier/);
+  assert.match(card, /Contenu source en conflit/);
+  assert.match(card, /Verifier le lien/);
+  const notice = extractFunction(appSource, "renderQuestionnaireValidationNotice");
+  assert.match(notice, /conflit d'identite a verifier/);
+});
+
+test("l'adjudication admin d'un conflit source exige deux confirmations et journalise les empreintes", () => {
+  const link = extractFunction(appSource, "linkQuestionnaireResponseToClient");
+  assert.match(link, /questionnaireHasUnresolvedSourceResponseConflict\(response\)/);
+  assert.match(link, /adjudicateQuestionnaireSourceConflict\(\{/);
+  assert.match(link, /identityMatchReviewRequired:\s*false/);
+  assert.match(link, /manualMatchReviewRequired:\s*false/);
+  assert.match(link, /identityMatchResolvedAt:\s*reviewedAt/);
+  assert.match(link, /manualMatchConflictResolvedAt:\s*reviewedAt/);
+  const adjudicate = extractFunction(
+    appSource,
+    "adjudicateQuestionnaireSourceConflict"
+  );
+  assert.match(adjudicate, /confirmKeptContent !== "yes"/);
+  assert.match(adjudicate, /confirmKeptClient !== "yes"/);
+  assert.match(adjudicate, /Une note d'adjudication est obligatoire/);
+  assert.match(adjudicate, /runTransaction\(db/);
+  assert.match(adjudicate, /questionnaireSourceConflictFingerprintKey\(currentResponse\) !== observedFingerprintKey/);
+  assert.match(adjudicate, /sourceResponseConflictResolutionFingerprints:\s*observedFingerprints/);
+  assert.match(adjudicate, /sourceResponseConflictContentConfirmed:\s*true/);
+  assert.match(adjudicate, /sourceResponseConflictClientConfirmed:\s*true/);
+  assert.match(adjudicate, /sourceResponseConflictResolutionHistory:\s*arrayUnion\(resolutionEvent\)/);
+  assert.match(adjudicate, /questionnaire_response\.source_content_adjudicated/);
+
+  const stickySource = extractFunction(
+    functionsSource,
+    "unresolvedHistoricalQuestionnaireIdentityConflict"
+  );
+  assert.match(stickySource, /identityMatchReviewRequired === true/);
+  assert.match(stickySource, /manualMatchReviewRequired === true/);
+  const stickyContent = extractFunction(
+    functionsSource,
+    "unresolvedHistoricalSourceResponseConflict"
+  );
+  assert.match(stickyContent, /sourceResponseConflict !== true/);
+  assert.match(stickyContent, /sourceResponseConflictResolvedAt/);
+  const fingerprintMatch = extractFunction(
+    functionsSource,
+    "questionnaireSourceConflictResolutionMatches"
+  );
+  assert.match(fingerprintMatch, /sourceResponseConflictResolutionFingerprints/);
+  assert.match(fingerprintMatch, /sourceResponseConflictContentConfirmed !== true/);
+  assert.match(fingerprintMatch, /sourceResponseConflictClientConfirmed !== true/);
+  const build = extractFunction(functionsSource, "buildQuestionnaireResponseRecords");
+  assert.match(build, /reopened_source_fingerprints_changed/);
+  assert.match(build, /sourceResponseConflictResolvedAt:\s*""/);
+});
+
+test("une réponse en revue n'offre aucune action coach et les couches runtime refusent les appels directs", () => {
+  const sandbox = {};
+  vm.runInNewContext(`
+    ${extractFunction(appSource, "questionnaireHasUnresolvedSourceResponseConflict")}
+    ${extractFunction(appSource, "questionnaireRequiresIdentityReview")}
+    ${extractFunction(appSource, "questionnaireResponseCoachActionsBlocked")}
+    ${extractFunction(appSource, "assertQuestionnaireResponseCoachActionable")}
+    globalThis.blocked = questionnaireResponseCoachActionsBlocked;
+    globalThis.assertActionable = assertQuestionnaireResponseCoachActionable;
+  `, sandbox, { filename: "questionnaire-action-quarantine.js" });
+  assert.equal(sandbox.blocked({ identityMatchReviewRequired: true }), true);
+  assert.equal(sandbox.blocked({
+    sourceResponseConflict: true,
+    sourceResponseConflictResolvedAt: ""
+  }), true);
+  assert.equal(sandbox.blocked({
+    sourceResponseConflict: true,
+    sourceResponseConflictResolvedAt: "2026-07-29T12:00:00Z"
+  }), false);
+  assert.throws(
+    () => sandbox.assertActionable({ manualMatchReviewRequired: true }, "Mission"),
+    /revue admin/
+  );
+
+  [
+    "createMissionFromQuestionnaireResponse",
+    "markQuestionnaireResponseRead"
+  ].forEach((name) => {
+    assert.match(
+      extractFunction(appSource, name),
+      /assertQuestionnaireResponseCoachActionable/
+    );
+  });
+  [
+    "completeQuestionnaireTask",
+    "completeTask",
+    "ignoreOperationalTask",
+    "saveTask"
+  ].forEach((name) => {
+    assert.match(
+      extractFunction(appSource, name),
+      /assertQuestionnaireTaskActionable/
+    );
+  });
+  assert.match(
+    extractFunction(appSource, "renderQuestionnaireDetailModal"),
+    /identityReview && !isInfoAdmin\(\)/
+  );
+  assert.match(
+    extractFunction(appSource, "taskActionButtons"),
+    /questionnaireTaskRequiresIdentityReview\(task\)/
+  );
+
+  const responseRule = extractFunction(
+    rulesSource,
+    "questionnaireResponseRequiresIdentityReview"
+  );
+  assert.match(responseRule, /identityMatchReviewRequired/);
+  assert.match(responseRule, /manualMatchReviewRequired/);
+  assert.match(responseRule, /sourceResponseConflictResolvedAt/);
+  assert.match(
+    extractFunction(rulesSource, "coachReadsQuestionnaireResponse"),
+    /!questionnaireResponseRequiresIdentityReview\(resource\.data\)/
+  );
+  assert.match(
+    extractFunction(rulesSource, "coachLinksQuestionnaireResponseToClient"),
+    /!questionnaireResponseRequiresIdentityReview\(resource\.data\)/
+  );
+  const taskRules = rulesSource.slice(
+    rulesSource.indexOf("match /tasks/{taskId}"),
+    rulesSource.indexOf("match /questionnaireResponses/{responseId}")
+  );
+  assert.match(taskRules, /questionnaireTaskSourceIsActionable\(request\.resource\.data\)/);
+  assert.match(taskRules, /questionnaireTaskSourceIsActionable\(resource\.data\)/);
 });
 
 test("les prototypes exécutables sont archivés hors du répertoire Hosting", () => {

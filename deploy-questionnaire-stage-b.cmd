@@ -52,9 +52,31 @@ if "%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%"=="" (
   echo Definis CFSB_QUESTIONNAIRE_RELEASE_COMMIT avec le SHA exact du candidat.
   exit /b 1
 )
+if "%CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH%"=="" (
+  echo STOP: planHash du recu pre-release manquant.
+  echo Definis CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH avec le planHash exact.
+  exit /b 1
+)
 "%NODE_EXE%" "%~dp0tools\verify-sealed-questionnaire-release-worktree.cjs" "%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%"
 if errorlevel 1 (
   echo STOP: impossible de confirmer le commit scelle et le worktree propre.
+  exit /b 1
+)
+
+echo.
+echo Verification locale du recu pre-release exact avant Hosting...
+"%NODE_EXE%" "%~dp0tools\seal-questionnaire-pre-release-state.cjs" "--release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" "--plan-hash=%CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH%" --verify-receipt
+if errorlevel 1 (
+  echo STOP: recu pre-release absent, invalide ou lie a un autre SHA/planHash.
+  exit /b 1
+)
+
+echo.
+echo Verification live de l'avis de maintenance avant Hosting...
+"%NODE_EXE%" "%~dp0tools\manage-questionnaire-release-announcements.cjs" "--release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" --maintenance-verify
+if errorlevel 1 (
+  echo STOP: maintenancePublished n'est pas confirme live pour ce SHA.
+  echo Aucun deploy Hosting lance.
   exit /b 1
 )
 

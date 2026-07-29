@@ -14,8 +14,17 @@ const syntaxTargets = [
   "firebase-dashboard/public/questionnaire/f/questionnaire-public.js",
   "functions/index.js",
   "functions/questionnaire-scheduler-safety.js",
+  "functions/questionnaire-send-safety.js",
   "functions/questionnaire-studio.js",
   "functions/questionnaire-service.js",
+  "tools/reperes-v2-release-lib.cjs",
+  "tools/publish-reperes-v2.cjs",
+  "tools/questionnaire-release-announcement-lib.cjs",
+  "tools/manage-questionnaire-release-announcements.cjs",
+  "tools/questionnaire-pre-release-state-lib.cjs",
+  "tools/seal-questionnaire-pre-release-state.cjs",
+  "tools/rollback-questionnaire-pre-release-state.cjs",
+  "tools/manage-questionnaire-rate-limit-ttl.cjs",
   "tools/questionnaire-scheduler-canary-lib.cjs",
   "tools/questionnaire-public-api-canary-lib.cjs",
   "tools/questionnaire-function-revision-receipt.cjs",
@@ -24,6 +33,9 @@ const syntaxTargets = [
   "tools/run-questionnaire-scheduler-canary.cjs",
   "tools/questionnaire-stage-a-preflight-lib.cjs",
   "tools/preflight-questionnaire-stage-a-live.cjs",
+  "tools/activate-questionnaire-firestore-queue.cjs",
+  "tools/deploy-questionnaire-appscript-version.cjs",
+  "tools/deploy-hosting-api.cjs",
   "tools/verify-sealed-questionnaire-release-worktree.cjs",
   "tools/verify-questionnaire-live-continuity.mjs"
 ];
@@ -34,6 +46,8 @@ const rootTests = readdirSync(join(root, "tests"))
   .map((name) => `tests/${name}`);
 
 const requiredRootTests = [
+  "tests/questionnaire-appscript-mutation-guard.test.mjs",
+  "tests/questionnaire-hosting-api-guard.test.mjs",
   "tests/questionnaire-index-two-pass-guard.test.mjs",
   "tests/questionnaire-public-api-canary.test.mjs",
   "tests/questionnaire-scheduler-canary.test.mjs"

@@ -48,6 +48,11 @@ const VERSION_PATTERN = /^[0-9]+(?:\.[0-9]+){0,2}$/;
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const HASH_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+const RESERVED_LEGACY_GHL_TAGS = new Set([
+  "dashboardcoach",
+  "suiviregulier",
+  "evaluationnutrition"
+]);
 const MAX_SECTIONS = 24;
 const MAX_FIELDS_PER_SECTION = 32;
 const MAX_FIELDS = 120;
@@ -172,6 +177,13 @@ function normalizeTag(value) {
   const normalized = cleanText(value, "ghlTag", { min: 1, max: 80 }).toLowerCase();
   if (!/^[\p{L}\p{N}][\p{L}\p{N} _-]*$/u.test(normalized)) {
     fail("invalid_ghl_tag", "Le tag GHL contient des caractères non permis.", { field: "ghlTag" });
+  }
+  if (RESERVED_LEGACY_GHL_TAGS.has(normalized)) {
+    fail(
+      "reserved_ghl_tag",
+      "Ce tag GHL est réservé à un questionnaire historique et ne peut pas être réutilisé dans le Studio.",
+      { field: "ghlTag", tag: normalized }
+    );
   }
   return normalized;
 }
@@ -2381,7 +2393,7 @@ const INITIAL_DRAFT_INPUTS = {
     slug: "reperes-cfsb",
     title: "Repères CFSB",
     description:
-      "Une expérience éducative pour mesurer quelques habitudes concrètes, les comparer à des repères simples et choisir un prochain petit pas.",
+      "Une expérience éducative pour mesurer quelques habitudes concrètes, les comparer à des repères simples et choisir un prochain petit pas. Les catégories sans source externe sont des repères d'accompagnement internes CFSB, pas des normes médicales.",
     ghlTag: "cfsb-reperes-v1",
     identity: { phoneRequired: true, nameRequired: true, emailRequired: false },
     settings: {
@@ -2479,6 +2491,8 @@ const INITIAL_DRAFT_INPUTS = {
             type: "number",
             label: "Combien de nuits sur 7 gardes-tu des heures de coucher et de lever assez régulières?",
             required: true,
+            helpText:
+              "Les catégories ci-dessous sont des repères d'accompagnement internes CFSB pour parler de constance; elles ne constituent pas une norme médicale.",
             validation: { min: 0, max: 7, step: 1, integer: true },
             feedback: {
               kind: "numeric_bands",
@@ -2487,7 +2501,7 @@ const INITIAL_DRAFT_INPUTS = {
                   id: "regularity_problematic",
                   level: "problematic",
                   label: "Très variable",
-                  message: "0 ou 1 nuit régulière rend la récupération moins prévisible. Commence par stabiliser une seule heure d'ancrage.",
+                  message: "Repère interne CFSB: 0 ou 1 nuit régulière rend la récupération moins prévisible. Commence par stabiliser une seule heure d'ancrage.",
                   min: 0,
                   max: 1,
                   includeMax: true
@@ -2496,7 +2510,7 @@ const INITIAL_DRAFT_INPUTS = {
                   id: "regularity_acceptable",
                   level: "acceptable",
                   label: "En construction",
-                  message: "2 ou 3 nuits régulières montrent un début de routine. Essaie d'ajouter une nuit stable.",
+                  message: "Repère interne CFSB: 2 ou 3 nuits régulières montrent un début de routine. Essaie d'ajouter une nuit stable.",
                   min: 1,
                   includeMin: false,
                   max: 3,
@@ -2506,7 +2520,7 @@ const INITIAL_DRAFT_INPUTS = {
                   id: "regularity_good",
                   level: "good",
                   label: "Bon",
-                  message: "4 ou 5 nuits régulières donnent déjà une base solide.",
+                  message: "Repère interne CFSB: 4 ou 5 nuits régulières donnent déjà une base solide.",
                   min: 3,
                   includeMin: false,
                   max: 5,
@@ -2516,7 +2530,7 @@ const INITIAL_DRAFT_INPUTS = {
                   id: "regularity_optimal",
                   level: "optimal",
                   label: "Optimal",
-                  message: "6 ou 7 nuits régulières indiquent une routine très stable.",
+                  message: "Repère interne CFSB: 6 ou 7 nuits régulières indiquent une routine très stable.",
                   min: 5,
                   includeMin: false,
                   max: 7,
@@ -2734,7 +2748,7 @@ const INITIAL_DRAFT_INPUTS = {
             label: "Combien de repas complets manges-tu dans une journée normale?",
             required: true,
             helpText:
-              "Ici, un repas complet contient généralement une source de protéines, des végétaux ou fruits et une source d'énergie adaptée.",
+              "Ici, un repas complet contient généralement une source de protéines, des végétaux ou fruits et une source d'énergie adaptée. Les catégories de fréquence sont des repères d'accompagnement internes CFSB, pas une prescription nutritionnelle.",
             validation: { min: 0, max: 8, step: 1, integer: true },
             feedback: {
               kind: "numeric_bands",
@@ -2743,7 +2757,7 @@ const INITIAL_DRAFT_INPUTS = {
                   id: "meals_problematic",
                   level: "problematic",
                   label: "Très peu structuré",
-                  message: "Aucun repas complet rend l'alimentation moins prévisible. Commence par en structurer un.",
+                  message: "Repère interne CFSB: aucun repas complet rend l'alimentation moins prévisible. Commence par en structurer un.",
                   min: 0,
                   max: 0,
                   includeMax: true
@@ -2752,7 +2766,7 @@ const INITIAL_DRAFT_INPUTS = {
                   id: "meals_acceptable",
                   level: "acceptable",
                   label: "Une base",
-                  message: "Un repas complet donne un point d'ancrage. Cherche surtout la constance avant la perfection.",
+                  message: "Repère interne CFSB: un repas complet donne un point d'ancrage. Cherche surtout la constance avant la perfection.",
                   min: 0,
                   includeMin: false,
                   max: 1,
@@ -2762,7 +2776,7 @@ const INITIAL_DRAFT_INPUTS = {
                   id: "meals_good",
                   level: "good",
                   label: "Bon",
-                  message: "Deux repas complets offrent déjà une structure solide pour beaucoup de gens.",
+                  message: "Repère interne CFSB: deux repas complets offrent déjà une structure solide pour beaucoup de gens.",
                   min: 1,
                   includeMin: false,
                   max: 2,
@@ -2773,7 +2787,7 @@ const INITIAL_DRAFT_INPUTS = {
                   level: "optimal",
                   label: "Très structuré",
                   message:
-                    "Trois repas complets ou plus indiquent une structure régulière. Le nombre idéal dépend toutefois de ton horaire et de tes besoins.",
+                    "Repère interne CFSB: trois repas complets ou plus indiquent une structure régulière. Le nombre idéal dépend toutefois de ton horaire et de tes besoins.",
                   min: 2,
                   includeMin: false,
                   max: 8,
@@ -2911,7 +2925,7 @@ const INITIAL_DRAFT_INPUTS = {
             label: "Environ combien de litres d'eau ou de boissons non sucrées bois-tu par jour?",
             required: true,
             helpText:
-              "Cette mesure sert de point de départ. Les besoins varient beaucoup selon la taille, la chaleur, la transpiration, l'alimentation, la grossesse et la santé.",
+              "Cette mesure sert de point de départ. Les besoins varient beaucoup selon la taille, la chaleur, la transpiration, l'alimentation, la grossesse et la santé. Les catégories sont des repères d'accompagnement internes CFSB, pas une prescription d'hydratation.",
             validation: { min: 0, max: 8, step: 0.25 },
             feedback: {
               kind: "numeric_bands",
@@ -2921,7 +2935,7 @@ const INITIAL_DRAFT_INPUTS = {
                   level: "problematic",
                   label: "Possiblement faible",
                   message:
-                    "Moins d'un litre peut être peu pour plusieurs adultes actifs. Observe aussi ta soif, la chaleur et la transpiration; augmente graduellement si approprié.",
+                    "Repère interne CFSB: moins d'un litre peut être peu pour plusieurs adultes actifs. Observe aussi ta soif, la chaleur et la transpiration; augmente graduellement si approprié.",
                   min: 0,
                   max: 1
                 },
@@ -2930,7 +2944,7 @@ const INITIAL_DRAFT_INPUTS = {
                   level: "acceptable",
                   label: "Point de départ",
                   message:
-                    "Entre 1 et moins de 1,5 litre donne une base mesurable. Il n'existe pas une cible unique valable pour tout le monde.",
+                    "Repère interne CFSB: entre 1 et moins de 1,5 litre donne une base mesurable. Il n'existe pas une cible unique valable pour tout le monde.",
                   min: 1,
                   max: 1.5
                 },
@@ -2939,7 +2953,7 @@ const INITIAL_DRAFT_INPUTS = {
                   level: "good",
                   label: "Bonne base générale",
                   message:
-                    "Entre 1,5 et 2,5 litres est une base courante, mais ton besoin réel dépend de ton contexte et de ton alimentation.",
+                    "Repère interne CFSB: entre 1,5 et 2,5 litres est une base courante, mais ton besoin réel dépend de ton contexte et de ton alimentation.",
                   min: 1.5,
                   max: 2.5,
                   includeMax: true
@@ -2949,7 +2963,7 @@ const INITIAL_DRAFT_INPUTS = {
                   level: "information",
                   label: "À personnaliser",
                   message:
-                    "Plus de 2,5 litres peut être pertinent si tu transpires beaucoup, mais ne force pas une quantité arbitraire. Demande un avis professionnel si une condition médicale influence tes liquides.",
+                    "Repère interne CFSB: plus de 2,5 litres peut être pertinent si tu transpires beaucoup, mais ne force pas une quantité arbitraire. Demande un avis professionnel si une condition médicale influence tes liquides.",
                   min: 2.5,
                   includeMin: false,
                   max: 8,
@@ -3051,6 +3065,7 @@ module.exports = {
   FIELD_TYPES,
   INITIAL_DRAFTS,
   QuestionnaireStudioError,
+  RESERVED_LEGACY_GHL_TAGS: Object.freeze([...RESERVED_LEGACY_GHL_TAGS]),
   REVIEW_STATUS_BY_LEVEL,
   SCHEMA_VERSION,
   TRIAGE_LEVELS,

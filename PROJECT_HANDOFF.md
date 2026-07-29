@@ -49,6 +49,8 @@ Ce document sert a transferer le projet Dashboard Coach CFSB dans une nouvelle c
 - `functions/index.js`  
   Backend Firebase Functions: envoi questionnaire, synchronisation, ingestion sources, traitements programmables.
   - `processQuestionnaireSendRequest`: traite les demandes d'envoi questionnaire creees dans `questionnaireSends`, sans appel Cloud Run public.
+  - `scheduledQuestionnaireSendRecovery`: reprend seulement les baux expirés avant effet GHL et place en revue les effets devenus incertains.
+  - `scheduledQuestionnaireSendPlans`: met les planifications dues en file sans avancer leur date avant la preuve GHL.
   - `scheduledQuestionnaireResponseSync`: importe les nouvelles reponses questionnaire aux 15 minutes.
 - `functions/package.json`
 - `functions/package-lock.json`
@@ -623,4 +625,3 @@ Le plus grand risque actuel n'est pas le design. Le plus grand risque est la con
 - Firestore doit unifier tout ca pour que le dashboard soit rapide.
 
 La prochaine conversation doit donc commencer par stabiliser le contrat de donnees avant d'ajouter de nouvelles fonctionnalites.
-

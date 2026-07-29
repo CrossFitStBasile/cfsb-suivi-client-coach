@@ -105,7 +105,7 @@ function initialCatalogEntries() {
       formId: expected.formId,
       slug: expected.slug,
       status: "published",
-      deliveryReady: false,
+      deliveryReady: expected.deliveryReady,
       activeVersion: expected.version,
       activeVersionId: `${expected.formId}_v${expected.version}`,
       activeVersionHash: expected.versionHash,
@@ -116,7 +116,7 @@ function initialCatalogEntries() {
       formId: expected.formId,
       slug: expected.slug,
       status: "published",
-      deliveryReady: false,
+      deliveryReady: expected.deliveryReady,
       activeVersion: expected.version,
       activeVersionId: `${expected.formId}_v${expected.version}`,
       activeVersionHash: expected.versionHash,
@@ -362,23 +362,24 @@ test("the exact four initial public definitions are required without private met
   );
 });
 
-test("the four form and catalog documents stay published and delivery-disabled", () => {
+test("the four form and catalog documents preserve the exact staged delivery state", () => {
   const state = validateInitialCatalogState(initialCatalogEntries());
   assert.equal(state.size, 4);
   assert.deepEqual(
     [...state.keys()].sort(),
     EXPECTED_INITIAL_FORMS.map((entry) => entry.formId).sort()
   );
-  const readyForm = initialCatalogEntries();
-  readyForm[0].form.deliveryReady = true;
+  const wrongFormState = initialCatalogEntries();
+  wrongFormState[0].form.deliveryReady = !EXPECTED_INITIAL_FORMS[0].deliveryReady;
   assertCanaryError(
-    () => validateInitialCatalogState(readyForm),
+    () => validateInitialCatalogState(wrongFormState),
     "initial_form_state_mismatch"
   );
-  const readyCatalog = initialCatalogEntries();
-  readyCatalog[0].catalog.deliveryReady = true;
+  const wrongCatalogState = initialCatalogEntries();
+  wrongCatalogState[0].catalog.deliveryReady =
+    !EXPECTED_INITIAL_FORMS[0].deliveryReady;
   assertCanaryError(
-    () => validateInitialCatalogState(readyCatalog),
+    () => validateInitialCatalogState(wrongCatalogState),
     "initial_catalog_state_mismatch"
   );
   assertCanaryError(
@@ -708,7 +709,9 @@ test("runner is fail-closed, preview-first, aggregate-only and never deletes evi
   assert.match(RUNNER_SOURCE, /idempotent_replay_mutated_response/);
   assert.match(RUNNER_SOURCE, /idempotency_conflict_mutated_response/);
   assert.match(RUNNER_SOURCE, /getInitialCatalogState\(accessToken\)/);
-  assert.match(RUNNER_SOURCE, /deliveryReadyFalseVerified/);
+  assert.match(RUNNER_SOURCE, /deliveryStatesVerified/);
+  assert.match(RUNNER_SOURCE, /deliveryReadyVerified/);
+  assert.match(RUNNER_SOURCE, /deliveryClosedVerified/);
   assert.match(RUNNER_SOURCE, /responseUpdateTimeStable:\s*true/);
   assert.match(RUNNER_SOURCE, /refreshRevisionReceipt/);
   assert.equal(

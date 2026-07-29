@@ -1826,7 +1826,7 @@ function assertRecoverableCanarySend(document, context, ids) {
   }
   if (
     value.externalEffectState
-    && !["started", "completed", "uncertain"].includes(value.externalEffectState)
+    && !["not_started", "started", "completed", "uncertain"].includes(value.externalEffectState)
   ) {
     throw new CanaryError("canary_cleanup_external_effect_state_invalid");
   }

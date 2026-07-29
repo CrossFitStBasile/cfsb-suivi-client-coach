@@ -48,9 +48,31 @@ if "%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%"=="" (
   call :maybe_pause
   exit /b 1
 )
+if "%CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH%"=="" (
+  echo STOP: planHash du recu pre-release manquant.
+  echo Utilise deploy-questionnaire-stage-b.cmd avec le planHash scelle.
+  call :maybe_pause
+  exit /b 1
+)
 "%NODE_EXE%" "%~dp0tools\verify-sealed-questionnaire-release-worktree.cjs" "%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%"
 if errorlevel 1 (
   echo STOP: impossible de confirmer le commit scelle et le worktree propre.
+  call :maybe_pause
+  exit /b 1
+)
+echo.
+echo Verification du recu pre-release exact avant la porte Hosting...
+"%NODE_EXE%" "%~dp0tools\seal-questionnaire-pre-release-state.cjs" "--release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" "--plan-hash=%CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH%" --verify-receipt
+if errorlevel 1 (
+  echo STOP: recu pre-release absent, invalide ou lie a un autre SHA/planHash.
+  call :maybe_pause
+  exit /b 1
+)
+echo.
+echo Verification live de l'avis de maintenance avant la porte Hosting...
+"%NODE_EXE%" "%~dp0tools\manage-questionnaire-release-announcements.cjs" "--release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" --maintenance-verify
+if errorlevel 1 (
+  echo STOP: maintenancePublished n'est pas confirme live pour ce SHA.
   call :maybe_pause
   exit /b 1
 )
@@ -154,6 +176,22 @@ if exist "%~dp0firebase-dashboard\QUESTIONNAIRE_STAGED_RELEASE_REQUIRED.md" (
   "%NODE_EXE%" "%~dp0tools\verify-sealed-questionnaire-release-worktree.cjs" "%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%"
   if errorlevel 1 (
     echo STOP: le candidat a change depuis le dry-run. Aucun deploy Hosting lance.
+    call :maybe_pause
+    exit /b 1
+  )
+  echo.
+  echo Confirmation finale du recu pre-release exact...
+  "%NODE_EXE%" "%~dp0tools\seal-questionnaire-pre-release-state.cjs" "--release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" "--plan-hash=%CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH%" --verify-receipt
+  if errorlevel 1 (
+    echo STOP: le recu SHA/planHash a change. Aucun deploy Hosting lance.
+    call :maybe_pause
+    exit /b 1
+  )
+  echo.
+  echo Confirmation finale de l'avis de maintenance live...
+  "%NODE_EXE%" "%~dp0tools\manage-questionnaire-release-announcements.cjs" "--release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" --maintenance-verify
+  if errorlevel 1 (
+    echo STOP: l'avis de maintenance n'est plus publie. Aucun deploy Hosting lance.
     call :maybe_pause
     exit /b 1
   )

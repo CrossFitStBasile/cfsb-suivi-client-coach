@@ -9,70 +9,121 @@ const script = readFileSync(
   resolve(root, "deploy-questionnaire-stage-a.cmd"),
   "utf8"
 );
+const stageBScript = readFileSync(
+  resolve(root, "deploy-questionnaire-stage-b.cmd"),
+  "utf8"
+);
+const indexReadyScript = readFileSync(
+  resolve(root, "verify-questionnaire-stage-a-index-ready.cmd"),
+  "utf8"
+);
 
 const dryRunCall =
   'call "%FIREBASE_BIN%" deploy --dry-run --project cfsb-dashboard-coach-aa9a4 --only "%DEPLOY_ONLY%" --non-interactive %FIREBASE_AUTH_ARGS% > "%DRY_RUN_LOG%" 2>&1';
 const deployCall =
   'call "%FIREBASE_BIN%" deploy --project cfsb-dashboard-coach-aa9a4 --only "%DEPLOY_ONLY%" --non-interactive %FIREBASE_AUTH_ARGS% > "%DEPLOY_LOG%" 2>&1';
-const proofPredicate =
-  'if /I not "%CFSB_QUESTIONNAIRE_INDEX_DRY_RUN_REVIEWED%"=="%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" (';
-const secondPreflight =
+const firstPreflight =
   '"%NODE_EXE%" "%~dp0tools\\preflight-questionnaire-stage-a-live.cjs" %LIVE_PREFLIGHT_ARGS%';
 const finalSeal =
   '"%NODE_EXE%" "%~dp0tools\\verify-sealed-questionnaire-release-worktree.cjs" "%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%"';
+const localReceipt =
+  '"%NODE_EXE%" "%~dp0tools\\seal-questionnaire-pre-release-state.cjs" "--release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" "--plan-hash=%CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH%" --verify-receipt';
+const exactLiveReceipt =
+  '"%NODE_EXE%" "%~dp0tools\\seal-questionnaire-pre-release-state.cjs" "--release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" "--plan-hash=%CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH%" --verify';
+const maintenanceVerify =
+  '"%NODE_EXE%" "%~dp0tools\\manage-questionnaire-release-announcements.cjs" "--release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" --maintenance-verify';
+const indexGate =
+  'if /I "%QUESTIONNAIRE_STAGE%"=="indexes" (';
+const authorizationGate =
+  'if /I not "%CFSB_QUESTIONNAIRE_RELEASE_GO%"=="%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" (';
 
-test("indexes requires a SHA-bound reviewed dry-run in a later invocation", () => {
-  const dryRun = script.indexOf(dryRunCall);
-  const indexGate = script.indexOf(
-    'if /I "%QUESTIONNAIRE_STAGE%"=="indexes" (',
-    dryRun
-  );
-  const proof = script.indexOf(proofPredicate, indexGate);
-  const stop = script.indexOf("exit /b 1", proof);
-  const secondPreflightPosition = script.indexOf(secondPreflight, proof);
-  const deploy = script.indexOf(deployCall);
+test("indexes fails closed before any release preflight or Firebase command", () => {
+  const gate = script.indexOf(indexGate);
+  const authorization = script.indexOf(authorizationGate);
+  const block = script.slice(gate, authorization);
 
-  assert.ok(dryRun >= 0, "the Firebase dry-run must exist");
-  assert.ok(indexGate > dryRun, "the index-only gate must follow the dry-run");
-  assert.match(script, /index-dry-run-%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%\.receipt/);
+  assert.ok(gate >= 0, "the explicit indexes refusal must exist");
+  assert.ok(
+    gate < authorization,
+    "indexes must be rejected before release checks can invoke tools"
+  );
+  assert.match(block, /STOP: le mode indexes est desactive pour ce candidat/);
+  assert.match(block, /A4 est\r?\n\s*echo strictement une verification en lecture seule/);
   assert.match(
-    script,
-    /if not exist "%LOCALAPPDATA%\\CFSB\\questionnaire-release\\index-dry-run-/
-  );
-  assert.match(script, /premiere invocation indexes terminee sans mutation/);
-  assert.match(script, /set \/p INDEX_REVIEW_RECEIPT_SHA=/);
-  assert.match(
-    script,
-    /if \/I not "!INDEX_REVIEW_RECEIPT_SHA!"=="%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%"/
-  );
-  assert.ok(
-    script.indexOf("premiere invocation indexes terminee sans mutation", indexGate) < proof,
-    "an absent receipt must stop the first invocation before the review variable is considered"
-  );
-  assert.ok(proof > indexGate, "the proof must be checked only for indexes");
-  assert.ok(stop > proof, "the unreviewed first invocation must stop");
-  assert.ok(
-    stop < secondPreflightPosition,
-    "the first invocation must stop before mutation preflights"
-  );
-  assert.ok(
-    secondPreflightPosition < deploy,
-    "a reviewed second invocation must rerun the live preflight before deploy"
+    block,
+    /preflight-questionnaire-stage-a-live\.cjs --protect-through-next-scheduler --require-index-ready --require-safe-scheduler-window/
   );
   assert.match(
-    script.slice(proof, stop),
-    /set CFSB_QUESTIONNAIRE_INDEX_DRY_RUN_REVIEWED=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%/,
-    "the operator instruction must bind the proof to the sealed SHA"
+    block,
+    /seal-questionnaire-pre-release-state\.cjs --release-commit=%%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%% --plan-hash=%%CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH%% --verify-index-ready/
   );
+  assert.match(block, /verify-questionnaire-stage-a-index-ready\.cmd/);
+  assert.match(block, /exit \/b 1/);
+  assert.doesNotMatch(block, /goto :stage_selected/);
+  assert.doesNotMatch(block, /DEPLOY_ONLY=/);
+  assert.doesNotMatch(block, /\bfirebase\b/i);
 });
 
-test("each invocation traverses the complete shared preflight chain", () => {
+test("Stage A has no index deployment target or obsolete review bypass", () => {
+  assert.doesNotMatch(script, /firestore:indexes/i);
+  assert.doesNotMatch(script, /CFSB_QUESTIONNAIRE_INDEX_DRY_RUN_REVIEWED/);
+  assert.doesNotMatch(script, /index-dry-run-/);
+  assert.doesNotMatch(script, /:indexes_published/);
+
+  const assignments = (
+    script.match(/^\s*set "DEPLOY_ONLY=[^"]+"\r?$/gm) || []
+  ).map((line) => line.trim());
+  assert.deepEqual(assignments, [
+    'set "DEPLOY_ONLY=firestore:rules"',
+    'set "DEPLOY_ONLY=functions:listQuestionnaireForms,functions:saveQuestionnaireDraft,functions:publishQuestionnaireForm,functions:setQuestionnaireDeliveryReady,functions:archiveQuestionnaireForm,functions:duplicateQuestionnaireForm,functions:questionnairePublicApi"',
+    'set "DEPLOY_ONLY=functions:sendQuestionnaire,functions:processQuestionnaireSendRequest,functions:scheduledQuestionnaireSendRecovery,functions:scheduledQuestionnaireSendPlans,functions:syncDashboardFromSheets,functions:scheduledDashboardSync,functions:scheduledQuestionnaireResponseSync,functions:processSyncRequest"'
+  ]);
+});
+
+test("only rules, additive and legacy reach the shared deployment path", () => {
+  const stages = ["rules", "additive", "legacy"];
+  let cursor = script.indexOf(authorizationGate);
+
+  for (const stage of stages) {
+    const marker = `if /I "%QUESTIONNAIRE_STAGE%"=="${stage}" (`;
+    const position = script.indexOf(marker, cursor);
+    assert.ok(position > cursor, `${stage} must remain available in order`);
+    const nextBoundary = stage === "legacy"
+      ? script.indexOf('echo STOP: sous-etape inconnue', position)
+      : script.indexOf(
+        `if /I "%QUESTIONNAIRE_STAGE%"=="${
+          stages[stages.indexOf(stage) + 1]
+        }" (`,
+        position
+      );
+    const block = script.slice(position, nextBoundary);
+    assert.match(block, /goto :stage_selected/);
+    cursor = position;
+  }
+
+  assert.equal(
+    script.match(/call "%FIREBASE_BIN%" deploy --project/g)?.length,
+    1,
+    "the shared mutation call must remain unique"
+  );
+  assert.equal(
+    script.match(/call "%FIREBASE_BIN%" deploy --dry-run/g)?.length,
+    1,
+    "the shared dry-run call must remain unique"
+  );
+  assert.ok(script.includes(dryRunCall));
+  assert.ok(script.includes(deployCall));
+});
+
+test("each mutable stage retains the complete shared preflight chain", () => {
   const dryRun = script.indexOf(dryRunCall);
   const requiredBeforeDryRun = [
     finalSeal,
+    localReceipt,
+    maintenanceVerify,
     '"%NODE_EXE%" "%~dp0tools\\verify-firebase-auth-ready.cjs"',
     '"%NODE_EXE%" "%~dp0tools\\verify-questionnaire-reconciled-candidate.mjs"',
-    secondPreflight,
+    firstPreflight,
     'call "%~dp0verify-dashboard-before-deploy.cmd"'
   ];
   let cursor = -1;
@@ -88,42 +139,108 @@ test("each invocation traverses the complete shared preflight chain", () => {
 
   assert.ok(
     cursor < dryRun,
-    "the complete shared preflight chain must finish before every dry-run"
+    "the complete shared preflight chain must finish before the dry-run"
   );
 });
 
-test("the reviewed invocation still reseals after its repeated dry-run", () => {
+test("mutable stages reseal after dry-run and before deploy", () => {
   const dryRun = script.indexOf(dryRunCall);
   const deploy = script.indexOf(deployCall);
+  const secondPreflight = script.indexOf(firstPreflight, dryRun);
   const seals = [...script.matchAll(
     /"%NODE_EXE%" "%~dp0tools\\verify-sealed-questionnaire-release-worktree\.cjs" "%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%"/g
   )].map((match) => match.index);
 
   assert.equal(seals.length, 2, "the script must retain both seal checks");
+  assert.ok(secondPreflight > dryRun && secondPreflight < deploy);
   assert.ok(
-    seals.some((position) => position > dryRun && position < deploy),
-    "the final sealed-worktree check must remain between dry-run and mutation"
+    seals.some((position) => position > secondPreflight && position < deploy),
+    "the final sealed-worktree check must remain immediately before mutation"
+  );
+  const maintenancePositions = [...script.matchAll(
+    /"%NODE_EXE%" "%~dp0tools\\manage-questionnaire-release-announcements\.cjs" "--release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" --maintenance-verify/g
+  )].map((match) => match.index);
+  assert.equal(
+    maintenancePositions.length,
+    2,
+    "maintenance must be verified before dry-run and again before mutation"
+  );
+  assert.ok(maintenancePositions[0] < dryRun);
+  assert.ok(
+    maintenancePositions[1] > secondPreflight
+      && maintenancePositions[1] < deploy
+  );
+  const escapedExactLiveReceipt = exactLiveReceipt.replace(
+    /[.*+?^${}()|[\]\\]/g,
+    "\\$&"
+  );
+  const exactLiveReceiptMatch = new RegExp(
+    `^\\s*${escapedExactLiveReceipt}\\r?$`,
+    "m"
+  ).exec(script);
+  const exactLiveReceiptPosition = exactLiveReceiptMatch?.index ?? -1;
+  assert.ok(exactLiveReceiptPosition > maintenancePositions[1]);
+  assert.ok(exactLiveReceiptPosition < deploy);
+  assert.ok(script.lastIndexOf(localReceipt) > maintenancePositions[1]);
+  assert.ok(script.lastIndexOf(localReceipt) < deploy);
+});
+
+test("Stage A fails closed without planHash, receipt or live maintenance", () => {
+  const dryRun = script.indexOf(dryRunCall);
+  const planGate = script.indexOf(
+    'if "%CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH%"=="" ('
+  );
+  assert.ok(planGate >= 0 && planGate < dryRun);
+  assert.match(
+    script.slice(planGate, script.indexOf(finalSeal, planGate)),
+    /exit \/b 1/
+  );
+
+  const firstReceipt = script.indexOf(localReceipt);
+  const firstMaintenance = script.indexOf(maintenanceVerify);
+  assert.ok(firstReceipt > planGate && firstReceipt < dryRun);
+  assert.match(
+    script.slice(firstReceipt, firstMaintenance),
+    /if errorlevel 1 \([\s\S]*exit \/b 1/
+  );
+  assert.match(
+    script.slice(firstMaintenance, dryRun),
+    /if errorlevel 1 \([\s\S]*maintenancePublished[\s\S]*exit \/b 1/
   );
 });
 
-test("rules and function stages keep the shared deployment path", () => {
-  for (const stage of ["rules", "additive", "legacy"]) {
-    const stageStart = script.indexOf(
-      `if /I "%QUESTIONNAIRE_STAGE%"=="${stage}" (`
-    );
-    assert.ok(stageStart >= 0, `${stage} stage must remain available`);
-  }
+test("A4 and Stage B bind their real checks to the same receipt planHash", () => {
+  assert.match(
+    indexReadyScript,
+    /if "%CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH%"=="" \(/
+  );
+  assert.match(
+    indexReadyScript,
+    /seal-questionnaire-pre-release-state\.cjs" "--release-commit=%CFSB_QUESTIONNAIRE_RELEASE_COMMIT%" "--plan-hash=%CFSB_QUESTIONNAIRE_PRE_RELEASE_PLAN_HASH%" --verify-index-ready/
+  );
+  assert.doesNotMatch(indexReadyScript, /firebase deploy/i);
 
-  assert.equal(
-    script.match(
-      /if \/I "%QUESTIONNAIRE_STAGE%"=="indexes" \(/g
-    )?.length,
-    2,
-    "only index selection and the post-dry-run index gate should be index-specific"
+  const hostingCall = stageBScript.indexOf(
+    'call "%~dp0deploy-hosting-dashboard.cmd"'
   );
-  assert.equal(
-    script.match(/call "%FIREBASE_BIN%" deploy --project/g)?.length,
-    1,
-    "the existing shared mutation call must remain unique"
+  const stageBReceipt = stageBScript.indexOf(localReceipt);
+  const stageBMaintenance = stageBScript.indexOf(maintenanceVerify);
+  assert.ok(stageBReceipt >= 0 && stageBReceipt < stageBMaintenance);
+  assert.ok(stageBMaintenance < hostingCall);
+  assert.match(
+    stageBScript.slice(stageBMaintenance, hostingCall),
+    /if errorlevel 1 \([\s\S]*maintenancePublished[\s\S]*exit \/b 1/
   );
+});
+
+test("usage exposes only mutable stages and routes A4 to read-only controls", () => {
+  const usage = script.slice(script.indexOf(":usage"));
+
+  assert.match(usage, /deploy-questionnaire-stage-a\.cmd rules/);
+  assert.match(usage, /deploy-questionnaire-stage-a\.cmd additive/);
+  assert.match(usage, /deploy-questionnaire-stage-a\.cmd legacy/);
+  assert.doesNotMatch(usage, /deploy-questionnaire-stage-a\.cmd indexes/);
+  assert.match(usage, /controles A4/);
+  assert.match(usage, /strictement read-only/);
+  assert.match(usage, /mode indexes echoue toujours ferme/);
 });
