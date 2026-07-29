@@ -359,6 +359,24 @@ test("the exact questionnaire schedule index must be uniquely READY", () => {
     { indexes: 1, matching: 1, ready: 1, building: 0, failed: 0 },
     "the list API may return indexes from unrelated collection groups"
   );
+  assert.throws(
+    () => preflight.summarizeQuestionnaireScheduleIndexes([expected, {}]),
+    /invalid or unexpected index resource name/,
+    "an unclassifiable index must block the live gate"
+  );
+  assert.throws(
+    () => preflight.summarizeQuestionnaireScheduleIndexes([
+      expected,
+      {
+        ...expected,
+        name:
+          "projects/another-project/databases/(default)/collectionGroups/"
+            + "tasks/indexes/unexpected-project"
+      }
+    ]),
+    /invalid or unexpected index resource name/,
+    "an index from another project must block the live gate"
+  );
   assert.deepEqual(
     preflight.summarizeQuestionnaireScheduleIndexes([
       { ...expected, state: "CREATING" },

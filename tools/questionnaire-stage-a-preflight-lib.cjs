@@ -480,10 +480,40 @@ function isIndexFromCollectionGroup(
     && index.name.startsWith(namePrefix);
 }
 
+function validateIndexResourceNames(
+  indexes,
+  {
+    projectId = DEFAULT_PROJECT_ID
+  } = {}
+) {
+  const namePrefix =
+    `projects/${projectId}/databases/(default)/collectionGroups/`;
+  for (const index of indexes) {
+    const name = index?.name;
+    if (typeof name !== "string" || !name.startsWith(namePrefix)) {
+      throw new Error(
+        "Firestore returned an invalid or unexpected index resource name"
+      );
+    }
+    const resourceSegments = name.slice(namePrefix.length).split("/");
+    if (
+      resourceSegments.length !== 3
+      || !resourceSegments[0]
+      || resourceSegments[1] !== "indexes"
+      || !resourceSegments[2]
+    ) {
+      throw new Error(
+        "Firestore returned an invalid or unexpected index resource name"
+      );
+    }
+  }
+}
+
 function summarizeQuestionnaireScheduleIndexes(indexes, options = {}) {
   if (!Array.isArray(indexes)) {
     throw new TypeError("indexes must be an array");
   }
+  validateIndexResourceNames(indexes, options);
   const collectionIndexes = indexes.filter(
     (index) => isIndexFromCollectionGroup(index, options)
   );
