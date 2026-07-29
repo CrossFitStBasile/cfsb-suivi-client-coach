@@ -9157,7 +9157,7 @@ async function findGhlContactByPhone({ token, locationId, phoneNormalized }) {
       try {
         const duplicateUrl = new URL(`${GHL_API_BASE}/contacts/search/duplicate`);
         duplicateUrl.searchParams.set("locationId", locationId);
-        duplicateUrl.searchParams.set("phone", phone);
+        duplicateUrl.searchParams.set("number", phone);
         const duplicate = await ghlFetch(token, duplicateUrl, { method: "GET" });
         collectExact(
           [duplicate?.contact, ...(duplicate?.contacts || []), duplicate],

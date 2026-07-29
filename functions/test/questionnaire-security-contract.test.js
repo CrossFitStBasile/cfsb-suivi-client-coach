@@ -125,6 +125,9 @@ test("la recherche GHL est bornée à quatre appels parallèles et huit secondes
   const search = loadGhlPhoneSearch(async (_token, url) => {
     calls += 1;
     if (url.pathname.endsWith("/contacts/search/duplicate")) {
+      assert.equal(url.searchParams.get("locationId"), "location");
+      assert.match(url.searchParams.get("number") || "", /^(?:\d{10}|\+1\d{10})$/);
+      assert.equal(url.searchParams.has("phone"), false);
       const error = new Error("aucun doublon");
       error.status = 404;
       throw error;
