@@ -3,6 +3,7 @@
 const CANARY_SOURCE = "questionnaire_scheduler_canary";
 const TARGET_PREFIX = "system_questionnaire_canary_";
 const SCHEDULE_PREFIX = "system_questionnaire_schedule_canary_";
+const GHL_ADD_TAGS_RESPONSE_PROOF = "ghl_add_tags_response_v1";
 const EXPECTED_JOB_NAME =
   "projects/cfsb-dashboard-coach-aa9a4/locations/us-central1/jobs/"
   + "firebase-schedule-scheduledQuestionnaireSendPlans-us-central1";
@@ -124,6 +125,22 @@ function normalizePhone(value) {
   return /^\d{10}$/.test(normalized) ? normalized : "";
 }
 
+function validGhlAddTagsReceipt(value, expectedTag) {
+  const tag = clean(expectedTag);
+  return Boolean(
+    tag
+    && value
+    && typeof value === "object"
+    && !Array.isArray(value)
+    && value.status === 201
+    && value.body
+    && typeof value.body === "object"
+    && !Array.isArray(value.body)
+    && Array.isArray(value.body.tags)
+    && value.body.tags.some((entry) => clean(entry) === tag)
+  );
+}
+
 function scheduleQueueContract(schedule = {}) {
   return JSON.stringify([
     clean(schedule.status),
@@ -196,6 +213,7 @@ function todayTorontoIsoDate(value = new Date()) {
 module.exports = {
   CANARY_SOURCE,
   EXPECTED_JOB_NAME,
+  GHL_ADD_TAGS_RESPONSE_PROOF,
   SCHEDULE_PREFIX,
   TARGET_PREFIX,
   armedUntil,
@@ -206,5 +224,6 @@ module.exports = {
   queueScheduleSendAtomically,
   releaseCommit,
   scheduleQueueContract,
-  todayTorontoIsoDate
+  todayTorontoIsoDate,
+  validGhlAddTagsReceipt
 };

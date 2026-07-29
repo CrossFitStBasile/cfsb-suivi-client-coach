@@ -204,6 +204,107 @@ test("manual Scheduler runs prove quiescence by completion time, not scheduled t
   );
 });
 
+test("GHL canary proof distinguishes an observed tag from a consumed tag", () => {
+  const contactId = "syntheticContact01";
+  const send = {
+    status: "sent",
+    deliveryStatus: "tag_added",
+    externalEffectState: "completed",
+    externalEffectProof: lib.GHL_ADD_TAGS_RESPONSE_PROOF,
+    externalEffectEventId: "event-one",
+    processingEventId: "event-one",
+    externalEffectStartedAt: "2026-07-29T04:00:00.000Z",
+    externalEffectCompletedAt: "2026-07-29T04:00:00.250Z",
+    externalEffectExpectedGhlContactId: contactId,
+    ghlContactId: contactId,
+    ghlTag: "dashboardcoach",
+    sentAt: "2026-07-29T04:00:00.250Z"
+  };
+  const expected = {
+    expectedTag: "dashboardcoach",
+    expectedContactId: contactId,
+    nowMs: new Date("2026-07-29T04:00:01Z").getTime()
+  };
+  for (const cleanup of [
+    {
+      addApiAccepted: true,
+      tagObserved: true,
+      removedBy: "workflow"
+    },
+    {
+      addApiAccepted: true,
+      tagObserved: true,
+      removedBy: "runner"
+    },
+    {
+      addApiAccepted: true,
+      tagObserved: false,
+      removedBy: "already_absent_after_api_acceptance"
+    }
+  ]) {
+    assert.equal(lib.canaryGhlEffectVerified(send, cleanup, expected), true);
+  }
+  for (const [changedSend, cleanup] of [
+    [{ ...send, status: "error" }, {
+      addApiAccepted: true,
+      tagObserved: false,
+      removedBy: "already_absent_after_api_acceptance"
+    }],
+    [{ ...send, externalEffectProof: "" }, {
+      addApiAccepted: true,
+      tagObserved: false,
+      removedBy: "already_absent_after_api_acceptance"
+    }],
+    [{ ...send, externalEffectCompletedAt: "invalid" }, {
+      addApiAccepted: true,
+      tagObserved: false,
+      removedBy: "already_absent_after_api_acceptance"
+    }],
+    [{ ...send, externalEffectCompletedAt: "2026-07-28T23:59:59Z" }, {
+      addApiAccepted: true,
+      tagObserved: false,
+      removedBy: "already_absent_after_api_acceptance"
+    }],
+    [{
+      ...send,
+      externalEffectCompletedAt: "2026-07-29T04:00:05.000Z",
+      sentAt: "2026-07-29T04:00:00.250Z"
+    }, {
+      addApiAccepted: true,
+      tagObserved: false,
+      removedBy: "already_absent_after_api_acceptance"
+    }],
+    [{ ...send, ghlContactId: "otherContact" }, {
+      addApiAccepted: true,
+      tagObserved: false,
+      removedBy: "already_absent_after_api_acceptance"
+    }],
+    [send, {
+      addApiAccepted: true,
+      tagObserved: false,
+      removedBy: "workflow"
+    }]
+  ]) {
+    assert.equal(
+      lib.canaryGhlEffectVerified(changedSend, cleanup, expected),
+      false
+    );
+  }
+  assert.match(functionsSource, /validGhlAddTagsReceipt/);
+  assert.match(functionsSource, /externalEffectProof:/);
+  assert.match(
+    functionsSource,
+    /const addTagsReceipt = await addGhlTag[\s\S]*schedulerCanary[\s\S]*validGhlAddTagsReceipt\([\s\S]*throw new Error\("Canari GHL:[\s\S]*await markSend\(sendRef,[\s\S]*externalEffectState: "completed",[\s\S]*externalEffectProof:/
+  );
+  assert.match(
+    functionsSource,
+    /catch \(error\)[\s\S]*externalEffectState: "uncertain"/
+  );
+  assert.match(runnerSource, /targetTagEffectVerified: true/);
+  assert.match(runnerSource, /targetTagFinalAbsenceVerified: true/);
+  assert.match(runnerSource, /ghlAddReceiptVerified: true/);
+});
+
 test("synthetic GHL contact requires explicit name, tag, unique ID and valid phone", () => {
   const valid = {
     id: "syntheticContact01",

@@ -1539,7 +1539,21 @@ async function processQuestionnaireSendFromQueue({ sendRef, send, sendId = "", e
       }
     }
 
-    await addGhlTag({ token, contactId: contact.id, tag: questionnaire.ghlTag });
+    const addTagsReceipt = await addGhlTag({
+      token,
+      contactId: contact.id,
+      tag: questionnaire.ghlTag,
+      includeResponseMeta: schedulerCanary
+    });
+    if (
+      schedulerCanary
+      && !questionnaireSchedulerSafety.validGhlAddTagsReceipt(
+        addTagsReceipt,
+        questionnaire.ghlTag
+      )
+    ) {
+      throw new Error("Canari GHL: le reçu Add Tags ne confirme pas le tag exact.");
+    }
     await markSend(sendRef, {
       status: "sent",
       deliveryStatus: "tag_added",
@@ -1548,6 +1562,8 @@ async function processQuestionnaireSendFromQueue({ sendRef, send, sendId = "", e
       ghlContactName: cleanString(contact.contactName || contact.fullName || contact.name),
       ...(schedulerCanary ? {
         externalEffectState: "completed",
+        externalEffectProof:
+          questionnaireSchedulerSafety.GHL_ADD_TAGS_RESPONSE_PROOF,
         externalEffectCompletedAt: admin.firestore.FieldValue.serverTimestamp()
       } : {})
     });
@@ -9262,23 +9278,33 @@ async function findGhlContactByNameExact({ token, locationId, name, nameKey }) {
   return exactMatches[0];
 }
 
-async function addGhlTag({ token, contactId, tag }) {
+async function addGhlTag({
+  token,
+  contactId,
+  tag,
+  includeResponseMeta = false
+}) {
   return ghlFetch(token, `${GHL_API_BASE}/contacts/${encodeURIComponent(contactId)}/tags`, {
     method: "POST",
-    body: JSON.stringify({ tags: [tag] })
+    body: JSON.stringify({ tags: [tag] }),
+    includeResponseMeta
   });
 }
 
 async function ghlFetch(token, url, options = {}) {
+  const {
+    includeResponseMeta = false,
+    ...requestOptions
+  } = options;
   const response = await fetch(url, {
-    ...options,
-    signal: options.signal || AbortSignal.timeout(GHL_REQUEST_TIMEOUT_MS),
+    ...requestOptions,
+    signal: requestOptions.signal || AbortSignal.timeout(GHL_REQUEST_TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${token}`,
       Version: GHL_API_VERSION,
       "Content-Type": "application/json",
       Accept: "application/json",
-      ...(options.headers || {})
+      ...(requestOptions.headers || {})
     }
   });
 
@@ -9298,7 +9324,9 @@ async function ghlFetch(token, url, options = {}) {
     error.body = body;
     throw error;
   }
-  return body;
+  return includeResponseMeta
+    ? { status: response.status, body }
+    : body;
 }
 
 async function markSend(ref, patch) {

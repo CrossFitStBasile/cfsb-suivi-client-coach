@@ -126,6 +126,35 @@ test("valid control propagates its nonce and blocks a mismatched due snapshot", 
   assert.equal(blocked.control.nonce, nonce);
 });
 
+test("GHL Add Tags receipt proves the exact canary tag", () => {
+  assert.equal(
+    safety.validGhlAddTagsReceipt(
+      { status: 201, body: { tags: ["qa", "dashboardcoach"] } },
+      "dashboardcoach"
+    ),
+    true
+  );
+  for (const candidate of [
+    null,
+    {},
+    { status: 200, body: { tags: ["dashboardcoach"] } },
+    { status: 201, body: { tags: "dashboardcoach" } },
+    { status: 201, body: { tags: [] } },
+    { status: 201, body: { tags: ["other"] } },
+    { status: 201, body: { tags: ["DashboardCoach"] } },
+    [{ status: 201, body: { tags: ["dashboardcoach"] } }]
+  ]) {
+    assert.equal(
+      safety.validGhlAddTagsReceipt(candidate, "dashboardcoach"),
+      false
+    );
+  }
+  assert.equal(
+    safety.GHL_ADD_TAGS_RESPONSE_PROOF,
+    "ghl_add_tags_response_v1"
+  );
+});
+
 function fakeDatabase(initialSchedule, initialSend = null) {
   const state = {
     schedule: { ...initialSchedule },

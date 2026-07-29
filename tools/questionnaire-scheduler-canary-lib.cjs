@@ -24,6 +24,7 @@ const MAX_ARMING_MS = 30 * 60 * 1000;
 const CONTROL_NONCE_PATTERN = /^[a-f0-9]{32}$/;
 const EXPECTED_SCHEDULER_JOB_NAME =
   `projects/${PROJECT_ID}/locations/${REGION}/jobs/firebase-schedule-${FUNCTION_ID}-${REGION}`;
+const GHL_ADD_TAGS_RESPONSE_PROOF = "ghl_add_tags_response_v1";
 
 class CanaryError extends Error {
   constructor(code) {
@@ -833,6 +834,56 @@ function selectSchedulerAttemptCompletion(runs = [], options = {}) {
   return completion;
 }
 
+function canaryGhlEffectVerified(send = {}, cleanup = {}, {
+  expectedTag,
+  expectedContactId,
+  nowMs = Date.now()
+} = {}) {
+  const startedMs = new Date(
+    String(send.externalEffectStartedAt || "")
+  ).getTime();
+  const completedMs = new Date(
+    String(send.externalEffectCompletedAt || "")
+  ).getTime();
+  const sentMs = new Date(String(send.sentAt || "")).getTime();
+  const cleanupConsistent =
+    cleanup.addApiAccepted === true
+    && (
+      (
+        cleanup.tagObserved === true
+        && ["workflow", "runner"].includes(cleanup.removedBy)
+      )
+      || (
+        cleanup.tagObserved === false
+        && cleanup.removedBy === "already_absent_after_api_acceptance"
+      )
+    );
+  return Boolean(
+    String(expectedTag || "")
+    && String(expectedContactId || "")
+    && send.status === "sent"
+    && send.deliveryStatus === "tag_added"
+    && send.externalEffectState === "completed"
+    && send.externalEffectProof === GHL_ADD_TAGS_RESPONSE_PROOF
+    && send.ghlTag === expectedTag
+    && send.ghlContactId === expectedContactId
+    && send.externalEffectExpectedGhlContactId === expectedContactId
+    && String(send.processingEventId || "")
+    && send.externalEffectEventId === send.processingEventId
+    && Number.isFinite(startedMs)
+    && Number.isFinite(completedMs)
+    && Number.isFinite(sentMs)
+    && startedMs <= completedMs
+    && completedMs <= sentMs
+    && sentMs - completedMs <= 5_000
+    && Number.isFinite(nowMs)
+    && startedMs >= nowMs - (30 * 60 * 1000)
+    && completedMs <= nowMs + (5 * 60 * 1000)
+    && sentMs <= nowMs + (5 * 60 * 1000)
+    && cleanupConsistent
+  );
+}
+
 function sortJsonKeys(value) {
   if (Array.isArray(value)) return value.map(sortJsonKeys);
   if (!value || typeof value !== "object") return value;
@@ -867,6 +918,7 @@ module.exports = {
   MAX_ARMING_MS,
   CONTROL_NONCE_PATTERN,
   EXPECTED_SCHEDULER_JOB_NAME,
+  GHL_ADD_TAGS_RESPONSE_PROOF,
   CanaryError,
   assertReleaseCommit,
   canaryIds,
@@ -906,5 +958,6 @@ module.exports = {
   stableJsonStringify,
   schedulerRunCompletesJobAttempt,
   selectSchedulerAttemptCompletion,
+  canaryGhlEffectVerified,
   safeResultError
 };

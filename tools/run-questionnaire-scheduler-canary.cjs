@@ -46,6 +46,7 @@ const {
   decodeFirestoreDocument,
   stableJsonStringify,
   selectSchedulerAttemptCompletion,
+  canaryGhlEffectVerified,
   safeResultError
 } = require("./questionnaire-scheduler-canary-lib.cjs");
 const {
@@ -1763,8 +1764,16 @@ async function waitForCanarySend(context, sendId) {
         "questionnaireCanaryMode",
         "canaryReleaseCommit",
         "externalEffectState",
+        "externalEffectProof",
+        "externalEffectEventId",
+        "processingEventId",
+        "externalEffectStartedAt",
+        "externalEffectCompletedAt",
+        "externalEffectExpectedGhlContactId",
+        "ghlContactId",
         "ghlTag",
-        "questionnaireType"
+        "questionnaireType",
+        "sentAt"
       ]
     });
     if (document) {
@@ -2203,7 +2212,10 @@ async function executeProcessCanary(context) {
     targetCreated = false;
     const postflight = runLivePreflight({ requireIndexReady: false });
     if (postflight.schedules.activeDue !== 0) throw new CanaryError("canary_postflight_active_due");
-    if (!tagCleanup.tagObserved) {
+    if (!canaryGhlEffectVerified(terminal, tagCleanup, {
+      expectedTag: PROCESS_GHL_TAG,
+      expectedContactId: contact.id
+    })) {
       throw new CanaryError("process_canary_target_tag_not_observed");
     }
 
@@ -2218,7 +2230,10 @@ async function executeProcessCanary(context) {
       externalEffectClaimVerified: true,
       expectedSyntheticContactVerified: true,
       ghlAddApiAccepted: tagCleanup.addApiAccepted,
+      ghlAddReceiptVerified: true,
       targetTagObserved: tagCleanup.tagObserved,
+      targetTagEffectVerified: true,
+      targetTagFinalAbsenceVerified: true,
       targetTagRemovedBy: tagCleanup.removedBy,
       syntheticTargetRemoved: true,
       writes: {
@@ -2388,7 +2403,10 @@ async function executePositiveCanary(context, job) {
     controlCreated = false;
     const postflight = runLivePreflight({ requireIndexReady: true });
     if (postflight.schedules.activeDue !== 0) throw new CanaryError("canary_postflight_active_due");
-    if (!tagCleanup.tagObserved) {
+    if (!canaryGhlEffectVerified(send, tagCleanup, {
+      expectedTag: LEGACY_GHL_TAG,
+      expectedContactId: contact.id
+    })) {
       throw new CanaryError("positive_canary_target_tag_not_observed");
     }
 
@@ -2406,7 +2424,10 @@ async function executePositiveCanary(context, job) {
       externalEffectClaimVerified: true,
       expectedSyntheticContactVerified: true,
       ghlAddApiAccepted: tagCleanup.addApiAccepted,
+      ghlAddReceiptVerified: true,
       targetTagObserved: tagCleanup.tagObserved,
+      targetTagEffectVerified: true,
+      targetTagFinalAbsenceVerified: true,
       targetTagRemovedBy: tagCleanup.removedBy,
       canaryControlVerified: true,
       syntheticFixturesRemoved: true,
