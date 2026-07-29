@@ -115,6 +115,95 @@ test("stable JSON comparison ignores Firestore map key order but preserves array
   );
 });
 
+test("manual Scheduler runs prove quiescence by completion time, not scheduled time", () => {
+  const job = {
+    name: "projects/example/locations/us-central1/jobs/questionnaire",
+    lastAttemptTime: "2026-07-29T03:39:30.246751Z",
+    status: { code: 0 }
+  };
+  const manualRun = {
+    status: "success",
+    triggeredByJobName: "questionnaire",
+    triggeredByScheduleTime: "2026-07-29T04:15:04.832721-07:00",
+    syncedAt: "2026-07-29T03:39:30.702Z"
+  };
+  const options = {
+    jobName: job.name,
+    lastAttemptTime: job.lastAttemptTime,
+    jobStatusCode: job.status.code,
+    nowMs: new Date("2026-07-29T03:39:31Z").getTime()
+  };
+  assert.equal(
+    lib.schedulerRunCompletesJobAttempt(manualRun, options),
+    true,
+    "a manual run's schedule header may name the cron slot instead of the attempt"
+  );
+  for (const changed of [
+    { ...manualRun, status: "error" },
+    { ...manualRun, triggeredByJobName: "other-job" },
+    { ...manualRun, triggeredByJobName: "prefix-questionnaire" },
+    { ...manualRun, triggeredByScheduleTime: "" },
+    { ...manualRun, syncedAt: "2026-07-29T03:39:30.246750Z" },
+    { ...manualRun, syncedAt: "2026-07-29T03:39:20Z" },
+    { ...manualRun, syncedAt: "2026-07-29T03:42:40Z" },
+    { ...manualRun, syncedAt: "2026-07-29T03:40:00Z" }
+  ]) {
+    assert.equal(
+      lib.schedulerRunCompletesJobAttempt(changed, options),
+      false
+    );
+  }
+  assert.equal(
+    lib.schedulerRunCompletesJobAttempt(manualRun, {
+      ...options,
+      jobStatusCode: 13
+    }),
+    false
+  );
+  const identifiedRun = { id: "expected-run", ...manualRun };
+  assert.equal(
+    lib.selectSchedulerAttemptCompletion([identifiedRun], {
+      ...options,
+      expectedCompletionId: "expected-run"
+    }),
+    identifiedRun
+  );
+  assert.throws(
+    () => lib.selectSchedulerAttemptCompletion(
+      [identifiedRun, { ...identifiedRun, id: "duplicate-run" }],
+      options
+    ),
+    /scheduler_completion_not_unique/
+  );
+  assert.throws(
+    () => lib.selectSchedulerAttemptCompletion([identifiedRun], {
+      ...options,
+      expectedCompletionId: "other-run"
+    }),
+    /scheduler_completion_id_mismatch/
+  );
+  assert.match(
+    runnerSource,
+    /selectSchedulerAttemptCompletion\(runs/
+  );
+  assert.match(
+    runnerSource,
+    /expectedCompletionId: firstRun\.id/
+  );
+  assert.match(
+    runnerSource,
+    /ageMs >= 150_000 && !expectedCompletionId/
+  );
+  assert.match(
+    runnerSource,
+    /scheduler_attempt_changed_during_quiescence/
+  );
+  assert.match(
+    runnerSource,
+    /freshJob\.lastAttemptTime[\s\S]*expectedJob\.lastAttemptTime/
+  );
+});
+
 test("synthetic GHL contact requires explicit name, tag, unique ID and valid phone", () => {
   const valid = {
     id: "syntheticContact01",

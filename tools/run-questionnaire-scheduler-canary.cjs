@@ -45,6 +45,7 @@ const {
   encodeFirestoreFields,
   decodeFirestoreDocument,
   stableJsonStringify,
+  selectSchedulerAttemptCompletion,
   safeResultError
 } = require("./questionnaire-scheduler-canary-lib.cjs");
 const {
@@ -976,7 +977,13 @@ async function schedulerSyncRuns(context) {
 async function triggerSchedulerJob(context, expectedJob, controlProof) {
   await assertCanaryControlReady(context, controlProof);
   const freshJob = await getAndValidateSchedulerJob(context);
-  if (schedulerJobFingerprint(freshJob) !== schedulerJobFingerprint(expectedJob)) {
+  if (
+    schedulerJobFingerprint(freshJob) !== schedulerJobFingerprint(expectedJob)
+    || String(freshJob.lastAttemptTime || "")
+      !== String(expectedJob.lastAttemptTime || "")
+    || Number(freshJob.status?.code || 0)
+      !== Number(expectedJob.status?.code || 0)
+  ) {
     throw new CanaryError("scheduler_job_changed_before_trigger");
   }
   await assertCanaryControlReady(context, controlProof);
@@ -1020,7 +1027,9 @@ async function waitForNewSchedulerRun(
         throw new CanaryError("scheduler_run_counts_mismatch");
       }
       const jobLeaf = job.name.split("/").pop();
-      if (!String(run.triggeredByJobName || "").endsWith(jobLeaf)) {
+      if (
+        ![jobLeaf, job.name].includes(String(run.triggeredByJobName || ""))
+      ) {
         throw new CanaryError("scheduler_run_job_evidence_missing");
       }
       if (!String(run.triggeredByScheduleTime || "").trim()) {
@@ -1033,36 +1042,45 @@ async function waitForNewSchedulerRun(
   throw new CanaryError("scheduler_run_timeout");
 }
 
-async function ensureSchedulerQuiescent(context) {
+async function ensureSchedulerQuiescent(context, {
+  expectedCompletionId = ""
+} = {}) {
   let job = await getAndValidateSchedulerJob(context);
   let runs = await schedulerSyncRuns(context);
-  const lastAttemptMs = new Date(String(job.lastAttemptTime || "")).getTime();
-  if (Number.isFinite(lastAttemptMs)) {
+  const observedLastAttemptTime = String(job.lastAttemptTime || "");
+  for (;;) {
+    const lastAttemptMs = new Date(String(job.lastAttemptTime || "")).getTime();
+    if (!Number.isFinite(lastAttemptMs)) break;
     const ageMs = Date.now() - lastAttemptMs;
     if (ageMs < -5_000) throw new CanaryError("scheduler_last_attempt_in_future");
-    if (ageMs < 150_000) {
-      const matchingCompletion = runs
-        .filter((run) => {
-          const scheduledMs = new Date(String(run.triggeredByScheduleTime || "")).getTime();
-          const syncedMs = new Date(String(run.syncedAt || "")).getTime();
-          return Number.isFinite(scheduledMs)
-            && Number.isFinite(syncedMs)
-            && Math.abs(scheduledMs - lastAttemptMs) <= 5_000
-            && syncedMs >= scheduledMs
-            && run.triggeredByJobName
-            && String(run.triggeredByJobName).endsWith(job.name.split("/").pop());
-        })
-        .sort((left, right) =>
-          new Date(right.syncedAt || 0).getTime() - new Date(left.syncedAt || 0).getTime()
-        )[0];
-      if (!matchingCompletion) throw new CanaryError("scheduler_not_quiescent");
-      const completionAgeMs = Date.now() - new Date(matchingCompletion.syncedAt).getTime();
-      if (completionAgeMs < 5_000) {
-        await delay(Math.max(0, 5_000 - completionAgeMs));
-        job = await getAndValidateSchedulerJob(context);
-        runs = await schedulerSyncRuns(context);
-      }
+    if (ageMs >= 150_000 && !expectedCompletionId) break;
+    let matchingCompletion;
+    try {
+      matchingCompletion = selectSchedulerAttemptCompletion(runs, {
+        expectedCompletionId,
+        jobName: job.name,
+        lastAttemptTime: job.lastAttemptTime,
+        jobStatusCode: Number(job.status?.code || 0),
+        nowMs: Date.now()
+      });
+    } catch (_) {
+      throw new CanaryError("scheduler_not_quiescent");
     }
+    const completionAgeMs =
+      Date.now() - new Date(matchingCompletion.syncedAt).getTime();
+    if (completionAgeMs >= 5_000) break;
+    await delay(Math.max(0, 5_000 - completionAgeMs));
+    const [refreshedJob, refreshedRuns] = await Promise.all([
+      getAndValidateSchedulerJob(context),
+      schedulerSyncRuns(context)
+    ]);
+    if (
+      String(refreshedJob.lastAttemptTime || "") !== observedLastAttemptTime
+    ) {
+      throw new CanaryError("scheduler_attempt_changed_during_quiescence");
+    }
+    job = refreshedJob;
+    runs = refreshedRuns;
   }
   return {
     job,
@@ -2307,7 +2325,7 @@ async function executePositiveCanary(context, job) {
       throw new CanaryError("positive_canary_schedule_changed_before_trigger");
     }
     const triggeredJob = await triggerSchedulerJob(context, quiescent.job, controlProof);
-    await waitForNewSchedulerRun(context, quiescent.baselineIds, {
+    const firstRun = await waitForNewSchedulerRun(context, quiescent.baselineIds, {
       dueSchedules: 1,
       queued: 1,
       skipped: 0
@@ -2343,7 +2361,9 @@ async function executePositiveCanary(context, job) {
       expectedCanaryCount: 0,
       todayToronto
     });
-    const replayQuiescent = await ensureSchedulerQuiescent(context);
+    const replayQuiescent = await ensureSchedulerQuiescent(context, {
+      expectedCompletionId: firstRun.id
+    });
     await assertScheduleTriggerState(context, {
       expectedCanaryCount: 0,
       todayToronto

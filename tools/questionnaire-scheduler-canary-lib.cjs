@@ -767,6 +767,72 @@ function stableJsonStringify(value) {
   return JSON.stringify(sortJsonKeys(value));
 }
 
+function schedulerRunCompletesJobAttempt(run = {}, {
+  jobName,
+  lastAttemptTime,
+  jobStatusCode,
+  nowMs = Date.now(),
+  maximumCompletionDelayMs = 180_000,
+  clockSkewMs = 5_000
+} = {}) {
+  const attemptNs = rfc3339EpochNanoseconds(lastAttemptTime);
+  const syncedNs = rfc3339EpochNanoseconds(run.syncedAt);
+  const scheduleTimeNs = rfc3339EpochNanoseconds(
+    run.triggeredByScheduleTime
+  );
+  const fullJobName = String(jobName || "");
+  const jobLeaf = fullJobName.split("/").pop();
+  const runJobName = String(run.triggeredByJobName || "");
+  if (
+    Number(jobStatusCode) !== 0
+    || run.status !== "success"
+    || !jobLeaf
+    || ![jobLeaf, fullJobName].includes(runJobName)
+    || attemptNs === null
+    || syncedNs === null
+    || scheduleTimeNs === null
+    || !Number.isFinite(nowMs)
+    || !Number.isFinite(maximumCompletionDelayMs)
+    || maximumCompletionDelayMs <= 0
+    || !Number.isFinite(clockSkewMs)
+    || clockSkewMs < 0
+  ) {
+    return false;
+  }
+  const maximumDelayNs =
+    BigInt(Math.trunc(maximumCompletionDelayMs + clockSkewMs)) * 1_000_000n;
+  const latestNowNs =
+    BigInt(Math.trunc(nowMs + clockSkewMs)) * 1_000_000n;
+  return syncedNs >= attemptNs
+    && syncedNs <= attemptNs + maximumDelayNs
+    && syncedNs <= latestNowNs;
+}
+
+function rfc3339EpochNanoseconds(value) {
+  const match = String(value || "").match(
+    /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})$/
+  );
+  if (!match) return null;
+  const epochMs = Date.parse(`${match[1]}${match[3]}`);
+  if (!Number.isFinite(epochMs)) return null;
+  const fractionalNs = BigInt((match[2] || "").padEnd(9, "0") || "0");
+  return (BigInt(epochMs) * 1_000_000n) + fractionalNs;
+}
+
+function selectSchedulerAttemptCompletion(runs = [], options = {}) {
+  const candidates = (Array.isArray(runs) ? runs : [])
+    .filter((run) => schedulerRunCompletesJobAttempt(run, options));
+  if (candidates.length !== 1) {
+    throw new CanaryError("scheduler_completion_not_unique");
+  }
+  const completion = candidates[0];
+  const expectedId = String(options.expectedCompletionId || "");
+  if (expectedId && String(completion.id || "") !== expectedId) {
+    throw new CanaryError("scheduler_completion_id_mismatch");
+  }
+  return completion;
+}
+
 function sortJsonKeys(value) {
   if (Array.isArray(value)) return value.map(sortJsonKeys);
   if (!value || typeof value !== "object") return value;
@@ -838,5 +904,7 @@ module.exports = {
   decodeFirestoreValue,
   decodeFirestoreDocument,
   stableJsonStringify,
+  schedulerRunCompletesJobAttempt,
+  selectSchedulerAttemptCompletion,
   safeResultError
 };
