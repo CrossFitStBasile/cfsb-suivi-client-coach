@@ -1120,7 +1120,8 @@ exports.sendQuestionnaire = onCall(
   {
     region: "us-central1",
     invoker: "public",
-    timeoutSeconds: 30
+    timeoutSeconds: 30,
+    secrets: []
   },
   async (request) => {
     if (!request.auth) {

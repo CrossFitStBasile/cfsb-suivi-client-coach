@@ -20,6 +20,7 @@ const V2_VERSION_ID = `${FORM_ID}_v${V2_VERSION}`;
 const EXPECTED_V1_HASH = "Cir10OcaFefqzXpmR83Xf598Y1EdWIiTzRClop59KGM";
 const EXPECTED_V2_HASH = "NB4xhuqLECIvs2-gZmQZ54ObrnkuRMm4xeaQkX52XPM";
 const V2_PUBLISHED_AT = "2026-07-29T19:41:35.000Z";
+const RELEASE_VERSION = "20260729-questionnaire-studio-stabilized";
 const SYSTEM_ACTOR_UID = "system:reperes-v2-sealed-release";
 const PUBLISH_AUDIT_ID = "reperes_cfsb_v2_NB4xhuqLECIv";
 const ROLLBACK_AUDIT_ID = `${PUBLISH_AUDIT_ID}_rollback`;
@@ -90,6 +91,12 @@ function sha256Base64Url(value) {
 function assertReleaseCommit(value) {
   const commit = clean(value).toLowerCase();
   if (!SHA_40_PATTERN.test(commit)) fail("release_commit_invalid");
+  return commit;
+}
+
+function assertToolingCommit(value) {
+  const commit = clean(value).toLowerCase();
+  if (!SHA_40_PATTERN.test(commit)) fail("tooling_commit_invalid");
   return commit;
 }
 
@@ -565,11 +572,128 @@ function patchWrite(name, value, updateTime, transforms = []) {
   };
 }
 
-function verifyWrite(name, updateTime) {
+function deleteAbsentWrite(name) {
   return {
-    verify: clean(name),
-    currentDocument: { updateTime: clean(updateTime) }
+    delete: clean(name),
+    currentDocument: { exists: false }
   };
+}
+
+function validateRestWritePlan(writes) {
+  if (!Array.isArray(writes) || writes.length < 1) {
+    fail("rest_write_plan_invalid");
+  }
+  for (const write of writes) {
+    if (!write || typeof write !== "object" || Array.isArray(write)) {
+      fail("rest_write_plan_invalid");
+    }
+    const allowedKeys = new Set([
+      "update",
+      "delete",
+      "updateMask",
+      "updateTransforms",
+      "currentDocument"
+    ]);
+    if (
+      Object.keys(write).some((key) => !allowedKeys.has(key))
+      || Object.hasOwn(write, "verify")
+    ) {
+      fail("rest_write_operation_invalid");
+    }
+    const operationCount =
+      Number(Boolean(write.update)) + Number(Boolean(write.delete));
+    if (
+      operationCount !== 1
+      || !write.currentDocument
+      || typeof write.currentDocument !== "object"
+      || Array.isArray(write.currentDocument)
+    ) {
+      fail("rest_write_operation_invalid");
+    }
+    const currentKeys = Object.keys(write.currentDocument);
+    const hasUpdateTime = Object.hasOwn(
+      write.currentDocument,
+      "updateTime"
+    );
+    const hasExists = Object.hasOwn(write.currentDocument, "exists");
+    if (
+      hasUpdateTime === hasExists
+      || currentKeys.length !== 1
+      || (hasUpdateTime && !validTimestamp(write.currentDocument.updateTime))
+      || (hasExists && write.currentDocument.exists !== false)
+    ) {
+      fail("rest_write_precondition_invalid");
+    }
+    if (write.update) {
+      const fields = write.update.fields;
+      if (
+        stableJson(Object.keys(write.update).sort())
+          !== stableJson(["fields", "name"])
+        ||
+        !clean(write.update.name).startsWith(`${documentRoot()}/`)
+        || !fields
+        || typeof fields !== "object"
+        || Array.isArray(fields)
+        || Object.keys(fields).length < 1
+      ) {
+        fail("rest_update_invalid");
+      }
+      if (write.updateMask) {
+        const paths = write.updateMask.fieldPaths;
+        if (
+          Object.keys(write.updateMask).length !== 1
+          || !Array.isArray(paths)
+          || paths.length < 1
+          || paths.some((fieldPath) => !clean(fieldPath))
+          || new Set(paths).size !== paths.length
+          || stableJson(paths) !== stableJson([...paths].sort())
+          || paths.some((fieldPath) => !Object.hasOwn(fields, fieldPath))
+        ) {
+          fail("rest_update_mask_invalid");
+        }
+      }
+      if (write.updateTransforms) {
+        if (
+          !Array.isArray(write.updateTransforms)
+          || write.updateTransforms.length < 1
+        ) {
+          fail("rest_update_transforms_invalid");
+        }
+        const transformedFields = [];
+        for (const transform of write.updateTransforms) {
+          if (
+            !transform
+            || typeof transform !== "object"
+            || Array.isArray(transform)
+            || Object.keys(transform).length !== 2
+            || !clean(transform.fieldPath)
+            || transform.setToServerValue !== "REQUEST_TIME"
+          ) {
+            fail("rest_update_transforms_invalid");
+          }
+          transformedFields.push(transform.fieldPath);
+        }
+        if (new Set(transformedFields).size !== transformedFields.length) {
+          fail("rest_update_transforms_invalid");
+        }
+        if (transformedFields.some((fieldPath) =>
+          Object.hasOwn(fields, fieldPath)
+        )) {
+          fail("rest_update_transforms_invalid");
+        }
+      }
+      continue;
+    }
+    if (
+      !clean(write.delete).startsWith(`${documentRoot()}/`)
+      || !hasExists
+      || Object.hasOwn(write, "updateMask")
+      || Object.hasOwn(write, "updateTransforms")
+    ) {
+      fail("rest_delete_guard_invalid");
+    }
+  }
+  return Object.freeze({ operations: writes.length });
 }
 
 function validateCommitWriteResults(payload, expectedWriteCount) {
@@ -663,8 +787,68 @@ function observedSource(docInput, code) {
   });
 }
 
-function makePlan(operation, candidate, releaseCommitInput, observedSources, writes) {
+function planOperationCounts(plan) {
+  validateRestWritePlan(plan?.writes);
+  const writes = plan.writes;
+  const intended = new Set(plan.intendedMutationDocuments || []);
+  const guarded = new Set(plan.guardedDocuments || []);
+  const expectedAbsent = new Set(plan.expectedAbsentDocuments || []);
+  if (
+    intended.size !== (plan.intendedMutationDocuments || []).length
+    || guarded.size !== (plan.guardedDocuments || []).length
+    || expectedAbsent.size !== (plan.expectedAbsentDocuments || []).length
+    || [...intended].some((name) => guarded.has(name))
+  ) {
+    fail("atomic_plan_roles_invalid");
+  }
+  let mutations = 0;
+  let guards = 0;
+  const targets = [];
+  for (const write of writes) {
+    const name = write.update?.name || write.delete || "";
+    targets.push(name);
+    if (intended.has(name)) mutations += 1;
+    else if (guarded.has(name)) guards += 1;
+    else fail("atomic_plan_role_missing");
+  }
+  for (const name of expectedAbsent) {
+    const write = writes.find((candidate) =>
+      (candidate.update?.name || candidate.delete) === name
+    );
+    if (!write || write.currentDocument?.exists !== false) {
+      fail("atomic_plan_absence_guard_missing");
+    }
+  }
+  if (
+    new Set(targets).size !== targets.length
+    || writes.length !== mutations + guards
+    || mutations !== intended.size
+    || guards !== guarded.size
+  ) {
+    fail("atomic_plan_operation_shape_invalid");
+  }
+  return Object.freeze({
+    operations: writes.length,
+    mutations,
+    guards
+  });
+}
+
+function makePlan(
+  operation,
+  candidate,
+  releaseCommitInput,
+  toolingCommitInput,
+  observedSources,
+  writes,
+  {
+    intendedMutationDocuments,
+    guardedDocuments,
+    expectedAbsentDocuments = []
+  }
+) {
   const releaseCommit = assertReleaseCommit(releaseCommitInput);
+  const toolingCommit = assertToolingCommit(toolingCommitInput);
   if (!Array.isArray(observedSources) || observedSources.length < 1) {
     fail("observed_sources_missing");
   }
@@ -674,24 +858,36 @@ function makePlan(operation, candidate, releaseCommitInput, observedSources, wri
     databaseId: DATABASE_ID,
     formId: FORM_ID,
     releaseCommit,
+    toolingCommit,
     expectedV1Hash: EXPECTED_V1_HASH,
     candidateV2Hash: candidate.definition.versionHash,
     observedSources,
+    intendedMutationDocuments,
+    guardedDocuments,
+    expectedAbsentDocuments,
     writes
   };
-  return Object.freeze({
+  const plan = {
     ...core,
     planHash: sha256Hex(stableJson(core))
-  });
+  };
+  planOperationCounts(plan);
+  return Object.freeze(plan);
 }
 
 function buildPublicationPlan(state, candidate = buildCandidate(), options = {}) {
   validatePreState(state, candidate, options);
   const releaseCommit = assertReleaseCommit(options.releaseCommit);
+  const toolingCommit = assertToolingCommit(options.toolingCommit);
   const names = documentNames(candidate);
   const values = publicationValues(state, candidate, releaseCommit);
   const writes = [
-    verifyWrite(names.v1, state.v1.updateTime),
+    patchWrite(
+      names.v1,
+      { versionHash: state.v1.value.versionHash },
+      state.v1.updateTime
+    ),
+    deleteAbsentWrite(names.rollbackAudit),
     createWrite(names.v2, values.version, [requestTime("createdAt")]),
     patchWrite(
       names.form,
@@ -723,8 +919,25 @@ function buildPublicationPlan(state, candidate = buildCandidate(), options = {})
     "publish_v2",
     candidate,
     releaseCommit,
+    toolingCommit,
     [observedSource(state.v1, "v1_observed_source_invalid")],
-    writes
+    writes,
+    {
+      intendedMutationDocuments: [
+        names.v2,
+        names.form,
+        names.catalog,
+        names.slug,
+        names.tag,
+        names.publishAudit
+      ],
+      guardedDocuments: [names.v1, names.rollbackAudit],
+      expectedAbsentDocuments: [
+        names.v2,
+        names.publishAudit,
+        names.rollbackAudit
+      ]
+    }
   );
 }
 
@@ -1082,6 +1295,7 @@ function rollbackValues(
   candidate,
   expectedV1Hash,
   releaseCommit,
+  toolingCommit,
   rollbackSource
 ) {
   const v1 = rollbackSource.v1;
@@ -1140,7 +1354,8 @@ function rollbackValues(
       toVersion: V1_VERSION,
       toVersionId: V1_VERSION_ID,
       toVersionHash: expectedV1Hash,
-      releaseCommit,
+      sourceReleaseCommit: releaseCommit,
+      toolingCommit,
       sealedRelease: true,
       deliveryReady: false,
       retainedVersionId: V2_VERSION_ID,
@@ -1153,9 +1368,11 @@ function rollbackValues(
 
 function buildRollbackPlan(state, candidate = buildCandidate(), {
   expectedV1Hash = EXPECTED_V1_HASH,
-  releaseCommit
+  releaseCommit,
+  toolingCommit
 } = {}) {
   const sealedCommit = assertReleaseCommit(releaseCommit);
+  const sealedToolingCommit = assertToolingCommit(toolingCommit);
   const rollbackSource = validateRollbackSourceState(state, candidate, {
     expectedV1Hash,
     releaseCommit: sealedCommit
@@ -1166,11 +1383,25 @@ function buildRollbackPlan(state, candidate = buildCandidate(), {
     candidate,
     expectedV1Hash,
     sealedCommit,
+    sealedToolingCommit,
     rollbackSource
   );
   const writes = [
-    verifyWrite(names.v1, state.v1.updateTime),
-    verifyWrite(names.v2, state.v2.updateTime),
+    patchWrite(
+      names.v1,
+      { versionHash: state.v1.value.versionHash },
+      state.v1.updateTime
+    ),
+    patchWrite(
+      names.v2,
+      { versionHash: state.v2.value.versionHash },
+      state.v2.updateTime
+    ),
+    patchWrite(
+      names.publishAudit,
+      { versionHash: state.publishAudit.value.versionHash },
+      state.publishAudit.updateTime
+    ),
     patchWrite(
       names.form,
       values.formPatch,
@@ -1201,19 +1432,33 @@ function buildRollbackPlan(state, candidate = buildCandidate(), {
     "rollback_to_v1",
     candidate,
     sealedCommit,
+    sealedToolingCommit,
     [
       observedSource(state.v1, "v1_observed_source_invalid"),
       observedSource(state.v2, "v2_observed_source_invalid")
     ],
-    writes
+    writes,
+    {
+      intendedMutationDocuments: [
+        names.form,
+        names.catalog,
+        names.slug,
+        names.tag,
+        names.rollbackAudit
+      ],
+      guardedDocuments: [names.v1, names.v2, names.publishAudit],
+      expectedAbsentDocuments: [names.rollbackAudit]
+    }
   );
 }
 
 function validateRollbackState(state, candidate = buildCandidate(), {
   expectedV1Hash = EXPECTED_V1_HASH,
-  releaseCommit
+  releaseCommit,
+  toolingCommit
 } = {}) {
   const sealedCommit = assertReleaseCommit(releaseCommit);
+  const sealedToolingCommit = assertToolingCommit(toolingCommit);
   const names = documentNames(candidate);
   const v1 = validateVersionDocument(state.v1, {
     expectedId: V1_VERSION_ID,
@@ -1298,7 +1543,8 @@ function validateRollbackState(state, candidate = buildCandidate(), {
     toVersion: V1_VERSION,
     toVersionId: V1_VERSION_ID,
     toVersionHash: expectedV1Hash,
-    releaseCommit: sealedCommit,
+    sourceReleaseCommit: sealedCommit,
+    toolingCommit: sealedToolingCommit,
     sealedRelease: true,
     deliveryReady: false,
     retainedVersionId: V2_VERSION_ID,
@@ -1351,6 +1597,7 @@ module.exports = {
   PROJECT_ID,
   PUBLISH_AUDIT_ID,
   PUBLIC_ORIGIN,
+  RELEASE_VERSION,
   ROLLBACK_AUDIT_ID,
   ReperesV2ReleaseError,
   SLUG,
@@ -1367,6 +1614,7 @@ module.exports = {
   draftFromDefinition,
   encodeFirestoreFields,
   parseArgs,
+  planOperationCounts,
   safeErrorCode,
   sha256Hex,
   stableJson,
@@ -1376,5 +1624,6 @@ module.exports = {
   validatePreState,
   validateRollbackSourceState,
   validateRollbackState,
+  validateRestWritePlan,
   verifyExecutionAuthority
 };

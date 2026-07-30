@@ -9,6 +9,11 @@ const receipt = require("../tools/questionnaire-function-revision-receipt.cjs");
 const COMMIT = "a".repeat(40);
 const SOURCE_HASH = "b".repeat(40);
 const UPDATE_TIME = "2026-07-29T20:00:00.000Z";
+const FIREBASE_MANAGED_ENVIRONMENT = Object.freeze({
+  FIREBASE_CONFIG:
+    '{"projectId":"cfsb-dashboard-coach-aa9a4","storageBucket":"cfsb-dashboard-coach-aa9a4.firebasestorage.app"}',
+  GCLOUD_PROJECT: "cfsb-dashboard-coach-aa9a4"
+});
 const SHARED_BUILD =
   "projects/129233025317/locations/us-central1/builds/shared-build";
 const SHARED_PROVENANCE = Object.freeze({
@@ -23,8 +28,7 @@ function sha1(value) {
   return crypto.createHash("sha1").update(String(value), "utf8").digest("hex");
 }
 
-function candidate() {
-  const environmentVariables = {};
+function candidate({ environmentVariables = {} } = {}) {
   const environmentHash = sha1(JSON.stringify(environmentVariables));
   return {
     releaseCommit: COMMIT,
@@ -42,14 +46,15 @@ function candidate() {
 function liveFunction(functionId, {
   secretVersions = {},
   sourceHash = SOURCE_HASH,
+  environmentVariables = {},
   build = SHARED_BUILD,
   provenance = SHARED_PROVENANCE
 } = {}) {
-  const firebaseFunctionsHash = receipt.expectedFirebaseFunctionsHash({
-    sourceHash,
-    environmentVariables: {},
-    secretVersions
-  });
+  const firebaseFunctionsHash = sha1(
+    sourceHash
+    + sha1(JSON.stringify(environmentVariables))
+    + sha1(JSON.stringify(secretVersions))
+  );
   return {
     name:
       `projects/cfsb-dashboard-coach-aa9a4/locations/us-central1/functions/${functionId}`,
@@ -112,9 +117,94 @@ test("candidate packaging uses the same Firebase CLI source hash contract", asyn
   const context = await receipt.buildCandidateContext(COMMIT);
   assert.equal(context.releaseCommit, COMMIT);
   assert.match(context.sourceHash, /^[a-f0-9]{40}(?:\.[a-f0-9]{40})?$/);
-  assert.deepEqual(context.environmentVariables, {});
+  assert.deepEqual(
+    context.environmentVariables,
+    FIREBASE_MANAGED_ENVIRONMENT
+  );
+  assert.equal(
+    context.environmentHash,
+    sha1(JSON.stringify(FIREBASE_MANAGED_ENVIRONMENT))
+  );
   assert.match(context.environmentHash, /^[a-f0-9]{40}$/);
   assert.match(context.sourceCommitHash, /^[a-f0-9]{64}$/);
+});
+
+test("a live revision hash containing both Firebase-managed variables is accepted", () => {
+  const context = candidate({
+    environmentVariables: FIREBASE_MANAGED_ENVIRONMENT
+  });
+  const live = liveFunction("sendQuestionnaire", {
+    environmentVariables: FIREBASE_MANAGED_ENVIRONMENT
+  });
+
+  const entry = receipt.buildLiveRevisionEntry(
+    "sendQuestionnaire",
+    live,
+    context
+  );
+
+  assert.equal(
+    entry.firebaseFunctionsHash,
+    sha1(
+      SOURCE_HASH
+      + sha1(JSON.stringify(FIREBASE_MANAGED_ENVIRONMENT))
+      + sha1("{}")
+    )
+  );
+});
+
+test("a live revision hash missing a Firebase-managed variable fails closed", () => {
+  const context = candidate({
+    environmentVariables: FIREBASE_MANAGED_ENVIRONMENT
+  });
+  for (const omittedKey of Object.keys(FIREBASE_MANAGED_ENVIRONMENT)) {
+    const environmentVariables = {
+      ...FIREBASE_MANAGED_ENVIRONMENT
+    };
+    delete environmentVariables[omittedKey];
+    const liveWithoutManagedVariable = liveFunction("sendQuestionnaire", {
+      environmentVariables
+    });
+
+    assert.throws(
+      () => receipt.buildLiveRevisionEntry(
+        "sendQuestionnaire",
+        liveWithoutManagedVariable,
+        context
+      ),
+      /live_function_candidate_hash_mismatch/,
+      `${omittedKey} must be part of the live Firebase hash`
+    );
+  }
+});
+
+test("a live revision hash with a changed Firebase-managed value fails closed", () => {
+  const context = candidate({
+    environmentVariables: FIREBASE_MANAGED_ENVIRONMENT
+  });
+  const changedValues = {
+    FIREBASE_CONFIG:
+      '{"projectId":"different-project","storageBucket":"different-project.firebasestorage.app"}',
+    GCLOUD_PROJECT: "different-project"
+  };
+  for (const [changedKey, changedValue] of Object.entries(changedValues)) {
+    const liveWithChangedManagedVariable = liveFunction("sendQuestionnaire", {
+      environmentVariables: {
+        ...FIREBASE_MANAGED_ENVIRONMENT,
+        [changedKey]: changedValue
+      }
+    });
+
+    assert.throws(
+      () => receipt.buildLiveRevisionEntry(
+        "sendQuestionnaire",
+        liveWithChangedManagedVariable,
+        context
+      ),
+      /live_function_candidate_hash_mismatch/,
+      `${changedKey} must match the candidate Firebase hash exactly`
+    );
+  }
 });
 
 test("shared Cloud Build and source provenance are valid for several candidate functions", () => {

@@ -19,6 +19,8 @@ const syntaxTargets = [
   "functions/questionnaire-service.js",
   "tools/reperes-v2-release-lib.cjs",
   "tools/publish-reperes-v2.cjs",
+  "tools/reperes-v2-ghl-activation-lib.cjs",
+  "tools/activate-reperes-v2-ghl.cjs",
   "tools/questionnaire-release-announcement-lib.cjs",
   "tools/manage-questionnaire-release-announcements.cjs",
   "tools/questionnaire-pre-release-state-lib.cjs",

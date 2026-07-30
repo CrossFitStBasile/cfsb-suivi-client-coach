@@ -9,6 +9,10 @@ const PROJECT_ID = "cfsb-dashboard-coach-aa9a4";
 const REGION = "us-central1";
 const RECEIPT_VERSION = 2;
 const FIREBASE_FUNCTIONS_HASH_LABEL = "firebase-functions-hash";
+const FIREBASE_MANAGED_CONFIG = Object.freeze({
+  projectId: PROJECT_ID,
+  storageBucket: "cfsb-dashboard-coach-aa9a4.firebasestorage.app"
+});
 const FUNCTION_IDS = Object.freeze([
   "sendQuestionnaire",
   "processQuestionnaireSendRequest",
@@ -312,8 +316,7 @@ async function buildCandidateContext(releaseCommit) {
     "functions",
     "prepareFunctionsUpload.js"
   )).prepareFunctionsUpload;
-  const loadUserEnvs = require(path.join(root, "lib", "functions", "env.js"))
-    .loadUserEnvs;
+  const functionsEnv = require(path.join(root, "lib", "functions", "env.js"));
   const firebaseConfig = JSON.parse(
     fs.readFileSync(path.join(process.cwd(), "firebase.json"), "utf8")
   );
@@ -345,12 +348,20 @@ async function buildCandidateContext(releaseCommit) {
     if (!/^[a-f0-9]{40}(?:\.[a-f0-9]{40})?$/.test(sourceHash)) {
       throw new Error("candidate_source_hash_invalid");
     }
-    const environmentVariables = loadUserEnvs({
+    const userEnvironmentVariables = functionsEnv.loadUserEnvs({
       functionsSource: sourceDir,
       configDir: sourceDir,
       projectId: PROJECT_ID,
       isEmulator: false
     });
+    const firebaseEnvironmentVariables = functionsEnv.loadFirebaseEnvs(
+      FIREBASE_MANAGED_CONFIG,
+      PROJECT_ID
+    );
+    const environmentVariables = {
+      ...userEnvironmentVariables,
+      ...firebaseEnvironmentVariables
+    };
     const environmentHash = firebaseEnvironmentHash(environmentVariables);
     return Object.freeze({
       releaseCommit,

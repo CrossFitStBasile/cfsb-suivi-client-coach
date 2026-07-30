@@ -9,6 +9,7 @@ const {
   EXPECTED_V1_HASH,
   FORM_ID,
   PROJECT_ID,
+  RELEASE_VERSION,
   ReperesV2ReleaseError,
   V2_PUBLISHED_AT,
   buildCandidate,
@@ -17,12 +18,14 @@ const {
   decodeFirestoreFields,
   documentNames,
   parseArgs,
+  planOperationCounts,
   safeErrorCode,
   validateCommitWriteResults,
   validatePostState,
   validatePreState,
   validateRollbackSourceState,
   validateRollbackState,
+  validateRestWritePlan,
   verifyExecutionAuthority
 } = require("./reperes-v2-release-lib.cjs");
 
@@ -34,30 +37,35 @@ const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const USER_AGENT = "cfsb-reperes-v2-sealed-release/1";
 
-main().catch((error) => {
-  printResult({
-    ok: false,
-    check: "reperes_v2_sealed_release",
-    error: safeErrorCode(error),
-    secretsPrinted: false,
-    piiPrinted: false
+if (require.main === module) {
+  main().catch((error) => {
+    printResult({
+      ok: false,
+      check: "reperes_v2_sealed_release",
+      error: safeErrorCode(error),
+      secretsPrinted: false,
+      piiPrinted: false
+    });
+    process.exitCode = 1;
   });
-  process.exitCode = 1;
-});
+}
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const candidate = buildCandidate();
-  verifySealedCandidate(options.releaseCommit);
+  const tooling = verifyToolingContext({
+    releaseCommit: options.releaseCommit
+  });
   const accessToken = await firebaseAccessToken();
   const stateBefore = await readState(accessToken, candidate);
 
   if (options.mode === "preview") {
     validatePreState(stateBefore, candidate);
     const plan = buildPublicationPlan(stateBefore, candidate, {
-      releaseCommit: options.releaseCommit
+      releaseCommit: options.releaseCommit,
+      toolingCommit: tooling.toolingCommit
     });
-    const counts = planOperationCounts(plan.writes);
+    const counts = planOperationCounts(plan);
     printResult({
       ok: true,
       check: "reperes_v2_sealed_release",
@@ -66,15 +74,18 @@ async function main() {
       projectId: PROJECT_ID,
       formId: FORM_ID,
       releaseCommit: options.releaseCommit,
+      toolingCommit: tooling.toolingCommit,
       expectedV1Hash: EXPECTED_V1_HASH,
       candidateV2Hash: candidate.definition.versionHash,
       candidatePublishedAt: V2_PUBLISHED_AT,
       planHash: plan.planHash,
       plannedAtomicOperations: counts.operations,
       plannedDocumentMutations: counts.mutations,
-      plannedDocumentVerifications: counts.verifications,
+      plannedAtomicGuards: counts.guards,
       deliveryReadyAfter: false,
-      v1OverwriteWrites: 0,
+      v1MutationWrites: 0,
+      v1GuardedByNoOpWrite: true,
+      rollbackAuditAbsenceGuarded: true,
       rollbackPrepared: true,
       next: "Bind CFSB_REPERES_V2_RELEASE_GO and CFSB_REPERES_V2_PLAN_HASH, then run --execute.",
       externalWrites: 0,
@@ -87,7 +98,8 @@ async function main() {
   if (options.mode === "execute") {
     validatePreState(stateBefore, candidate);
     const plan = buildPublicationPlan(stateBefore, candidate, {
-      releaseCommit: options.releaseCommit
+      releaseCommit: options.releaseCommit,
+      toolingCommit: tooling.toolingCommit
     });
     verifyExecutionAuthority(options, plan.planHash);
     const commit = await commitWrites(accessToken, plan.writes);
@@ -98,6 +110,9 @@ async function main() {
     if (stateAfter.v1.updateTime !== stateBefore.v1.updateTime) {
       throw releaseError("v1_document_was_modified");
     }
+    if (stateAfter.rollbackAudit !== null) {
+      throw releaseError("rollback_audit_was_created_during_publication");
+    }
     printResult({
       ok: true,
       check: "reperes_v2_sealed_release",
@@ -105,14 +120,14 @@ async function main() {
       projectId: PROJECT_ID,
       formId: FORM_ID,
       releaseCommit: options.releaseCommit,
+      toolingCommit: tooling.toolingCommit,
       expectedV1Hash: EXPECTED_V1_HASH,
       publishedV2Hash: candidate.definition.versionHash,
       publishedAt: candidate.definition.publishedAt,
       planHash: plan.planHash,
       atomicOperationsConfirmed: commit.operationsConfirmed,
-      documentMutationsConfirmed: planOperationCounts(plan.writes).mutations,
-      documentVerificationsConfirmed:
-        planOperationCounts(plan.writes).verifications,
+      documentMutationsConfirmed: planOperationCounts(plan).mutations,
+      atomicGuardsConfirmed: planOperationCounts(plan).guards,
       atomicCommit: true,
       v1Preserved: true,
       deliveryReady: false,
@@ -134,6 +149,8 @@ async function main() {
       readOnly: true,
       projectId: PROJECT_ID,
       formId: FORM_ID,
+      releaseCommit: options.releaseCommit,
+      toolingCommit: tooling.toolingCommit,
       expectedV1Hash: EXPECTED_V1_HASH,
       verifiedV2Hash: candidate.definition.versionHash,
       v1Preserved: true,
@@ -150,9 +167,10 @@ async function main() {
       releaseCommit: options.releaseCommit
     });
     const plan = buildRollbackPlan(stateBefore, candidate, {
-      releaseCommit: options.releaseCommit
+      releaseCommit: options.releaseCommit,
+      toolingCommit: tooling.toolingCommit
     });
-    const counts = planOperationCounts(plan.writes);
+    const counts = planOperationCounts(plan);
     printResult({
       ok: true,
       check: "reperes_v2_sealed_release",
@@ -161,12 +179,15 @@ async function main() {
       projectId: PROJECT_ID,
       formId: FORM_ID,
       releaseCommit: options.releaseCommit,
+      toolingCommit: tooling.toolingCommit,
       rollbackPlanHash: plan.planHash,
       plannedAtomicOperations: counts.operations,
       plannedDocumentMutations: counts.mutations,
-      plannedDocumentVerifications: counts.verifications,
+      plannedAtomicGuards: counts.guards,
       restoredVersion: "1",
       retainedVersion2Evidence: true,
+      versionEvidenceGuardedByNoOpWrites: true,
+      publicationAuditGuardedByNoOpWrite: true,
       deliveryReadyAfter: false,
       next: "Bind release GO, rollback GO and rollback plan hash, then run --rollback-execute.",
       externalWrites: 0,
@@ -181,19 +202,27 @@ async function main() {
       releaseCommit: options.releaseCommit
     });
     const plan = buildRollbackPlan(stateBefore, candidate, {
-      releaseCommit: options.releaseCommit
+      releaseCommit: options.releaseCommit,
+      toolingCommit: tooling.toolingCommit
     });
     verifyExecutionAuthority(options, plan.planHash);
     const commit = await commitWrites(accessToken, plan.writes);
     const stateAfter = await readState(accessToken, candidate);
     validateRollbackState(stateAfter, candidate, {
-      releaseCommit: options.releaseCommit
+      releaseCommit: options.releaseCommit,
+      toolingCommit: tooling.toolingCommit
     });
     if (stateAfter.v1.updateTime !== stateBefore.v1.updateTime) {
       throw releaseError("v1_document_was_modified");
     }
     if (stateAfter.v2.updateTime !== stateBefore.v2.updateTime) {
       throw releaseError("v2_evidence_was_modified");
+    }
+    if (
+      stateAfter.publishAudit.updateTime
+      !== stateBefore.publishAudit.updateTime
+    ) {
+      throw releaseError("publication_audit_was_modified");
     }
     printResult({
       ok: true,
@@ -202,11 +231,11 @@ async function main() {
       projectId: PROJECT_ID,
       formId: FORM_ID,
       releaseCommit: options.releaseCommit,
+      toolingCommit: tooling.toolingCommit,
       rollbackPlanHash: plan.planHash,
       atomicOperationsConfirmed: commit.operationsConfirmed,
-      documentMutationsConfirmed: planOperationCounts(plan.writes).mutations,
-      documentVerificationsConfirmed:
-        planOperationCounts(plan.writes).verifications,
+      documentMutationsConfirmed: planOperationCounts(plan).mutations,
+      atomicGuardsConfirmed: planOperationCounts(plan).guards,
       atomicCommit: true,
       activeVersion: "1",
       retainedVersion2Evidence: true,
@@ -219,7 +248,8 @@ async function main() {
 
   if (options.mode === "rollback-verify") {
     validateRollbackState(stateBefore, candidate, {
-      releaseCommit: options.releaseCommit
+      releaseCommit: options.releaseCommit,
+      toolingCommit: tooling.toolingCommit
     });
     printResult({
       ok: true,
@@ -229,6 +259,7 @@ async function main() {
       projectId: PROJECT_ID,
       formId: FORM_ID,
       releaseCommit: options.releaseCommit,
+      toolingCommit: tooling.toolingCommit,
       activeVersion: "1",
       retainedVersion2Evidence: true,
       deliveryReady: false,
@@ -259,22 +290,112 @@ function sanitizedChildEnv() {
   return next;
 }
 
-function verifySealedCandidate(releaseCommit) {
-  const verifier = path.join(
-    ROOT,
-    "tools",
-    "verify-sealed-questionnaire-release-worktree.cjs"
-  );
-  if (!fs.existsSync(verifier)) throw releaseError("sealed_verifier_missing");
-  const result = spawnSync(process.execPath, [verifier, releaseCommit], {
-    cwd: ROOT,
+function gitResult(args, rootDir, spawnImpl) {
+  return spawnImpl("git", args, {
+    cwd: rootDir,
     env: sanitizedChildEnv(),
     encoding: "utf8",
     timeout: 20_000,
-    maxBuffer: 300_000,
+    maxBuffer: 2 * 1024 * 1024,
     windowsHide: true
   });
-  if (result.status !== 0) throw releaseError("sealed_candidate_invalid");
+}
+
+function samePath(left, right) {
+  if (!left || !right) return false;
+  const normalizedLeft = path.resolve(left);
+  const normalizedRight = path.resolve(right);
+  return process.platform === "win32"
+    ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
+    : normalizedLeft === normalizedRight;
+}
+
+function verifyToolingContext({
+  releaseCommit,
+  rootDir = ROOT,
+  spawnImpl = spawnSync
+}) {
+  const sealedReleaseCommit = String(releaseCommit || "")
+    .trim()
+    .toLowerCase();
+  if (!/^[a-f0-9]{40}$/.test(sealedReleaseCommit)) {
+    throw releaseError("release_commit_invalid");
+  }
+  const topLevel = gitResult(
+    ["rev-parse", "--show-toplevel"],
+    rootDir,
+    spawnImpl
+  );
+  if (
+    topLevel.status !== 0
+    || !samePath(String(topLevel.stdout || "").trim(), rootDir)
+  ) {
+    throw releaseError("tooling_git_root_invalid");
+  }
+  const releaseExists = gitResult(
+    ["cat-file", "-e", `${sealedReleaseCommit}^{commit}`],
+    rootDir,
+    spawnImpl
+  );
+  if (releaseExists.status !== 0) {
+    throw releaseError("release_commit_unavailable");
+  }
+  const head = gitResult(
+    ["rev-parse", "--verify", "HEAD^{commit}"],
+    rootDir,
+    spawnImpl
+  );
+  const toolingCommit = String(head.stdout || "").trim().toLowerCase();
+  if (head.status !== 0 || !/^[a-f0-9]{40}$/.test(toolingCommit)) {
+    throw releaseError("tooling_commit_unavailable");
+  }
+  const ancestor = gitResult(
+    ["merge-base", "--is-ancestor", sealedReleaseCommit, toolingCommit],
+    rootDir,
+    spawnImpl
+  );
+  if (ancestor.status !== 0) {
+    throw releaseError("release_commit_not_tooling_ancestor");
+  }
+  const status = gitResult(
+    ["status", "--porcelain=v1", "--untracked-files=all"],
+    rootDir,
+    spawnImpl
+  );
+  if (status.status !== 0) {
+    throw releaseError("tooling_worktree_status_unavailable");
+  }
+  if (String(status.stdout || "").trim()) {
+    throw releaseError("tooling_worktree_not_clean");
+  }
+  const releaseApp = gitResult(
+    ["show", `${sealedReleaseCommit}:firebase-dashboard/public/app.js`],
+    rootDir,
+    spawnImpl
+  );
+  const releaseLibrary = gitResult(
+    ["show", `${sealedReleaseCommit}:tools/reperes-v2-release-lib.cjs`],
+    rootDir,
+    spawnImpl
+  );
+  if (
+    releaseApp.status !== 0
+    || releaseLibrary.status !== 0
+    || !String(releaseApp.stdout || "").includes(
+      `const APP_VERSION = "${RELEASE_VERSION}";`
+    )
+    || !String(releaseLibrary.stdout || "").includes(
+      `const EXPECTED_V2_HASH = "${buildCandidate().definition.versionHash}";`
+    )
+  ) {
+    throw releaseError("release_commit_contents_mismatch");
+  }
+  return Object.freeze({
+    releaseCommit: sealedReleaseCommit,
+    toolingCommit,
+    worktreeClean: true,
+    releaseIsAncestor: true
+  });
 }
 
 function firebaseToolsRoot() {
@@ -412,6 +533,7 @@ async function readState(accessToken, candidate) {
 }
 
 async function commitWrites(accessToken, writes) {
+  validateRestWritePlan(writes);
   const result = await requestJson(`${FIRESTORE_ROOT}:commit`, {
     accessToken,
     method: "POST",
@@ -420,16 +542,7 @@ async function commitWrites(accessToken, writes) {
   return validateCommitWriteResults(result.payload, writes.length);
 }
 
-function planOperationCounts(writes) {
-  const operations = Array.isArray(writes) ? writes.length : 0;
-  const mutations = Array.isArray(writes)
-    ? writes.filter((write) => Boolean(write?.update)).length
-    : 0;
-  const verifications = Array.isArray(writes)
-    ? writes.filter((write) => Boolean(write?.verify)).length
-    : 0;
-  if (operations < 1 || operations !== mutations + verifications) {
-    throw releaseError("atomic_plan_operation_shape_invalid");
-  }
-  return Object.freeze({ operations, mutations, verifications });
-}
+module.exports = {
+  samePath,
+  verifyToolingContext
+};

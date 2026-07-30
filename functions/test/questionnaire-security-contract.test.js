@@ -240,6 +240,7 @@ test("le callable historique rejoint la file sécurisée sans effet GHL direct",
   assert.doesNotMatch(callable, /\.doc\(\)/);
   assert.doesNotMatch(callable, /addGhlTag\(/);
   assert.doesNotMatch(callable, /findGhlContactByPhone\(/);
+  assert.match(callable, /secrets:\s*\[\]/);
   assert.doesNotMatch(callable, /secrets:\s*\[ghlPrivateToken\]/);
 });
 

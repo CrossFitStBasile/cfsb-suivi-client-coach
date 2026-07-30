@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const lib = require("../tools/reperes-v2-release-lib.cjs");
+const runner = require("../tools/publish-reperes-v2.cjs");
 const studio = require("../functions/questionnaire-studio.js");
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const runnerSource = fs.readFileSync(
@@ -19,6 +20,16 @@ const librarySource = fs.readFileSync(
 );
 const COMMIT = "8e57fcb624f1244a5f5304badf7d457842a1f8b5";
 const OTHER_COMMIT = "9e57fcb624f1244a5f5304badf7d457842a1f8b6";
+const TOOLING_COMMIT = "7d57fcb624f1244a5f5304badf7d457842a1f8b7";
+const OTHER_TOOLING_COMMIT = "6d57fcb624f1244a5f5304badf7d457842a1f8b8";
+const SEALED_PLAN = Object.freeze({
+  releaseCommit: COMMIT,
+  toolingCommit: TOOLING_COMMIT
+});
+const OTHER_SEALED_PLAN = Object.freeze({
+  releaseCommit: OTHER_COMMIT,
+  toolingCommit: OTHER_TOOLING_COMMIT
+});
 const TEST_V1_PUBLISHED_AT = "2026-07-23T00:00:00.000Z";
 
 function makeDoc(name, value, suffix) {
@@ -165,17 +176,37 @@ function applyWriteFields(targetValue, write) {
 
 function makePostState(preState, plan) {
   const next = structuredClone(preState);
-  const byName = new Map([
-    [next.form.name, next.form],
-    [next.catalog.name, next.catalog],
-    [next.slug.name, next.slug],
-    [next.tag.name, next.tag]
-  ]);
+  const byName = new Map(
+    [
+      next.form,
+      next.catalog,
+      next.slug,
+      next.v1,
+      next.v2,
+      next.tag,
+      next.publishAudit,
+      next.rollbackAudit
+    ]
+      .filter(Boolean)
+      .map((doc) => [doc.name, doc])
+  );
   let tick = 10;
   for (const write of plan.writes) {
-    if (write.verify) continue;
+    if (write.delete) {
+      assert.equal(byName.has(write.delete), false);
+      continue;
+    }
     const name = write.update.name;
     const existing = byName.get(name);
+    if ((plan.guardedDocuments || []).includes(name)) {
+      assert.ok(existing);
+      assert.deepEqual(
+        applyWriteFields(existing.value, write),
+        existing.value,
+        `la garde doit être une mise à jour sans changement: ${name}`
+      );
+      continue;
+    }
     const doc = {
       name,
       createTime: existing?.createTime || `2026-07-29T19:42:${tick}.000Z`,
@@ -193,6 +224,54 @@ function makePostState(preState, plan) {
     tick += 1;
   }
   return next;
+}
+
+function toolingGitSpawn({
+  head = TOOLING_COMMIT,
+  dirty = "",
+  ancestor = true,
+  releaseAvailable = true,
+  appVersion = lib.RELEASE_VERSION,
+  v2Hash = lib.EXPECTED_V2_HASH
+} = {}) {
+  return (command, args) => {
+    assert.equal(command, "git");
+    const joined = args.join(" ");
+    if (joined === "rev-parse --show-toplevel") {
+      return { status: 0, stdout: `${root}\n` };
+    }
+    if (args[0] === "cat-file") {
+      return { status: releaseAvailable ? 0 : 1, stdout: "" };
+    }
+    if (joined === "rev-parse --verify HEAD^{commit}") {
+      return { status: 0, stdout: `${head}\n` };
+    }
+    if (args[0] === "merge-base") {
+      return { status: ancestor ? 0 : 1, stdout: "" };
+    }
+    if (joined === "status --porcelain=v1 --untracked-files=all") {
+      return { status: 0, stdout: dirty };
+    }
+    if (
+      args[0] === "show"
+      && args[1].endsWith(":firebase-dashboard/public/app.js")
+    ) {
+      return {
+        status: 0,
+        stdout: `const APP_VERSION = "${appVersion}";\n`
+      };
+    }
+    if (
+      args[0] === "show"
+      && args[1].endsWith(":tools/reperes-v2-release-lib.cjs")
+    ) {
+      return {
+        status: 0,
+        stdout: `const EXPECTED_V2_HASH = "${v2Hash}";\n`
+      };
+    }
+    return { status: 1, stdout: "" };
+  };
 }
 
 test("le candidat v2 est déterministe et scellé sur le contenu éducatif courant", () => {
@@ -237,6 +316,54 @@ test("les modes et le SHA sont explicites et mutuellement exclusifs", () => {
   assert.throws(
     () => lib.parseArgs([`--release-commit=${COMMIT.slice(1)}`, "--preview"]),
     /release_commit_invalid/
+  );
+});
+
+test("le contexte outillage exige un HEAD propre descendant du release exact", () => {
+  assert.deepEqual(
+    runner.verifyToolingContext({
+      releaseCommit: COMMIT,
+      rootDir: root,
+      spawnImpl: toolingGitSpawn()
+    }),
+    {
+      releaseCommit: COMMIT,
+      toolingCommit: TOOLING_COMMIT,
+      worktreeClean: true,
+      releaseIsAncestor: true
+    }
+  );
+  assert.throws(
+    () => runner.verifyToolingContext({
+      releaseCommit: COMMIT,
+      rootDir: root,
+      spawnImpl: toolingGitSpawn({ dirty: " M tools/file.cjs\n" })
+    }),
+    /tooling_worktree_not_clean/
+  );
+  assert.throws(
+    () => runner.verifyToolingContext({
+      releaseCommit: COMMIT,
+      rootDir: root,
+      spawnImpl: toolingGitSpawn({ ancestor: false })
+    }),
+    /release_commit_not_tooling_ancestor/
+  );
+  assert.throws(
+    () => runner.verifyToolingContext({
+      releaseCommit: COMMIT,
+      rootDir: root,
+      spawnImpl: toolingGitSpawn({ appVersion: "version-dérivée" })
+    }),
+    /release_commit_contents_mismatch/
+  );
+  assert.throws(
+    () => runner.verifyToolingContext({
+      releaseCommit: COMMIT,
+      rootDir: root,
+      spawnImpl: toolingGitSpawn({ v2Hash: "x".repeat(43) })
+    }),
+    /release_commit_contents_mismatch/
   );
 });
 
@@ -313,15 +440,16 @@ test("le préflight exige v1 exact, aucun v2 et aucune dérive des pointeurs", (
   );
 });
 
-test("le plan de publication est lié au SHA, aux sources observées et ne touche jamais v1", () => {
+test("le plan de publication protège v1 et les absences avec des gardes REST valides", () => {
   const candidate = lib.buildCandidate();
   const state = makePreState();
   const plan = lib.buildPublicationPlan(state, candidate, {
-    releaseCommit: COMMIT
+    ...SEALED_PLAN
   });
   const names = lib.documentNames(candidate);
   assert.equal(plan.operation, "publish_v2");
   assert.equal(plan.releaseCommit, COMMIT);
+  assert.equal(plan.toolingCommit, TOOLING_COMMIT);
   assert.match(plan.planHash, /^[a-f0-9]{64}$/);
   assert.deepEqual(plan.observedSources, [{
     name: state.v1.name,
@@ -329,21 +457,60 @@ test("le plan de publication est lié au SHA, aux sources observées et ne touch
     updateTime: state.v1.updateTime
   }]);
   const otherShaPlan = lib.buildPublicationPlan(state, candidate, {
-    releaseCommit: OTHER_COMMIT
+    ...OTHER_SEALED_PLAN
   });
   assert.notEqual(otherShaPlan.planHash, plan.planHash);
-  assert.equal(plan.writes.length, 7);
+  const otherToolingPlan = lib.buildPublicationPlan(state, candidate, {
+    releaseCommit: COMMIT,
+    toolingCommit: OTHER_TOOLING_COMMIT
+  });
+  assert.notEqual(otherToolingPlan.planHash, plan.planHash);
+  assert.throws(
+    () => lib.buildPublicationPlan(state, candidate, {
+      releaseCommit: COMMIT
+    }),
+    /tooling_commit_invalid/
+  );
+  assert.equal(plan.writes.length, 8);
+  assert.equal(plan.writes.some((write) => write.verify), false);
   assert.deepEqual(
-    plan.writes.filter((write) => write.verify),
-    [{
-      verify: names.v1,
-      currentDocument: { updateTime: state.v1.updateTime }
-    }]
+    plan.intendedMutationDocuments,
+    [
+      names.v2,
+      names.form,
+      names.catalog,
+      names.slug,
+      names.tag,
+      names.publishAudit
+    ]
   );
-  assert.equal(
-    plan.writes.some((write) => write.update?.name === names.v1),
-    false
+  assert.deepEqual(
+    plan.guardedDocuments,
+    [names.v1, names.rollbackAudit]
   );
+  assert.deepEqual(lib.planOperationCounts(plan), {
+    operations: 8,
+    mutations: 6,
+    guards: 2
+  });
+  const v1Guard = plan.writes.find(
+    (write) => write.update?.name === names.v1
+  );
+  assert.deepEqual(v1Guard.currentDocument, {
+    updateTime: state.v1.updateTime
+  });
+  assert.deepEqual(
+    lib.decodeFirestoreFields(v1Guard.update.fields),
+    { versionHash: lib.EXPECTED_V1_HASH }
+  );
+  assert.deepEqual(v1Guard.updateMask, { fieldPaths: ["versionHash"] });
+  const rollbackAbsenceGuard = plan.writes.find(
+    (write) => write.delete === names.rollbackAudit
+  );
+  assert.deepEqual(rollbackAbsenceGuard, {
+    delete: names.rollbackAudit,
+    currentDocument: { exists: false }
+  });
   const versionWrite = plan.writes.find((write) => write.update?.name === names.v2);
   assert.deepEqual(versionWrite.currentDocument, { exists: false });
   for (const key of ["form", "catalog", "slug", "tag"]) {
@@ -362,15 +529,18 @@ test("le plan de publication est lié au SHA, aux sources observées et ne touch
     lib.decodeFirestoreFields(auditWrite.update.fields).releaseCommit,
     COMMIT
   );
+  assert.deepEqual(auditWrite.currentDocument, { exists: false });
+  assert.doesNotThrow(() => lib.validateRestWritePlan(plan.writes));
 });
 
 test("la vérification post-publication lie v2, les pointeurs et le coupe-circuit", () => {
   const candidate = lib.buildCandidate();
   const pre = makePreState();
   const plan = lib.buildPublicationPlan(pre, candidate, {
-    releaseCommit: COMMIT
+    ...SEALED_PLAN
   });
   const post = makePostState(pre, plan);
+  assert.equal(post.v1.updateTime, pre.v1.updateTime);
   assert.deepEqual(
     lib.validatePostState(post, candidate, { releaseCommit: COMMIT }),
     {
@@ -405,59 +575,83 @@ test("le rollback restaure v1 atomiquement, garde v2 et laisse la livraison ferm
   const candidate = lib.buildCandidate();
   const pre = makePreState();
   const publication = lib.buildPublicationPlan(pre, candidate, {
-    releaseCommit: COMMIT
+    ...SEALED_PLAN
   });
   const post = makePostState(pre, publication);
   const rollback = lib.buildRollbackPlan(post, candidate, {
-    releaseCommit: COMMIT
+    ...SEALED_PLAN
   });
   const otherPublication = lib.buildPublicationPlan(pre, candidate, {
-    releaseCommit: OTHER_COMMIT
+    ...OTHER_SEALED_PLAN
   });
   const otherPost = makePostState(pre, otherPublication);
   const otherRollback = lib.buildRollbackPlan(otherPost, candidate, {
-    releaseCommit: OTHER_COMMIT
+    ...OTHER_SEALED_PLAN
   });
   const names = lib.documentNames(candidate);
   assert.equal(rollback.operation, "rollback_to_v1");
   assert.equal(rollback.releaseCommit, COMMIT);
+  assert.equal(rollback.toolingCommit, TOOLING_COMMIT);
   assert.notEqual(otherRollback.planHash, rollback.planHash);
   assert.deepEqual(
     rollback.observedSources.map((item) => item.name),
     [post.v1.name, post.v2.name]
   );
-  assert.equal(rollback.writes.length, 7);
+  assert.equal(rollback.writes.length, 8);
+  assert.equal(rollback.writes.some((write) => write.verify), false);
   assert.deepEqual(
-    rollback.writes
-      .filter((write) => write.verify)
-      .map((write) => ({
-        verify: write.verify,
-        updateTime: write.currentDocument.updateTime
-      })),
+    rollback.guardedDocuments,
     [
-      { verify: names.v1, updateTime: post.v1.updateTime },
-      { verify: names.v2, updateTime: post.v2.updateTime }
+      names.v1,
+      names.v2,
+      names.publishAudit
     ]
   );
-  assert.equal(
-    rollback.writes.some((write) => write.update?.name === names.v2),
-    false
-  );
-  assert.equal(
-    rollback.writes.some((write) => write.update?.name === names.v1),
-    false
-  );
+  assert.deepEqual(rollback.intendedMutationDocuments, [
+    names.form,
+    names.catalog,
+    names.slug,
+    names.tag,
+    names.rollbackAudit
+  ]);
+  assert.deepEqual(lib.planOperationCounts(rollback), {
+    operations: 8,
+    mutations: 5,
+    guards: 3
+  });
+  for (const [key, field] of [
+    ["v1", "versionHash"],
+    ["v2", "versionHash"],
+    ["publishAudit", "versionHash"]
+  ]) {
+    const guard = rollback.writes.find(
+      (write) => write.update?.name === names[key]
+    );
+    assert.deepEqual(guard.currentDocument, {
+      updateTime: post[key].updateTime
+    });
+    assert.deepEqual(
+      lib.decodeFirestoreFields(guard.update.fields),
+      { [field]: post[key].value[field] }
+    );
+    assert.deepEqual(guard.updateMask, { fieldPaths: [field] });
+  }
   const formWrite = rollback.writes.find((write) => write.update?.name === names.form);
   const formPatch = lib.decodeFirestoreFields(formWrite.update.fields);
   assert.equal(formPatch.activeVersion, "1");
   assert.equal(formPatch.activeVersionHash, lib.EXPECTED_V1_HASH);
   assert.equal(formPatch.versionNumber, 2);
   assert.equal(formPatch.deliveryReady, false);
+  const rollbackAuditWrite = rollback.writes.find(
+    (write) => write.update?.name === names.rollbackAudit
+  );
+  assert.deepEqual(rollbackAuditWrite.currentDocument, { exists: false });
+  assert.doesNotThrow(() => lib.validateRestWritePlan(rollback.writes));
 
   const rolledBack = makePostState(post, rollback);
   assert.deepEqual(
     lib.validateRollbackState(rolledBack, candidate, {
-      releaseCommit: COMMIT
+      ...SEALED_PLAN
     }),
     {
       activeVersion: "1",
@@ -465,14 +659,19 @@ test("le rollback restaure v1 atomiquement, garde v2 et laisse la livraison ferm
       deliveryReady: false
     }
   );
+  assert.equal(rolledBack.v1.updateTime, post.v1.updateTime);
   assert.equal(rolledBack.v2.updateTime, post.v2.updateTime);
+  assert.equal(
+    rolledBack.publishAudit.updateTime,
+    post.publishAudit.updateTime
+  );
 });
 
 test("le rollback accepte une v2 activée et un brouillon ensuite modifié", () => {
   const candidate = lib.buildCandidate();
   const pre = makePreState();
   const publication = lib.buildPublicationPlan(pre, candidate, {
-    releaseCommit: COMMIT
+    ...SEALED_PLAN
   });
   const active = makePostState(pre, publication);
   const previousDeliveryState = {
@@ -517,7 +716,7 @@ test("le rollback accepte une v2 activée et un brouillon ensuite modifié", () 
   );
 
   const rollback = lib.buildRollbackPlan(active, candidate, {
-    releaseCommit: COMMIT
+    ...SEALED_PLAN
   });
   assert.deepEqual(
     rollback.observedSources.map((item) => ({
@@ -542,7 +741,9 @@ test("le rollback accepte une v2 activée et un brouillon ensuite modifié", () 
     write.update?.name === lib.documentNames(candidate).rollbackAudit
   );
   const rollbackAudit = lib.decodeFirestoreFields(rollbackAuditWrite.update.fields);
-  assert.equal(rollbackAudit.releaseCommit, COMMIT);
+  assert.equal(rollbackAudit.sourceReleaseCommit, COMMIT);
+  assert.equal(rollbackAudit.toolingCommit, TOOLING_COMMIT);
+  assert.equal(Object.hasOwn(rollbackAudit, "releaseCommit"), false);
   assert.deepEqual(rollbackAudit.previousDeliveryState, previousDeliveryState);
   assert.equal(rollbackAudit.retainedVersionHash, lib.EXPECTED_V2_HASH);
   assert.deepEqual(rollbackAudit.preservedDraftState, preservedDraftState);
@@ -558,7 +759,7 @@ test("le rollback accepte une v2 activée et un brouillon ensuite modifié", () 
   const rolledBack = makePostState(active, rollback);
   assert.deepEqual(
     lib.validateRollbackState(rolledBack, candidate, {
-      releaseCommit: COMMIT
+      ...SEALED_PLAN
     }),
     {
       activeVersion: "1",
@@ -586,30 +787,39 @@ test("le rollback accepte une v2 activée et un brouillon ensuite modifié", () 
     "Brouillon altéré après le rollback";
   assert.throws(
     () => lib.validateRollbackState(corruptedAudit, candidate, {
-      releaseCommit: COMMIT
+      ...SEALED_PLAN
     }),
     /rollback_preserved_draft_state_invalid/
   );
+  const wrongToolingAudit = structuredClone(rolledBack);
+  wrongToolingAudit.rollbackAudit.value.toolingCommit = OTHER_TOOLING_COMMIT;
+  assert.throws(
+    () => lib.validateRollbackState(wrongToolingAudit, candidate, {
+      ...SEALED_PLAN
+    }),
+    /rollback_audit_invalid/
+  );
 });
 
-test("la confirmation de commit accepte un WriteResult vide par opération verify", () => {
+test("les plans n'utilisent que des Write REST documentés et confirment chaque opération", () => {
   const candidate = lib.buildCandidate();
   const state = makePreState();
   const publication = lib.buildPublicationPlan(state, candidate, {
-    releaseCommit: COMMIT
+    ...SEALED_PLAN
   });
   const commitPayloadFor = (plan) => ({
-    writeResults: plan.writes.map((write, index) =>
-      write.verify
+    writeResults: plan.writes.map((write, index) => (
+      write.delete
         ? {}
         : {
-          updateTime:
-            `2026-07-29T20:00:${String(index).padStart(2, "0")}.000Z`
-        }
-    ),
+            updateTime:
+              `2026-07-29T20:00:${String(index).padStart(2, "0")}.000Z`
+          }
+    )),
     commitTime: "2026-07-29T20:01:00.000Z"
   });
   const publicationPayload = commitPayloadFor(publication);
+  assert.equal(publication.writes.some((write) => write.verify), false);
   assert.equal(
     publicationPayload.writeResults.filter((result) => !result.updateTime).length,
     1
@@ -619,24 +829,25 @@ test("la confirmation de commit accepte un WriteResult vide par opération verif
       publicationPayload,
       publication.writes.length
     ),
-    { operationsConfirmed: 7 }
+    { operationsConfirmed: 8 }
   );
 
   const post = makePostState(state, publication);
   const rollback = lib.buildRollbackPlan(post, candidate, {
-    releaseCommit: COMMIT
+    ...SEALED_PLAN
   });
   const rollbackPayload = commitPayloadFor(rollback);
+  assert.equal(rollback.writes.some((write) => write.verify), false);
   assert.equal(
     rollbackPayload.writeResults.filter((result) => !result.updateTime).length,
-    2
+    0
   );
   assert.deepEqual(
     lib.validateCommitWriteResults(
       rollbackPayload,
       rollback.writes.length
     ),
-    { operationsConfirmed: 7 }
+    { operationsConfirmed: 8 }
   );
   assert.throws(
     () => lib.validateCommitWriteResults(
@@ -648,13 +859,39 @@ test("la confirmation de commit accepte un WriteResult vide par opération verif
     ),
     /atomic_commit_confirmation_invalid/
   );
+
+  const unsupported = structuredClone(publication.writes);
+  unsupported[0].verify = publication.v1;
+  assert.throws(
+    () => lib.validateRestWritePlan(unsupported),
+    /rest_write_operation_invalid/
+  );
+  const invalidPrecondition = structuredClone(publication.writes);
+  invalidPrecondition[0].currentDocument.unexpected = true;
+  assert.throws(
+    () => lib.validateRestWritePlan(invalidPrecondition),
+    /rest_write_precondition_invalid/
+  );
+  const invalidTransform = structuredClone(publication.writes);
+  invalidTransform[0].updateTransforms = [{
+    fieldPath: "versionHash",
+    setToServerValue: "REQUEST_TIME"
+  }];
+  assert.throws(
+    () => lib.validateRestWritePlan(invalidTransform),
+    /rest_update_transforms_invalid/
+  );
 });
 
 test("le runner est fail-closed, scellé et ne journalise ni corps live ni secrets", () => {
-  assert.match(runnerSource, /verifySealedCandidate\(options\.releaseCommit\)/);
+  assert.match(runnerSource, /verifyToolingContext\(\{/);
+  assert.match(runnerSource, /toolingCommit: tooling\.toolingCommit/);
+  assert.match(runnerSource, /if \(require\.main === module\)/);
   assert.match(runnerSource, /verifyExecutionAuthority\(options, plan\.planHash\)/);
   assert.match(runnerSource, /options\.mode === "rollback-verify"/);
   assert.match(librarySource, /currentDocument/);
+  assert.doesNotMatch(librarySource, /function verifyWrite/);
+  assert.match(runnerSource, /validateRestWritePlan\(writes\)/);
   assert.match(runnerSource, /validateCommitWriteResults\(result\.payload, writes\.length\)/);
   assert.match(runnerSource, /secretsPrinted: false/);
   assert.match(runnerSource, /piiPrinted: false/);
