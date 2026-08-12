@@ -1,29 +1,21 @@
-# Roadmap trimestrielle CFSB - GitHub Pages
+# Ancienne Roadmap CFSB - archivée
 
-Ce dossier est la version publiable du visuel Roadmap.
+La version GitHub Pages de la Roadmap a été retirée le 12 août 2026. Le formulaire employé, le tableau owners, le laboratoire de revenus historique et la synchronisation du cache ne doivent plus être utilisés.
 
-Destination recommandee dans le depot existant:
+Les anciennes URL affichent maintenant `roadmap/archived.html`, sans charger les scripts historiques.
 
-```text
-CrossFitStBasile/cfsb-suivi-client-coach
-└── roadmap/
-```
+## Accès actifs
 
-URL attendue apres publication:
+- Employés: `https://cfsb-roadmap-trimestrielle.web.app/portal`
+- Michael et Gabriel: `https://cfsb-roadmap-trimestrielle.web.app/`
+- Projection de revenus pour les profils admissibles: `https://cfsb-roadmap-trimestrielle.web.app/revenue`
 
-```text
-https://crossfitstbasile.github.io/cfsb-suivi-client-coach/roadmap/
-```
+Le portail membre exige un profil actif ou une invitation associée au compte Google de l'employé. La racine du Dashboard Équipe est réservée aux rôles owner/admin.
 
-Pages:
+## Données et automatisation retirées
 
-- `roadmap/` ou `roadmap/web/index.html`: formulaire employe.
-- `roadmap/owners.html` ou `roadmap/web/owners.html`: dashboard owners.
+- `roadmap/data/roadmap-submissions-cache.json` a été supprimé des branches actives.
+- Le workflow planifié `Roadmap submissions cache sync` et son script ont été supprimés.
+- L'ancien cache ne peut plus servir implicitement à construire un lot d'importation Firebase; un export explicite est requis.
 
-Le frontend utilise automatiquement le endpoint Apps Script live quand il n'est pas ouvert en local:
-
-```text
-https://script.google.com/macros/s/AKfycbxnhlehsj_NQU73k3csMQPj0NAm3QSQrpjk0Ar6VYOjXYZO-m9_GSxtmEqYw9y_9DSQEA/exec
-```
-
-En local (`localhost` ou `127.0.0.1`), le formulaire reste en mode test local par defaut.
+Le code historique demeure récupérable dans Git. Le projet Apps Script partagé avec le questionnaire client-coach est conservé et ne doit pas être supprimé sans une migration séparée de ce questionnaire.
