@@ -10,11 +10,7 @@ const checks = [
   ["/workflow.js", ["entityVersionToken", "hasVersionConflict"]],
   ["/pilotage.js", ["startOfWeekIso", "metricStatus", "pilotageSummary"]],
   ["/health.js", ["dashboardHealthReport", "missingDocumentMembers", "latestImportAt"]],
-  ["/formulaire", ["Roadmap trimestrielle CFSB", "Pilote Firebase", "./formulaire.js"]],
-  ["/formulaire.js", ["roadmapDrafts", "roadmapSubmissions", "showSubmittedState"]],
   ["/form-model.js", ["currentCycleId", "matchingTeamMember", "completionForRole"]],
-  ["/formulaire.css", [".firebase-auth-actions", ".firebase-cloud-state", ".role-list"]],
-  ["/roadmap-config.json", ["roadmap-trimestrielle-cfsb", "coach_professionnel", "entretien_menager"]],
   ["/styles.css", [".activity-list", ".owner-backup-panel", ".meeting-editor", ".pilotage-shell", ".strategy-foundation-grid", ".development-assignment-layout", ".working-genius-map-grid", "[hidden]"]],
   ["/revenue.html", ["Projection de revenus", "scenarioMemberSelect", "./revenue.js"]],
   ["/revenue.js", ["REVENUE_MODEL_VERSION", "saveScenario", "revenueScenarios"]],
@@ -32,6 +28,12 @@ for (const [path, markers] of checks) {
     if (!body.includes(marker)) throw new Error(`${path} is missing ${marker}`);
   }
   console.log(`OK ${path} (${body.length} bytes)`);
+}
+
+for (const path of ["/formulaire", "/formulaire.js", "/formulaire.css"]) {
+  const response = await fetch(`${baseUrl}${path}`, { cache: "no-store", redirect: "manual" });
+  if (response.status !== 404) throw new Error(`${path} must remain retired, received HTTP ${response.status}`);
+  console.log(`OK retired ${path} (HTTP 404)`);
 }
 
 console.log(`Roadmap live smoke test passed: ${baseUrl}`);

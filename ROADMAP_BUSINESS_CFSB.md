@@ -2,7 +2,7 @@
 
 Project: Roadmap Business CFSB
 Created: 2026-07-15
-Last updated: 2026-07-16
+Last updated: 2026-08-12
 Primary owner: Michael Grondin et Gabriel Mayer Bedard
 Status: Phase 1 en validation
 Source of truth: Dashboard Equipe Firebase (`cfsb-roadmap-trimestrielle`)
@@ -30,7 +30,7 @@ Creer un Roadmap Business CFSB qui permet a Michael et Gabriel de piloter les pr
 - Les outils de pilotage hebdomadaire, de scorecard, de priorites 90 jours et d'enjeux sont deployes dans le Dashboard Equipe.
 - La scorecard initiale contient huit indicateurs sources depuis `METRIQUE CFSB`; quatre cibles sont validees et quatre restent explicitement a cadrer.
 - La vue Activite expose la provenance et les ecarts de donnees et ouvre directement le dossier, la roadmap ou l'indicateur a corriger.
-- Le formulaire employe Firebase existe maintenant en pilote parallele avec reprise interappareils, anti-doublon et lecture temps reel dans le Dashboard Equipe; le lien officiel Apps Script demeure intact pendant la recette.
+- L'ancien formulaire Roadmap autonome et les pages GitHub ont ete archives. Les employes utilisent maintenant `Mon parcours CFSB`; Michael et Gabriel utilisent le Dashboard Equipe.
 - Le moteur owner-only de developpement equipe permet de preparer des programmes versionnes d'onboarding, de formation et d'evaluation, puis de suivre chaque membre sans inventer la checklist officielle de Gabriel.
 - Les resultats Working Genius officiels peuvent etre importes dans chaque dossier et lus dans une carte d'equipe owner-only, sans recreer le test.
 - La vue Strategie reprend la vision, la mission, les valeurs et le SWOT depuis deux sources Drive identifiees; les objectifs annuels restent vides plutot que d'utiliser une source datee ou incoherente.
@@ -112,7 +112,7 @@ Completion criteria: matrice d'acces approuvee et test pilote avec un petit grou
 | Modele de donnees Pilotage | Documentation | Codex | Livre | `firebase-roadmap/DATA_MODEL.md` |
 | Configuration scorecard Q3 | Configuration Firebase | Codex | Chargee | `firebase-roadmap/config/pilotage-initial-2026-q3.json` |
 | Plan directeur | Documentation | Michael et Codex | Actif | `ROADMAP_BUSINESS_CFSB.md` |
-| Formulaire employe Firebase | Application Firebase | Codex | Pilote parallele a tester | `firebase-roadmap/public/formulaire.html` |
+| Portail membre Firebase | Application Firebase | Codex | Actif | `https://cfsb-roadmap-trimestrielle.web.app/portal` |
 | Systeme Developpement equipe | Application Firebase | Codex | Moteur livre, contenu officiel a fournir | `firebase-roadmap/public/development.js` |
 | Profils Working Genius | Application Firebase | Codex | Moteur d'import livre, rapports a fournir | `firebase-roadmap/public/working-genius.js` |
 | Strategie et decisions | Application Firebase | Codex | Vue sourcee preparee, revalidation owners requise | `firebase-roadmap/public/strategy.js` |
@@ -163,3 +163,4 @@ Completion criteria: matrice d'acces approuvee et test pilote avec un petit grou
 | 2026-07-16 | Import Working Genius et carte d'equipe owner-only prepares sans reproduire le test | Codex | Michael et Gabriel exportent progressivement les rapports officiels |
 | 2026-07-16 | Vue Strategie sourcee et registre de decisions owner-only prepares | Codex | Michael et Gabriel revalident les blocs sources et ajoutent les objectifs annuels actuels |
 | 2026-07-16 | Export de sauvegarde owner complet et verifiable prepare | Codex | Tester le telechargement sur le projet Firebase apres reauthentification et deploiement |
+| 2026-08-12 | Ancienne Roadmap GitHub et formulaire autonome archives; acces equipe centralises dans Firebase | Michael + Codex | Maintenir les profils et invitations du portail membre |

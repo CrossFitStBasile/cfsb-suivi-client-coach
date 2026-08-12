@@ -2,16 +2,16 @@
 
 Project: Roadmap trimestrielle CFSB vers Firebase
 Created: 2026-07-12
-Last updated: 2026-07-13
+Last updated: 2026-08-12
 Primary owner: Michael Grondin
-Status: Preparation parallele - aucune bascule de production
+Status: Bascule completee - ancien environnement Roadmap archive
 Source of truth: ce document, le dossier `firebase-roadmap/` et la console Firebase du projet `cfsb-roadmap-trimestrielle`
 
 ## 1. Context
 
-Roadmap fonctionne actuellement avec une interface GitHub Pages, un backend Apps Script et une Google Sheet. Cette architecture a permis de lancer les roadmaps, mais elle cree des delais et des modes de secours difficiles a expliquer: synchronisation Apps Script, pont iframe, copie GitHub, donnees locales du navigateur et actions manuelles.
+Roadmap fonctionnait initialement avec une interface GitHub Pages, un backend Apps Script et une Google Sheet. Cet environnement historique a ete archive le 12 aout 2026 au profit du Dashboard Equipe Firebase et du portail membre.
 
-Le dashboard coach utilise deja Firebase avec succes. La migration Roadmap doit toutefois rester separee au debut pour proteger le dashboard coach et permettre une validation complete avant toute bascule.
+Le Dashboard Equipe demeure dans son projet Firebase distinct afin de proteger le Dashboard Coach et de conserver des cycles de deploiement independants.
 
 ## 2. Objective
 
@@ -30,20 +30,19 @@ Creer une application Roadmap interactive et fiable dans un projet Firebase dist
 
 ## 3. Source Of Truth
 
-- Production actuelle: GitHub Pages `roadmap/`, Apps Script Roadmap et Google Sheet Roadmap.
-- Configuration du questionnaire: `roadmap/data/roadmap-config.json`.
-- Copie active connue: `roadmap/data/roadmap-submissions-cache.json`.
-- Nouveau projet Firebase: `cfsb-roadmap-trimestrielle`.
-- Preparation locale Firebase: `firebase-roadmap/`.
+- Production actuelle: Dashboard Equipe Firebase et portail membre du projet `cfsb-roadmap-trimestrielle`.
+- Ancienne interface: GitHub Pages `roadmap/`, maintenant remplacee par un avis d'archivage.
+- Configuration historique du questionnaire: `roadmap/data/roadmap-config.json`.
+- Copie GitHub: retiree des branches actives (`roadmap/data/roadmap-submissions-cache.json`).
+- Code Firebase: `firebase-roadmap/`.
 - Dashboard coach existant, volontairement non modifie: `cfsb-dashboard-coach-aa9a4`.
 
 ## 4. Current State
 
-- Le formulaire contient 8 roles, 28 modules et environ 120 questions.
-- Les brouillons sont sauvegardes dans le navigateur et peuvent etre repris par un identifiant Apps Script.
-- Le dashboard owners gere les soumissions, filtres, notes, statuts, archives, portrait d'equipe et organigramme.
-- Les donnees owners utilisent un melange de stockage local et de synchronisation Apps Script.
-- La copie GitHub du 2026-07-10 contient 18 soumissions actives.
+- Le formulaire GitHub historique, ses brouillons Apps Script et son dashboard owners sont archives.
+- Les anciennes URLs affichent un avis sans charger les scripts historiques.
+- Le cache GitHub public a ete retire des branches actives.
+- Le workflow de synchronisation planifie est retire.
 - Le dashboard coach Firebase est actif avec Auth, Firestore, Hosting et 9 Cloud Functions. La presence de Functions de deuxieme generation et de taches planifiees confirme que ce projet utilise deja la facturation Blaze.
 - Le nouveau projet `cfsb-roadmap-trimestrielle` et son application Web ont ete crees sans liaison de facturation.
 - La base Firestore Standard a ete creee en region `nam5`; Google la confirme comme base gratuite `freeTier: true`.
@@ -51,7 +50,7 @@ Creer une application Roadmap interactive et fiable dans un projet Firebase dist
 - Une copie complete de la Google Sheet a ete importee: 28 soumissions, 18 notes owners, 10 archives, 20 membres et 194 evenements d'audit.
 - Une deuxieme importation avec la meme cle a conserve exactement les memes compteurs.
 - Google Authentication est active et deux profils owners actifs sont configures.
-- Le prototype owners est deploye sur Firebase Hosting pour une recette privee, sans modifier les liens de production.
+- Le Dashboard Equipe est deploye sur Firebase Hosting et constitue l'acces owner actif.
 - Le dashboard owners interactif ajoute un pipeline cliquable, une corbeille reversible, un dossier longitudinal par membre, une reassignation manuelle des soumissions et un compte rendu simplifie.
 - Chaque dossier membre comprend maintenant un `Parcours CFSB`: etapes de carriere modifiables, dates cibles, responsables, progression, criteres de reussite et journal d'evolution date.
 - Le prototype owners est devenu un `Dashboard Equipe` structure comme le Dashboard Coach: vue `A faire`, dossiers d'equipe et module Roadmaps distinct.
@@ -59,8 +58,8 @@ Creer une application Roadmap interactive et fiable dans un projet Firebase dist
 - Michael et Gabriel peuvent aussi creer des actions manuelles, les assigner, les reporter et les terminer.
 - Les dossiers membres integrent maintenant des rencontres 1:1 privees: brouillon automatique, canevas mensuel CFSB, note finalisee immutable et historique complet.
 - Le document Roadmap Drive demeure externe et est accessible par un lien prive configure dans le dossier owner.
-- Le Laboratoire revenus est porte dans Firebase comme outil owner, avec scenarios persistants par coach, sans retirer l'ancien prototype.
-- Un formulaire employe Firebase parallele reprend la configuration officielle sans modifier le lien de production. Il combine brouillon local, brouillon Firestore interappareils, connexion Google autorisee et soumission idempotente visible en temps reel.
+- Le Laboratoire revenus est porte dans Firebase comme outil protege, avec scenarios persistants par coach; l'ancien prototype GitHub est archive.
+- Le formulaire employe autonome n'est plus publie. Les employes utilisent `Mon parcours CFSB` avec leur profil membre ou une invitation valide.
 - Le Dashboard Equipe contient un moteur owner-only de programmes versionnes pour l'onboarding, la formation continue et les evaluations. Aucun contenu de checklist n'est publie tant que Gabriel ne l'a pas valide.
 - Les profils Working Genius officiels peuvent etre importes dans les dossiers membres et compares dans une carte d'equipe owner-only; le test lui-meme demeure externe.
 - La Zone Pilotage comprend une vue Strategie sourcee depuis Drive et un registre de decisions. Les objectifs annuels non fiables ne sont pas precharges.
@@ -79,6 +78,7 @@ Creer une application Roadmap interactive et fiable dans un projet Firebase dist
 | 2026-07-13 | Garder les notes 1:1 et les liens Drive dans des collections owners privees | Eviter d'exposer des informations de gestion dans l'organigramme public | `teamMeetings` et `teamMemberPrivate` sont reserves aux owners | Michael + Codex |
 | 2026-07-13 | Conserver les documents Roadmap dans Drive | Les membres peuvent continuer a y prendre leurs propres notes | Firebase stocke seulement le lien, pas le contenu | Michael + Codex |
 | 2026-07-13 | Conserver l'ancien calculateur pendant la validation du module Firebase | Eviter toute perte et permettre la comparaison des resultats | Nouveau module parallele avec scenarios sauvegardes | Michael + Codex |
+| 2026-08-12 | Archiver l'environnement GitHub Roadmap et le formulaire autonome | L'equipe utilise maintenant le Dashboard Equipe et le portail Firebase | Anciennes pages remplacees par un avis, cache public nettoye et synchronisation arretee | Michael + Codex |
 
 ## 6. Phased Plan
 
@@ -110,9 +110,9 @@ Deliverables:
 
 Completion criteria: Michael et Gabriel retrouvent les memes informations que dans la production actuelle et peuvent les modifier dans l'environnement de test.
 
-### Phase 2 - Formulaire employe Firebase
+### Phase 2 - Formulaire employe Firebase - abandonnee le 2026-08-12
 
-Objective: remplacer la sauvegarde locale et Apps Script par un parcours fiable.
+Decision: ne pas publier de formulaire autonome. L'equipe utilise le portail membre et le Dashboard Equipe; le prototype est conserve uniquement dans l'historique Git.
 
 Deliverables:
 
@@ -123,7 +123,7 @@ Deliverables:
 - formulaire adapte au role;
 - schema de formulaire versionne.
 
-Completion criteria: tests complets des 8 roles, fermeture/reprise, double-clic et perte de reseau.
+Completion criteria: sans objet apres la decision d'archivage.
 
 ### Phase 3 - Automatisations serveur
 
@@ -139,7 +139,7 @@ Deliverables:
 
 Completion criteria: validation de la facturation Blaze, alertes budgetaires actives et secrets stockes dans Secret Manager.
 
-### Phase 4 - Recette et bascule
+### Phase 4 - Recette et bascule - completee le 2026-08-12
 
 Objective: remplacer les liens officiels sans perte de donnees.
 
@@ -149,9 +149,9 @@ Deliverables:
 - import final;
 - plan de retour arriere;
 - nouveaux liens;
-- ancien systeme en lecture seule pendant une periode definie.
+- ancien systeme remplace par un avis d'archivage sans donnees.
 
-Completion criteria: approbation Michael et Gabriel, aucun ecart de soumission ou d'archive, tests mobiles et desktop reussis.
+Completion criteria: liens historiques neutralises, cache nettoye, workflow desactive et acces Firebase verifies.
 
 ### Phase 5 - Portail administratif commun
 
@@ -175,8 +175,9 @@ Completion criteria: portail utile sans dependance forte entre les deux bases Fi
 | Modele de donnees cible | Documentation | Codex | Prepare | `firebase-roadmap/DATA_MODEL.md` |
 | Regles Firestore initiales | Code | Codex | Deployees | `firebase-roadmap/firestore.rules` |
 | Lot d'importation local | Outil | Codex | Prepare et importe | `firebase-roadmap/scripts/build-import-bundle.mjs` |
-| Dashboard Equipe Firebase | Application | Codex | Deploye pour recette | `https://cfsb-roadmap-trimestrielle.web.app` |
-| Formulaire employe Firebase | Application | Codex | Prototype parallele prepare | `https://cfsb-roadmap-trimestrielle.web.app/formulaire` |
+| Dashboard Equipe Firebase | Application | Codex | Production active | `https://cfsb-roadmap-trimestrielle.web.app` |
+| Portail membre | Application | Codex | Production active | `https://cfsb-roadmap-trimestrielle.web.app/portal` |
+| Formulaire employe autonome | Application | Codex | Archive, non publie | Historique Git seulement |
 | Developpement equipe | Application | Codex | Moteur prepare, donnees metier a fournir | `firebase-roadmap/public/development.js` |
 | Working Genius | Application | Codex | Import et carte prepares, rapports a fournir | `firebase-roadmap/public/working-genius.js` |
 | Strategie et decisions | Application | Codex | Vue sourcee preparee, validation owner a faire | `firebase-roadmap/public/strategy.js` |
@@ -230,3 +231,4 @@ Completion criteria: portail utile sans dependance forte entre les deux bases Fi
 | 2026-07-16 | Ajout de l'import Working Genius owner-only et de la carte d'equipe sans questionnaire local | Codex | Importer les premiers rapports officiels valides |
 | 2026-07-16 | Ajout de la Strategie sourcee et du registre de decisions owner-only | Codex | Revalider les sources et completer le focus annuel actuel |
 | 2026-07-16 | Ajout de la sauvegarde owner complete et verifiable | Codex | Tester l'export reel apres le prochain deploiement Firebase |
+| 2026-08-12 | Anciennes pages GitHub Roadmap archivees, cache public nettoye et formulaire autonome retire des fichiers publies | Michael + Codex | Maintenir les acces Dashboard Equipe et portail membre |

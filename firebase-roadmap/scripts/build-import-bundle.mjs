@@ -7,21 +7,24 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const firebaseRoot = path.resolve(scriptDir, "..");
 const repoRoot = path.resolve(firebaseRoot, "..");
 const configPath = path.join(repoRoot, "roadmap", "data", "roadmap-config.json");
-const snapshotPath = path.join(repoRoot, "roadmap", "data", "roadmap-submissions-cache.json");
 const sourceExportPath = process.env.ROADMAP_SOURCE_EXPORT
   ? path.resolve(process.env.ROADMAP_SOURCE_EXPORT)
   : "";
 const outputPath = path.join(firebaseRoot, "tmp", "roadmap-import-bundle.json");
 
+if (!sourceExportPath) {
+  throw new Error(
+    "La copie GitHub Roadmap est archivée. Fournir un export explicite avec ROADMAP_SOURCE_EXPORT pour construire un lot d'importation."
+  );
+}
+
 const [config, sourcePayload] = await Promise.all([
   readJson(configPath),
-  readJson(sourceExportPath || snapshotPath)
+  readJson(sourceExportPath)
 ]);
 
 validateConfig(config);
-const source = sourceExportPath
-  ? normalizeSheetExport(sourcePayload)
-  : normalizePublicSnapshot(sourcePayload);
+const source = normalizeSheetExport(sourcePayload);
 validateSource(source);
 
 const defaultFormVersion = String(config.meta?.version || "unknown");
@@ -138,20 +141,6 @@ console.log(JSON.stringify({
   cycles: Object.keys(collections.roadmapCycles),
   idempotencyKey: bundle.metadata.idempotencyKey
 }, null, 2));
-
-function normalizePublicSnapshot(snapshot) {
-  if (!Array.isArray(snapshot?.submissions)) {
-    throw new Error("Snapshot Roadmap invalide: submissions[] manquant.");
-  }
-  return {
-    kind: "github_active_snapshot",
-    exportedAt: snapshot.snapshotGeneratedAt || null,
-    submissions: snapshot.submissions,
-    orgDepartments: {},
-    teamMembers: {},
-    auditLogs: {}
-  };
-}
 
 function normalizeSheetExport(payload) {
   const tabs = payload?.tabs || {};

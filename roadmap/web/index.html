@@ -1,135 +1,15 @@
 <!doctype html>
-<html lang="fr-CA">
+<html lang="fr">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Roadmap Trimestrielle CFSB</title>
-    <link rel="stylesheet" href="./styles.css?v=20260612-resume-snapshot-ui">
+    <meta name="robots" content="noindex, nofollow">
+    <meta http-equiv="refresh" content="0; url=../archived.html">
+    <title>Ancienne Roadmap archivée - CFSB</title>
+    <link rel="canonical" href="../archived.html">
   </head>
   <body>
-    <div class="app-shell">
-      <header class="topbar">
-        <div class="brand">
-          <strong>CrossFit St-Basile</strong>
-          <span>Roadmap trimestrielle</span>
-        </div>
-        <div class="top-actions">
-          <button class="button secondary" id="settingsButton" type="button">Parametres</button>
-        </div>
-      </header>
-
-      <main class="container">
-        <section class="hero">
-          <div>
-            <h1>Preparer une conversation utile.</h1>
-            <p>
-              Choisis le role que tu portes actuellement a CFSB. Le formulaire s'adapte a tes responsabilites,
-              puis ouvre une courte section exploratoire si tu veux discuter d'une trajectoire future.
-            </p>
-          </div>
-          <aside class="status-panel" aria-live="polite">
-            <h2>Progression</h2>
-            <ul class="progress-list">
-              <li><span class="dot done" id="roleDot">1</span><span>Role actuel</span></li>
-              <li><span class="dot" id="formDot">2</span><span>Questions adaptees</span></li>
-              <li><span class="dot" id="submitDot">3</span><span>Soumission</span></li>
-            </ul>
-          </aside>
-        </section>
-
-        <section class="org-map" aria-labelledby="orgMapTitle">
-          <div class="org-intro">
-            <span>Charte organisationnelle 2026</span>
-            <h2 id="orgMapTitle">Un centre, plusieurs roles qui se completent.</h2>
-            <p>
-              Avant de choisir ton role, prends un instant pour situer comment l'equipe fonctionne:
-              vision, operations, coaching, communaute et support se tiennent ensemble.
-            </p>
-          </div>
-          <div class="org-grid" id="orgGrid">
-            <article class="org-column owners">
-              <h3>Direction</h3>
-              <ul>
-                <li><strong>Michael Grondin</strong><span>Proprietaire - Ventes, marketing, vision</span></li>
-                <li><strong>Gabriel Mayer Bedard</strong><span>Proprietaire - Operations, finances, RH, integration</span></li>
-              </ul>
-            </article>
-            <article class="org-column operations">
-              <h3>Operations</h3>
-              <ul>
-                <li><strong>Caroline Martineau</strong><span>Chef d'equipe, coordination, ventes</span></li>
-                <li><strong>Tiffany Bolduc-Brossier</strong><span>Conciliation de la paie</span></li>
-              </ul>
-            </article>
-            <article class="org-column coaching">
-              <h3>Coaching</h3>
-              <ul>
-                <li><strong>Hugo Lelievre</strong><span>Coach en chef, formateur</span></li>
-                <li><strong>Marc-Andre Menard, Raphael Samson, Camille Proulx, David Olivier, Iheb Yahyaoui</strong><span>Coachs professionnels</span></li>
-                <li><strong>Roxanne Vincent, Nathan Goupil, Chloe Willis</strong><span>Coachs developpement</span></li>
-                <li><strong>Serge Thibault, Kim Theriault, Jean-Sylvain Cote</strong><span>Coachs communaute</span></li>
-              </ul>
-            </article>
-            <article class="org-column support">
-              <h3>Communaute et support</h3>
-              <ul>
-                <li><strong>Karolina Milewska</strong><span>Gestionnaire Club Social</span></li>
-                <li><strong>Lysanne Gosselin, Michel Jasen Mallet</strong><span>Entretien menager</span></li>
-                <li><strong>Valerie Savard</strong><span>Equipe CFSB</span></li>
-              </ul>
-            </article>
-          </div>
-        </section>
-
-        <section class="layout">
-          <aside class="sidebar">
-            <div class="panel">
-              <h2>Role actuel</h2>
-              <p>Selectionne ce que tu portes aujourd'hui. Si c'est hybride, tu pourras le preciser dans le formulaire.</p>
-              <div class="role-list" id="roleList"></div>
-            </div>
-            <div class="notice">
-              Le role choisi sert a adapter l'evaluation. Une aspiration future sert seulement a ouvrir une conversation.
-            </div>
-          </aside>
-
-          <form class="form-area" id="roadmapForm">
-            <div class="notice" id="formNotice" role="status" aria-live="polite">
-              Choisis un role pour generer le formulaire.
-            </div>
-            <div id="roleResources"></div>
-            <div id="sections"></div>
-            <div class="actions" id="formActions" hidden>
-              <span class="draft-status" id="draftStatus" aria-live="polite"></span>
-              <button class="button secondary" id="saveDraftButton" type="button">Sauvegarder brouillon</button>
-              <button class="button" id="submitButton" type="submit">Soumettre</button>
-            </div>
-          </form>
-        </section>
-      </main>
-    </div>
-
-    <div class="modal-backdrop" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
-      <div class="modal-card">
-        <h2 id="settingsTitle">Parametres du prototype</h2>
-        <div class="settings-grid">
-          <label class="field">
-            <span>URL Apps Script Web App</span>
-            <input class="input" id="endpointInput" type="url" placeholder="https://script.google.com/macros/s/.../exec">
-            <small>Laisse vide pour tester localement. Les soumissions seront gardees dans le navigateur.</small>
-          </label>
-          <label class="field">
-            <span>Trimestre</span>
-            <input class="input" id="quarterInput" type="text" value="2026-Q2">
-          </label>
-          <div class="actions">
-            <button class="button secondary" id="closeSettingsButton" type="button">Fermer</button>
-            <button class="button" id="saveSettingsButton" type="button">Enregistrer</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <script src="./app.js?v=20260623-team-members"></script>
+    <p>Cette ancienne Roadmap est archivée.</p>
+    <p><a href="../archived.html">Ouvrir les nouveaux accès CFSB</a></p>
   </body>
 </html>

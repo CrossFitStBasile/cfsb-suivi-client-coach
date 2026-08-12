@@ -1,10 +1,10 @@
-# Roadmap CFSB - environnement Firebase parallele
+# Dashboard Equipe CFSB - Firebase
 
-Ce dossier prepare la migration de Roadmap vers le projet Firebase distinct:
+Ce dossier contient le Dashboard Equipe et le portail membre du projet Firebase distinct:
 
 `cfsb-roadmap-trimestrielle`
 
-Le Dashboard Equipe est deploye sur Firebase Hosting avec connexion Google owner. Les anciens liens GitHub Pages + Apps Script restent separes tant que leur retrait n'a pas ete approuve.
+Le Dashboard Equipe est l'environnement actif. Les anciens liens GitHub Pages et le formulaire Roadmap autonome ont ete archives le 12 aout 2026.
 
 ## Etat
 
@@ -14,8 +14,8 @@ Le Dashboard Equipe est deploye sur Firebase Hosting avec connexion Google owner
 - Firestore: base Standard gratuite active en region `nam5`.
 - Regles et index: deployes.
 - Authentication: connexion Google active; deux profils owners actifs.
-- Hosting: prototype owners deploye pour la recette privee.
-- Donnees reelles: copie de migration importee; la Google Sheet reste la production officielle.
+- Hosting: Dashboard Equipe, portail membre et projection de revenus deployes.
+- Donnees reelles: Firestore est la source operationnelle du Dashboard Equipe.
 
 ## Fonctions du Dashboard Equipe
 
@@ -46,7 +46,7 @@ Le Dashboard Equipe est deploye sur Firebase Hosting avec connexion Google owner
 - portail membre `Mon parcours CFSB` avec mandat de carriere, historique des roadmaps, etapes de parcours, comptes rendus explicitement partages et outils personnels;
 - activation progressive du portail par courriel Google depuis le dossier membre, sans exposer les notes owners ni les rencontres brutes;
 - lien profond vers le Dashboard Coach uniquement par identifiant stable, sans lecture ni ecriture dans son projet Firestore;
-- ancien Laboratoire revenus conserve intact pendant la validation du module Firebase;
+- ancien Laboratoire revenus GitHub archive; le module Firebase est l'acces actif;
 - separation de l'equipe active et des dossiers archives, avec archivage et restauration sans perte d'historique;
 - ligne du temps `Parcours CFSB` avec objectifs, echeances, responsables, progression et notes d'evolution datees;
 - conversion d'une prochaine action de roadmap en etape de parcours, sans double saisie;
@@ -66,8 +66,8 @@ Le Dashboard Equipe est deploye sur Firebase Hosting avec connexion Google owner
 - sauvegarde JSON owner en un clic couvrant toutes les collections connues et les evenements imbriques, avec manifeste, dates portables et empreinte SHA-256;
 - aucune restauration massive depuis l'interface afin d'eviter une ecriture destructive accidentelle;
 - controle de coherence actionnable pour les roadmaps non associees, les liens Drive absents, les cibles Pilotage a cadrer et la provenance des soumissions;
-- formulaire employe Firebase en pilote parallele, avec le meme contenu que le formulaire officiel, brouillon local et nuage, reprise interappareils et soumission finale idempotente;
-- acces au pilote depuis le controle de coherence, sans remplacer le formulaire GitHub Pages + Apps Script actuellement distribue;
+- formulaire Roadmap autonome retire des fichiers publies; les employes passent par `Mon parcours CFSB`;
+- controle de coherence dirige vers le portail membre plutot que vers l'ancien pilote formulaire;
 - detection des modifications simultanees pour empecher Michael et Gabriel de s'ecraser silencieusement;
 - tests de flux unitaires, controle responsive et smoke test de l'URL de production.
 
@@ -85,16 +85,12 @@ Verifier ensuite les ressources reellement servies par Firebase Hosting:
 npm run test:live
 ```
 
-## Formulaire employe Firebase pilote
+## Parcours employe actif
 
-- URL pilote: `https://cfsb-roadmap-trimestrielle.web.app/formulaire`
-- Le questionnaire servi est verifie octet par octet contre `roadmap/data/roadmap-config.json` dans la suite de tests.
-- Une connexion Google owner, membre actif ou invitation portail valide est requise pour synchroniser et soumettre.
-- Le brouillon local reste disponible avant la connexion; apres connexion, il est synchronise dans `roadmapDrafts`.
-- Une soumission finale cree directement un document `roadmapSubmissions` au statut `to_read`, visible en temps reel dans le Dashboard Equipe.
-- L'identifiant final est deterministe par compte et par trimestre afin qu'un double clic ou une deuxieme tentative ne cree pas de doublon.
-- Les notifications Google Chat restent sur le parcours Apps Script tant qu'aucune fonction serveur Roadmap n'est approuvee et financee.
-- La recette ne doit pas utiliser de donnees fictives dans le cycle officiel; un cycle de test explicite peut etre passe avec `?cycle=pilote-AAAA-MM`.
+- URL: `https://cfsb-roadmap-trimestrielle.web.app/portal`
+- Une connexion Google associee a un profil membre actif ou a une invitation valide est requise.
+- Le membre voit uniquement son dossier, son historique Roadmap et les contenus explicitement partages.
+- L'ancien formulaire autonome n'est plus publie. Sa route `/formulaire` doit rester absente.
 
 ## Configuration Web
 
@@ -154,17 +150,16 @@ pnpm run pilotage:seed
 
 La configuration initiale reprend `METRIQUE CFSB` et `TEAM LEADERSHIP CFSB ORGANISER 2026`. Les feuilles `RECUP` et `Archive` ne servent pas de source courante.
 
-## Prochaine activation
+## Suivi operationnel
 
-1. Valider la connexion Google avec les deux comptes owners reels.
-2. Comparer les soumissions, notes et archives avec la production actuelle.
-3. Tester les actions owners, rencontres 1:1, liens Drive, projections, statuts, archives, membres d'equipe et parcours de carriere.
-4. Refaire un export/import de copie juste avant la recette finale.
-5. Garder la Google Sheet et GitHub Pages comme production jusqu'a l'approbation finale.
+1. Maintenir les profils owners de Michael et Gabriel.
+2. Maintenir un profil membre actif ou une invitation valide pour chaque employe qui utilise le portail.
+3. Tester les actions owners, rencontres 1:1, liens Drive, projections, statuts, archives, membres d'equipe et parcours de carriere avant chaque deploiement.
+4. Utiliser un export source explicite pour toute reprise d'importation; le cache GitHub archive ne peut plus servir de source.
 
 ## Garde-fous
 
 - Ne pas changer `.firebaserc` a la racine du depot: il appartient au dashboard coach.
 - Toujours executer les commandes Firebase Roadmap depuis `firebase-roadmap/`.
 - Ne pas deployer de Cloud Functions avant la validation Blaze.
-- Ne pas modifier les URLs Roadmap actuelles pendant la phase de test.
+- Ne pas republier les fichiers historiques `formulaire.*` ni les anciennes pages GitHub Roadmap.

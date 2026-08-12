@@ -1662,8 +1662,8 @@ function renderDataHealthPanel(health) {
           label: "Canal des soumissions",
           description: sourceDescription,
           tone: health.nativeSubmissions.length ? "healthy" : "information",
-          action: health.nativeSubmissions.length ? "roadmaps" : "firebase-form",
-          actionLabel: health.nativeSubmissions.length ? "Voir les donnees" : "Tester Firebase"
+          action: health.nativeSubmissions.length ? "roadmaps" : "member-portal",
+          actionLabel: health.nativeSubmissions.length ? "Voir les donnees" : "Ouvrir le portail membre"
         })}
       </div>
     </section>
@@ -3323,8 +3323,8 @@ function openDataHealthAction(action) {
     renderApp();
     return;
   }
-  if (action === "firebase-form") {
-    window.open("./formulaire.html", "_blank", "noopener,noreferrer");
+  if (action === "member-portal") {
+    window.open("./portal", "_blank", "noopener,noreferrer");
   }
 }
 
